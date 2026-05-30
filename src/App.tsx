@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { Sidebar } from '@/components/layout/Sidebar'
 import { Titlebar } from '@/components/layout/Titlebar'
 import { ChatView } from '@/components/chat/ChatView'
+import { ArtifactPanel } from '@/components/artifacts/ArtifactPanel'
 import { ApiKeyModal } from '@/components/settings/ApiKeyModal'
 import { useChatStore } from '@/stores/chat-store'
 import { useModelStore } from '@/stores/model-store'
@@ -9,11 +10,27 @@ import { useChat } from '@/hooks/useChat'
 
 function App(): React.ReactElement {
   const [needsApiKey, setNeedsApiKey] = useState<boolean | null>(null)
+  const [artifactOpen, setArtifactOpen] = useState(false)
+  const [artifactType, setArtifactType] = useState<string | null>(null)
+  const [artifactSource, setArtifactSource] = useState<string | null>(null)
   const loadConversations = useChatStore((s) => s.loadConversations)
   const loadModels = useModelStore((s) => s.loadModels)
 
   // Wire IPC event listeners
   useChat()
+
+  const handleArtifactOpen = useCallback((type: string, source: string) => {
+    setArtifactType(type)
+    setArtifactSource(source)
+    setArtifactOpen(true)
+  }, [])
+
+  useEffect(() => {
+    ;(window as unknown as Record<string, unknown>).__openArtifact = handleArtifactOpen
+    return () => {
+      delete (window as unknown as Record<string, unknown>).__openArtifact
+    }
+  }, [handleArtifactOpen])
 
   useEffect(() => {
     const init = async () => {
@@ -53,13 +70,20 @@ function App(): React.ReactElement {
         <ChatView />
       </div>
 
-      {/* Artifact panel placeholder */}
-      <div className="flex w-[420px] flex-col border-l border-[var(--border)] bg-[var(--bg-secondary)]">
-        <div className="flex h-12 items-center px-4 text-sm font-medium text-[var(--text-secondary)]">
-          Artifacts
+      {artifactOpen ? (
+        <ArtifactPanel
+          artifactType={artifactType}
+          artifactSource={artifactSource}
+          onClose={() => setArtifactOpen(false)}
+        />
+      ) : (
+        <div className="flex w-[420px] flex-col border-l border-[var(--border)] bg-[var(--bg-secondary)]">
+          <div className="flex h-12 items-center px-4 text-sm font-medium text-[var(--text-secondary)]">
+            Artifacts
+          </div>
+          <div className="flex-1" />
         </div>
-        <div className="flex-1" />
-      </div>
+      )}
     </div>
   )
 }

@@ -1,8 +1,9 @@
-import { app, BrowserWindow, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, ipcMain, session, shell } from 'electron'
 import { join } from 'path'
 import { is } from '@electron-toolkit/utils'
 import { registerAllIpcHandlers } from './ipc'
 import { closeDb } from './services/database'
+import { destroy as destroyArtifactSandbox } from './services/artifact-sandbox'
 
 let mainWindow: BrowserWindow | null = null
 
@@ -41,6 +42,19 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    if (details.url.includes('lamprey-artifact')) {
+      callback({
+        responseHeaders: {
+          ...details.responseHeaders,
+          'Content-Security-Policy': ["default-src 'self' 'unsafe-inline' 'unsafe-eval'; connect-src 'none'; img-src 'self' data:;"]
+        }
+      })
+    } else {
+      callback({ responseHeaders: details.responseHeaders })
+    }
+  })
+
   ipcMain.handle('ping', () => 'pong')
   ipcMain.handle('shell:openExternal', (_event, url: string) => {
     if (typeof url === 'string' && (url.startsWith('https://') || url.startsWith('http://'))) {
@@ -65,5 +79,6 @@ app.on('window-all-closed', () => {
 })
 
 app.on('will-quit', () => {
+  destroyArtifactSandbox()
   closeDb()
 })

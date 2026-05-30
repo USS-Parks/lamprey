@@ -96,6 +96,10 @@ export function CodeBlock({ code, language }: CodeBlockProps) {
   const handleOpenArtifact = () => {
     const type = lang === 'react' || lang === 'jsx' || lang === 'tsx' ? 'jsx' : lang
     window.api?.artifact?.render(type, code)
+    const opener = (window as unknown as Record<string, unknown>).__openArtifact
+    if (typeof opener === 'function') {
+      ;(opener as (t: string, s: string) => void)(type, code)
+    }
   }
 
   if (isArtifact) {

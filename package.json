@@ -17,11 +17,13 @@
     "postinstall": "electron-rebuild -f -w better-sqlite3"
   },
   "dependencies": {
+    "@babel/standalone": "^7.29.7",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "better-sqlite3": "^12.10.0",
     "chokidar": "^5.0.0",
     "electron": "^42.3.0",
     "gray-matter": "^4.0.3",
+    "mermaid": "^11.15.0",
     "openai": "^6.39.1",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
@@ -29,6 +31,14 @@
     "remark-gfm": "^4.0.1",
     "shiki": "^4.1.0",
     "zustand": "^5.0.14"
+  },
+  "build": {
+    "extraResources": [
+      {
+        "from": "resources/vendor",
+        "to": "resources/vendor"
+      }
+    ]
   },
   "devDependencies": {
     "@electron-toolkit/preload": "^3.0.2",
