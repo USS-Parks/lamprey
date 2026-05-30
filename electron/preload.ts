@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, webUtils } from 'electron'
 
 const api = {
   chat: {
@@ -95,6 +95,18 @@ const api = {
       ipcRenderer.on('mcp:statusChanged', (_, e) => cb(e)),
     onConfirmationRequired: (cb: (e: unknown) => void) =>
       ipcRenderer.on('mcp:confirmationRequired', (_, e) => cb(e))
+  },
+
+  files: {
+    process: (paths: string[]) => ipcRenderer.invoke('files:process', paths),
+    openPicker: () => ipcRenderer.invoke('files:openPicker'),
+    getPathForFile: (file: File) => {
+      try {
+        return webUtils.getPathForFile(file)
+      } catch {
+        return ''
+      }
+    }
   },
 
   artifact: {

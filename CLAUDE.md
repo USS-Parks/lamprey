@@ -4,8 +4,9 @@
 Electron desktop AI assistant (React 19, TypeScript, electron-vite) powered by DeepSeek API. See `PLANNING/LAMPREY_HARNESS_FINAL.md` for the full 22-prompt build plan (Prompts 1–21 plus 16A).
 
 ## Current State
-- **Prompts 1–17**: Committed and pushed to main
-- **Next**: Prompt 18 (File Drag-and-Drop and Attachments)
+- **Prompts 1–18**: Committed and pushed to main
+- **Prompt 19**: Skipped for now (system tray + global shortcuts + auto-updater can be added as a feature later)
+- **Next**: Prompt 20 (Packaging and Distribution)
 - Read `DEVLOG.md` for detailed build history before making changes
 
 ## Build & Run

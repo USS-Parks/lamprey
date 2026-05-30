@@ -25,6 +25,7 @@
     "gray-matter": "^4.0.3",
     "mermaid": "^11.15.0",
     "openai": "^6.39.1",
+    "pdf-parse": "^2.4.5",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "react-markdown": "^10.1.0",

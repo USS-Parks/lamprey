@@ -6,6 +6,7 @@ import { registerSkillsHandlers } from './skills'
 import { registerMemoryHandlers } from './memory'
 import { registerMcpHandlers } from './mcp'
 import { registerArtifactHandlers } from './artifact'
+import { registerFilesHandlers } from './files'
 
 export function registerAllIpcHandlers(): void {
   registerChatHandlers()
@@ -16,4 +17,5 @@ export function registerAllIpcHandlers(): void {
   registerMemoryHandlers()
   registerMcpHandlers()
   registerArtifactHandlers()
+  registerFilesHandlers()
 }

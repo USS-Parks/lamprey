@@ -172,3 +172,15 @@ export interface ArtifactBounds {
 }
 
 export type ArtifactType = 'html' | 'svg' | 'mermaid' | 'jsx' | 'react' | 'markdown'
+
+export type AttachmentKind = 'text' | 'image' | 'pdf' | 'binary'
+
+export interface ProcessedFile {
+  name: string
+  kind: AttachmentKind
+  mimeType: string
+  size: number
+  content: string
+  previewText: string
+  error?: string
+}

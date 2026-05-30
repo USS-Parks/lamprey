@@ -1,6 +1,14 @@
 import { create } from 'zustand'
-import type { Conversation, Message, ToolCallEvent, ToolCallResultEvent } from '@/lib/types'
+import type {
+  Conversation,
+  Message,
+  ProcessedFile,
+  ToolCallEvent,
+  ToolCallResultEvent
+} from '@/lib/types'
 import { useSettingsStore } from '@/stores/settings-store'
+import { useModelStore } from '@/stores/model-store'
+import { toast } from '@/stores/toast-store'
 
 export interface ToolCallState {
   callId: string
@@ -20,6 +28,8 @@ interface ChatState {
   streamingContent: string
   activeModel: string
   toolCalls: ToolCallState[]
+  pendingAttachments: ProcessedFile[]
+  attachmentsProcessing: boolean
 
   loadConversations: () => Promise<void>
   selectConversation: (id: string) => Promise<void>
@@ -34,6 +44,32 @@ interface ChatState {
   addToolCall: (event: ToolCallEvent) => void
   updateToolCall: (event: ToolCallResultEvent) => void
   clearToolCalls: () => void
+  addAttachments: (files: ProcessedFile[]) => void
+  removeAttachment: (index: number) => void
+  clearAttachments: () => void
+  setAttachmentsProcessing: (v: boolean) => void
+}
+
+function extOf(name: string): string {
+  const dot = name.lastIndexOf('.')
+  return dot >= 0 ? name.slice(dot + 1).toLowerCase() : ''
+}
+
+function buildAttachmentBlock(file: ProcessedFile): string {
+  if (file.error) return `\n\n[Attachment ${file.name}: ${file.error}]`
+  if (file.kind === 'text') {
+    const lang = extOf(file.name)
+    const open = lang ? '```' + lang : '```'
+    const close = '```'
+    return '\n\n[Attachment ' + file.name + ']\n' + open + '\n' + file.content + '\n' + close
+  }
+  if (file.kind === 'pdf') {
+    return `\n\n[PDF ${file.name}]\n${file.content || '(no extractable text)'}`
+  }
+  if (file.kind === 'binary') {
+    return `\n\n[Attachment ${file.name}: ${file.previewText || 'binary file, content not included.'}]`
+  }
+  return ''
 }
 
 export const useChatStore = create<ChatState>((set, get) => ({
@@ -44,6 +80,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
   streamingContent: '',
   activeModel: 'deepseek-chat',
   toolCalls: [],
+  pendingAttachments: [],
+  attachmentsProcessing: false,
 
   loadConversations: async () => {
     const result = await window.api.conversation.list()
@@ -98,10 +136,27 @@ export const useChatStore = create<ChatState>((set, get) => ({
       if (!conversationId) return
     }
 
+    // Resolve attachments + vision check
+    const pending = state.pendingAttachments
+    const modelInfo = useModelStore.getState().models.find((m) => m.id === state.activeModel)
+    const supportsVision = modelInfo?.supportsVision ?? false
+    const images = pending.filter((f) => f.kind === 'image')
+    const nonImages = pending.filter((f) => f.kind !== 'image')
+
+    if (images.length > 0 && !supportsVision) {
+      const label = modelInfo?.name ?? state.activeModel
+      toast.warning(
+        `${label} does not support images — ${images.length} image attachment${images.length === 1 ? '' : 's'} dropped.`
+      )
+    }
+
+    const attachmentBlocks = nonImages.map(buildAttachmentBlock).join('')
+    const augmentedContent = attachmentBlocks ? `${content}${attachmentBlocks}` : content
+
     const userMessage: Message = {
       id: crypto.randomUUID(),
       role: 'user',
-      content,
+      content: augmentedContent,
       timestamp: Date.now(),
       conversationId,
       model: state.activeModel
@@ -111,13 +166,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
       messages: [...s.messages, userMessage],
       isStreaming: true,
       streamingContent: '',
-      toolCalls: []
+      toolCalls: [],
+      pendingAttachments: []
     }))
 
     const result = await window.api.chat.send({
       conversationId,
       model: state.activeModel,
-      content,
+      content: augmentedContent,
       activeSkillIds
     })
 
@@ -228,5 +284,27 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   clearToolCalls: () => {
     set({ toolCalls: [] })
+  },
+
+  addAttachments: (files: ProcessedFile[]) => {
+    if (!files.length) return
+    set((state) => ({ pendingAttachments: [...state.pendingAttachments, ...files] }))
+    for (const f of files) {
+      if (f.error) toast.warning(`${f.name}: ${f.error}`)
+    }
+  },
+
+  removeAttachment: (index: number) => {
+    set((state) => ({
+      pendingAttachments: state.pendingAttachments.filter((_, i) => i !== index)
+    }))
+  },
+
+  clearAttachments: () => {
+    set({ pendingAttachments: [] })
+  },
+
+  setAttachmentsProcessing: (v: boolean) => {
+    set({ attachmentsProcessing: v })
   }
 }))

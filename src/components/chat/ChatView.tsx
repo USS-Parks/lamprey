@@ -3,6 +3,8 @@ import { useSkillsStore } from '@/stores/skills-store'
 import { MessageList } from './MessageList'
 import { ChatInput } from './ChatInput'
 import { MCPStatusBar } from '@/components/mcp/MCPStatusBar'
+import { AttachmentPreview } from './AttachmentPreview'
+import { FileDropZone } from './FileDropZone'
 
 export function ChatView() {
   const { messages, isStreaming, streamingContent, activeConversationId, sendMessage, cancelStream, toolCalls, activeModel } = useChatStore()
@@ -12,34 +14,37 @@ export function ChatView() {
     sendMessage(content, activeSkillIds)
   }
 
-  if (!activeConversationId) {
-    return (
-      <div className="flex flex-1 flex-col">
-        <div className="flex flex-1 items-center justify-center">
-          <div className="text-center">
-            <h2 className="font-mono text-xl font-bold text-[var(--text-primary)]">Lamprey</h2>
-            <p className="mt-2 text-sm text-[var(--text-secondary)]">
-              Start a new conversation or select one from the sidebar.
-            </p>
-          </div>
-        </div>
-        <MCPStatusBar />
-        <ChatInput onSend={handleSend} onCancel={cancelStream} isStreaming={false} />
-      </div>
-    )
-  }
-
   return (
-    <div className="flex flex-1 flex-col">
-      <MessageList
-        messages={messages}
-        isStreaming={isStreaming}
-        streamingContent={streamingContent}
-        toolCalls={toolCalls}
-        activeModel={activeModel}
-      />
-      <MCPStatusBar />
-      <ChatInput onSend={handleSend} onCancel={cancelStream} isStreaming={isStreaming} />
+    <div className="relative flex flex-1 flex-col">
+      <FileDropZone />
+      {!activeConversationId ? (
+        <>
+          <div className="flex flex-1 items-center justify-center">
+            <div className="text-center">
+              <h2 className="font-mono text-xl font-bold text-[var(--text-primary)]">Lamprey</h2>
+              <p className="mt-2 text-sm text-[var(--text-secondary)]">
+                Start a new conversation or select one from the sidebar.
+              </p>
+            </div>
+          </div>
+          <MCPStatusBar />
+          <AttachmentPreview />
+          <ChatInput onSend={handleSend} onCancel={cancelStream} isStreaming={false} />
+        </>
+      ) : (
+        <>
+          <MessageList
+            messages={messages}
+            isStreaming={isStreaming}
+            streamingContent={streamingContent}
+            toolCalls={toolCalls}
+            activeModel={activeModel}
+          />
+          <MCPStatusBar />
+          <AttachmentPreview />
+          <ChatInput onSend={handleSend} onCancel={cancelStream} isStreaming={isStreaming} />
+        </>
+      )}
     </div>
   )
 }
