@@ -9,6 +9,7 @@ const api = {
       activeSkillIds: string[]
     }) => ipcRenderer.invoke('chat:send', request),
     cancel: (conversationId: string) => ipcRenderer.invoke('chat:cancel', conversationId),
+    generateTitle: (content: string) => ipcRenderer.invoke('chat:generateTitle', content),
     onChunk: (cb: (e: { conversationId: string; content: string }) => void) =>
       ipcRenderer.on('chat:chunk', (_, e) => cb(e)),
     onDone: (cb: (e: { conversationId: string; message: unknown }) => void) =>

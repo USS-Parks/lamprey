@@ -8,7 +8,8 @@ const defaultSettings: AppSettings = {
   sidebarCollapsed: false,
   artifactPanelWidth: 420,
   minimizeToTray: false,
-  autoCheckUpdates: true
+  autoCheckUpdates: true,
+  aiGeneratedTitles: false
 }
 
 interface SettingsState {

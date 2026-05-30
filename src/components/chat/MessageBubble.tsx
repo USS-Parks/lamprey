@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { Message } from '@/lib/types'
 import { MarkdownRenderer } from '@/components/artifacts/MarkdownRenderer'
 import { useMemoryStore } from '@/stores/memory-store'
+import { toast } from '@/stores/toast-store'
 
 interface MessageBubbleProps {
   message: Message
@@ -23,21 +24,21 @@ export function MessageBubble({ message }: MessageBubbleProps) {
   const isUser = message.role === 'user'
   const isTool = message.role === 'tool'
   const addMemory = useMemoryStore((s) => s.addMemory)
-  const [saved, setSaved] = useState(false)
   const [saving, setSaving] = useState(false)
 
   if (isTool) return null
 
   const handleRemember = async () => {
-    if (saving || saved) return
+    if (saving) return
     const text = truncateForMemory(message.content)
     if (!text) return
     setSaving(true)
     const result = await addMemory(text)
     setSaving(false)
     if (result) {
-      setSaved(true)
-      window.setTimeout(() => setSaved(false), 2000)
+      toast.success('Saved to memory')
+    } else {
+      toast.error('Could not save to memory')
     }
   }
 
@@ -64,15 +65,11 @@ export function MessageBubble({ message }: MessageBubbleProps) {
           )}
           <button
             onClick={handleRemember}
-            disabled={saving || saved}
+            disabled={saving}
             title="Save to memory"
-            className={`ml-auto rounded px-1.5 py-0.5 text-[10px] transition-colors ${
-              saved
-                ? 'text-[var(--success)]'
-                : 'text-[var(--text-secondary)] hover:bg-[var(--bg-primary)] hover:text-[var(--accent)]'
-            } disabled:opacity-60`}
+            className="ml-auto rounded px-1.5 py-0.5 text-[10px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-primary)] hover:text-[var(--accent)] disabled:opacity-60"
           >
-            {saved ? '✓ Saved' : saving ? 'Saving…' : 'Remember this'}
+            {saving ? 'Saving…' : 'Remember this'}
           </button>
         </div>
       </div>

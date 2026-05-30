@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import type { Conversation, Message, ToolCallEvent, ToolCallResultEvent } from '@/lib/types'
+import { useSettingsStore } from '@/stores/settings-store'
 
 export interface ToolCallState {
   callId: string
@@ -128,12 +129,24 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const msgs = get().messages
     const userMsgs = msgs.filter((m) => m.role === 'user')
     if (userMsgs.length === 1) {
-      const title = content.slice(0, 40)
-      await window.api.conversation.updateTitle(
-        get().activeConversationId!,
-        title
-      )
+      const fallback = content.slice(0, 40)
+      const titleConversationId = get().activeConversationId!
+      await window.api.conversation.updateTitle(titleConversationId, fallback)
       await get().loadConversations()
+
+      // Optional AI-generated title (fire-and-forget; falls back silently on error)
+      if (useSettingsStore.getState().settings.aiGeneratedTitles) {
+        void window.api.chat.generateTitle(content).then(async (titleResult) => {
+          if (
+            titleResult.success &&
+            typeof titleResult.data === 'string' &&
+            titleResult.data.trim()
+          ) {
+            await window.api.conversation.updateTitle(titleConversationId, titleResult.data.trim())
+            await get().loadConversations()
+          }
+        })
+      }
     }
   },
 
