@@ -1,4 +1,13 @@
+import { useState } from 'react'
+
 function App(): React.ReactElement {
+  const [ipcResult, setIpcResult] = useState<string | null>(null)
+
+  const testIpc = async () => {
+    const result = await window.api.settings.hasApiKey()
+    setIpcResult(JSON.stringify(result))
+  }
+
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-[var(--bg-primary)] text-[var(--text-primary)]">
       {/* Sidebar */}
@@ -22,13 +31,23 @@ function App(): React.ReactElement {
         </div>
 
         {/* Main area */}
-        <div className="flex flex-1 items-center justify-center">
+        <div className="flex flex-1 flex-col items-center justify-center gap-4">
           <div className="text-center">
             <h1 className="font-mono text-2xl font-bold text-[var(--text-primary)]">Lamprey</h1>
-            <p className="mt-2 text-sm text-[var(--text-secondary)]">
-              Desktop AI assistant
-            </p>
+            <p className="mt-2 text-sm text-[var(--text-secondary)]">Desktop AI assistant</p>
           </div>
+          <button
+            onClick={testIpc}
+            className="rounded border border-[var(--border)] bg-[var(--bg-tertiary)] px-4 py-2 text-sm text-[var(--text-primary)] transition-colors hover:border-[var(--accent)] hover:text-[var(--accent)]"
+            style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+          >
+            Test IPC
+          </button>
+          {ipcResult !== null && (
+            <pre className="rounded bg-[var(--code-bg)] px-3 py-2 font-mono text-xs text-[var(--text-secondary)]">
+              hasApiKey: {ipcResult}
+            </pre>
+          )}
         </div>
       </div>
 
