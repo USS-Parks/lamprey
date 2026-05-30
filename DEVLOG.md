@@ -71,6 +71,17 @@ Verification: `npx tsc --noEmit -p tsconfig.node.json` and `npx tsc --noEmit -p 
 
 (replaced by the backfill above)
 
+## CI fixes round 3 — Node 24 action bumps (2026-05-30)
+
+GitHub deprecation notice: Node 20 actions get force-bumped to Node 24 on 2026-06-16 and Node 20 is removed from runners 2026-09-16. Researched current majors for all four actions we use via a parallel-fanout workflow (4 agents, each WebFetching the action's repo + action.yml):
+
+- `actions/checkout` v4 → v6 (v6.0.2 released 2026-01-09; action.yml `using: node24`, no input changes from v4)
+- `actions/setup-node` v4 → v6 (v6.4.0 released 2026-04-20; same surface, only the runtime moved)
+- `actions/upload-artifact` v4 → v6 (v6.0.0 added node24 support; v7 introduced a breaking direct-upload API we don't use, so v6 is the safer bump)
+- `softprops/action-gh-release` v2 → v3 (v3.0.0 released 2026-04-12; default branch is `master`)
+
+Eight `uses:` refs updated across the windows + linux jobs.
+
 ## CI fixes round 2 (2026-05-30)
 
 Both Linux and Windows jobs got through `electron-vite build` cleanly this time, then died at electron-builder with `⨯ Package "electron" is only allowed in "devDependencies"`. The original scaffold put `electron` in `dependencies` (I'd noticed it earlier but didn't move it) — electron-builder enforces that runtime electron is a devDep so it isn't bundled into the packaged app's node_modules. Moved it. Local `npm install` + tsc on both configs + `npx electron-vite build` all still pass.
