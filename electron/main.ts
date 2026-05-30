@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain, shell } from 'electron'
 import { join } from 'path'
 import { is } from '@electron-toolkit/utils'
 import { registerAllIpcHandlers } from './ipc'
+import { closeDb } from './services/database'
 
 let mainWindow: BrowserWindow | null = null
 
@@ -56,4 +57,8 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit()
   }
+})
+
+app.on('will-quit', () => {
+  closeDb()
 })
