@@ -6,29 +6,38 @@ import { ArtifactPanel } from '@/components/artifacts/ArtifactPanel'
 import { ApiKeyModal } from '@/components/settings/ApiKeyModal'
 import { SettingsDialog } from '@/components/settings/SettingsDialog'
 import { ConfirmationModal } from '@/components/mcp/ConfirmationModal'
+import { ToastContainer } from '@/components/ui/Toast'
 import { useChatStore } from '@/stores/chat-store'
 import { useModelStore } from '@/stores/model-store'
+import { useSettingsStore } from '@/stores/settings-store'
+import { useUiStore } from '@/stores/ui-store'
+import { toast } from '@/stores/toast-store'
 import { useChat } from '@/hooks/useChat'
 import { useMcp } from '@/hooks/useMcp'
 import { useSkills } from '@/hooks/useSkills'
 import { useMemory } from '@/hooks/useMemory'
+import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts'
 import type { McpConfirmationEvent } from '@/lib/types'
 
 function App(): React.ReactElement {
   const [needsApiKey, setNeedsApiKey] = useState<boolean | null>(null)
-  const [settingsOpen, setSettingsOpen] = useState(false)
   const [artifactOpen, setArtifactOpen] = useState(false)
   const [artifactType, setArtifactType] = useState<string | null>(null)
   const [artifactSource, setArtifactSource] = useState<string | null>(null)
   const [confirmationEvent, setConfirmationEvent] = useState<McpConfirmationEvent | null>(null)
   const loadConversations = useChatStore((s) => s.loadConversations)
   const loadModels = useModelStore((s) => s.loadModels)
+  const loadSettings = useSettingsStore((s) => s.loadSettings)
+  const settingsOpen = useUiStore((s) => s.settingsOpen)
+  const closeSettings = useUiStore((s) => s.closeSettings)
+  const openSettings = useUiStore((s) => s.openSettings)
 
-  // Wire IPC event listeners
+  // Wire IPC event listeners + shortcuts
   useChat()
   useMcp()
   useSkills()
   useMemory()
+  useKeyboardShortcuts()
 
   const handleArtifactOpen = useCallback((type: string, source: string) => {
     setArtifactType(type)
@@ -51,6 +60,13 @@ function App(): React.ReactElement {
   }, [])
 
   useEffect(() => {
+    if (!window.api) return
+    window.api.chat.onError((e: { conversationId: string; error: string }) => {
+      toast.error(e.error || 'Chat error')
+    })
+  }, [])
+
+  useEffect(() => {
     const init = async () => {
       if (!window.api) {
         setNeedsApiKey(true)
@@ -58,7 +74,7 @@ function App(): React.ReactElement {
       }
       const result = await window.api.settings.hasApiKey()
       setNeedsApiKey(result.success ? !result.data : true)
-      await Promise.all([loadConversations(), loadModels()])
+      await Promise.all([loadConversations(), loadModels(), loadSettings()])
     }
     init()
   }, [])
@@ -81,9 +97,7 @@ function App(): React.ReactElement {
         />
       )}
 
-      {settingsOpen && (
-        <SettingsDialog onClose={() => setSettingsOpen(false)} />
-      )}
+      {settingsOpen && <SettingsDialog onClose={closeSettings} />}
 
       {confirmationEvent && (
         <ConfirmationModal
@@ -95,7 +109,7 @@ function App(): React.ReactElement {
       <Sidebar />
 
       <div className="flex flex-1 flex-col">
-        <Titlebar onSettingsClick={() => setSettingsOpen(true)} />
+        <Titlebar onSettingsClick={openSettings} />
         <ChatView />
       </div>
 
@@ -113,6 +127,8 @@ function App(): React.ReactElement {
           <div className="flex-1" />
         </div>
       )}
+
+      <ToastContainer />
     </div>
   )
 }

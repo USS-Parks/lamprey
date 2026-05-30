@@ -62,6 +62,7 @@ export interface AppSettings {
   artifactPanelWidth: number
   minimizeToTray: boolean
   autoCheckUpdates: boolean
+  aiGeneratedTitles: boolean
 }
 
 export type IpcResponse<T> = { success: true; data: T } | { success: false; error: string }

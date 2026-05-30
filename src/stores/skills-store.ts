@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import type { Skill } from '@/lib/types'
+import { toast } from '@/stores/toast-store'
 
 interface SkillsState {
   skills: Skill[]
@@ -50,19 +51,31 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
 
   createSkill: async (input) => {
     if (!window.api) return
-    await window.api.skills.create(input)
+    const result = await window.api.skills.create(input)
+    if (result.success) {
+      toast.success(`Skill "${input.name}" created`)
+    } else {
+      toast.error(`Failed to create skill: ${result.error}`)
+    }
     await get().loadSkills()
   },
 
   updateSkill: async (id, input) => {
     if (!window.api) return
-    await window.api.skills.update(id, input)
+    const result = await window.api.skills.update(id, input)
+    if (!result.success) toast.error(`Failed to save skill: ${result.error}`)
     await get().loadSkills()
   },
 
   deleteSkill: async (id) => {
     if (!window.api) return
-    await window.api.skills.delete(id)
+    const name = get().skills.find((s) => s.id === id)?.name ?? 'Skill'
+    const result = await window.api.skills.delete(id)
+    if (result.success) {
+      toast.success(`Skill "${name}" deleted`)
+    } else {
+      toast.error(`Failed to delete skill: ${result.error}`)
+    }
     set((state) => ({
       activeSkillIds: state.activeSkillIds.filter((x) => x !== id)
     }))

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useMcpStore } from '@/stores/mcp-store'
+import { toast } from '@/stores/toast-store'
 
 export function McpSettings() {
   const servers = useMcpStore((s) => s.servers)
@@ -13,9 +14,17 @@ export function McpSettings() {
 
   const handleSaveCredentials = async () => {
     if (!clientId.trim() || !clientSecret.trim()) return
-    await window.api.settings.saveGoogleCredentials(clientId.trim(), clientSecret.trim())
-    setCredsSaved(true)
-    setTimeout(() => setCredsSaved(false), 3000)
+    const result = await window.api.settings.saveGoogleCredentials(
+      clientId.trim(),
+      clientSecret.trim()
+    )
+    if (result.success) {
+      setCredsSaved(true)
+      toast.success('Google credentials saved')
+      setTimeout(() => setCredsSaved(false), 3000)
+    } else {
+      toast.error(`Failed to save credentials: ${result.error}`)
+    }
   }
 
   const handleGoogleOAuth = async () => {
@@ -25,12 +34,15 @@ export function McpSettings() {
       const result = await window.api.mcp.setupGoogleOAuth()
       if (result.success) {
         setOauthStatus('Connected successfully')
+        toast.success('Google account connected')
         await loadServers()
       } else {
         setOauthStatus(`Error: ${result.error}`)
+        toast.error(`Google OAuth failed: ${result.error}`)
       }
-    } catch {
+    } catch (err) {
       setOauthStatus('OAuth flow failed')
+      toast.error(`OAuth flow failed: ${(err as Error).message ?? 'unknown error'}`)
     }
     setOauthLoading(false)
   }

@@ -139,6 +139,26 @@ export function registerChatHandlers(): void {
     return { success: true, data: null }
   })
 
+  ipcMain.handle('chat:generateTitle', async (_event, content: string) => {
+    try {
+      const raw = await deepseekClient.chat(
+        [
+          {
+            role: 'system',
+            content:
+              'Generate a concise 3–5 word title for a conversation that begins with the user message below. Reply with ONLY the title — no quotes, no punctuation, no trailing period.'
+          },
+          { role: 'user', content }
+        ],
+        'deepseek-chat'
+      )
+      const cleaned = raw.replace(/^["'\s]+|["'\s]+$/g, '').replace(/[.!?]+$/g, '').slice(0, 60)
+      return { success: true, data: cleaned || content.slice(0, 40) }
+    } catch (err: any) {
+      return { success: false, error: err?.message ?? 'Title generation failed' }
+    }
+  })
+
   ipcMain.handle('mcp:approveToolCall', async (_event, callId, approved) => {
     const resolve = pendingConfirmations.get(callId)
     if (resolve) {

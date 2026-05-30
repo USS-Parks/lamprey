@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useSkillsStore } from '@/stores/skills-store'
+import { toast } from '@/stores/toast-store'
 
 export interface SkillEditorTarget {
   id: string
@@ -61,19 +62,23 @@ export function SkillEditor({ initialSkill, onClose }: SkillEditorProps) {
         const result = await window.api.skills.update(initialSkill.id, payload)
         if (!result.success) {
           setError(result.error)
+          toast.error(`Failed to save skill: ${result.error}`)
           return null
         }
         await loadSkills()
+        toast.success(`Skill "${payload.name}" saved`)
         return { id: initialSkill.id }
       }
       const result = await window.api.skills.create(payload)
       if (!result.success) {
         setError(result.error)
+        toast.error(`Failed to create skill: ${result.error}`)
         return null
       }
       await loadSkills()
       const created = result.data as { id: string } | null
       if (!created) return null
+      toast.success(`Skill "${payload.name}" created`)
       return { id: created.id }
     } finally {
       setBusy(false)
@@ -99,16 +104,19 @@ export function SkillEditor({ initialSkill, onClose }: SkillEditorProps) {
     setBusy(true)
     setError(null)
     try {
+      const dupName = `${name} (copy)`
       const result = await window.api.skills.create({
-        name: `${name} (copy)`,
+        name: dupName,
         description: description,
         content
       })
       if (!result.success) {
         setError(result.error)
+        toast.error(`Failed to duplicate skill: ${result.error}`)
         return
       }
       await loadSkills()
+      toast.success(`Skill "${dupName}" created`)
       onClose()
     } finally {
       setBusy(false)

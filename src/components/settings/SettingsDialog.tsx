@@ -1,18 +1,20 @@
 import { useState } from 'react'
 import { McpSettings } from './McpSettings'
+import { GeneralSettings } from './GeneralSettings'
 
 interface SettingsDialogProps {
   onClose: () => void
 }
 
 const TABS = [
+  { id: 'general', label: 'General' },
   { id: 'mcp', label: 'MCP Servers' }
 ] as const
 
 type TabId = (typeof TABS)[number]['id']
 
 export function SettingsDialog({ onClose }: SettingsDialogProps) {
-  const [activeTab, setActiveTab] = useState<TabId>('mcp')
+  const [activeTab, setActiveTab] = useState<TabId>('general')
 
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/60">
@@ -49,6 +51,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
           </div>
 
           <div className="flex-1 overflow-y-auto p-4">
+            {activeTab === 'general' && <GeneralSettings />}
             {activeTab === 'mcp' && <McpSettings />}
           </div>
         </div>
