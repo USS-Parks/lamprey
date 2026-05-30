@@ -5,6 +5,7 @@ import { ChatInput } from './ChatInput'
 import { MCPStatusBar } from '@/components/mcp/MCPStatusBar'
 import { AttachmentPreview } from './AttachmentPreview'
 import { FileDropZone } from './FileDropZone'
+import { WelcomeScreen } from './WelcomeScreen'
 
 export function ChatView() {
   const { messages, isStreaming, streamingContent, activeConversationId, sendMessage, cancelStream, toolCalls, activeModel } = useChatStore()
@@ -19,14 +20,7 @@ export function ChatView() {
       <FileDropZone />
       {!activeConversationId ? (
         <>
-          <div className="flex flex-1 items-center justify-center">
-            <div className="text-center">
-              <h2 className="font-mono text-xl font-bold text-[var(--text-primary)]">Lamprey</h2>
-              <p className="mt-2 text-sm text-[var(--text-secondary)]">
-                Start a new conversation or select one from the sidebar.
-              </p>
-            </div>
-          </div>
+          <WelcomeScreen />
           <MCPStatusBar />
           <AttachmentPreview />
           <ChatInput onSend={handleSend} onCancel={cancelStream} isStreaming={false} />

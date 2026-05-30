@@ -19,6 +19,8 @@ import { useMemory } from '@/hooks/useMemory'
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts'
 import { useShellSignals } from '@/hooks/useShellSignals'
 import { UpdateBanner } from '@/components/ui/UpdateBanner'
+import { SecurityBanner } from '@/components/ui/SecurityBanner'
+import artifactsPlaceholderUrl from '@assets/Lamprey Code Window Icon.png'
 import type { McpConfirmationEvent } from '@/lib/types'
 
 function App(): React.ReactElement {
@@ -67,6 +69,12 @@ function App(): React.ReactElement {
     window.api.chat.onError((e: { conversationId: string; error: string }) => {
       toast.error(e.error || 'Chat error')
     })
+    window.api.app.onError((e: { message: string }) => {
+      toast.error(e.message)
+    })
+    window.api.app.onWarning((e: { message: string }) => {
+      toast.warning(e.message)
+    })
   }, [])
 
   useEffect(() => {
@@ -113,6 +121,7 @@ function App(): React.ReactElement {
 
       <div className="flex flex-1 flex-col">
         <Titlebar onSettingsClick={openSettings} />
+        <SecurityBanner />
         <UpdateBanner />
         <ChatView />
       </div>
@@ -125,10 +134,15 @@ function App(): React.ReactElement {
         />
       ) : (
         <div className="flex w-[420px] flex-col border-l border-[var(--border)] bg-[var(--bg-secondary)]">
-          <div className="flex h-12 items-center px-4 text-sm font-medium text-[var(--text-secondary)]">
+          <div className="flex h-12 items-center gap-2 border-b border-[var(--border)] px-4 text-sm font-medium text-[var(--text-secondary)]">
+            <img src={artifactsPlaceholderUrl} alt="" aria-hidden className="h-5 w-5 object-contain" />
             Artifacts
           </div>
-          <div className="flex-1" />
+          <div className="flex flex-1 items-center justify-center px-4 text-center">
+            <p className="text-[11px] leading-relaxed text-[var(--text-muted)]">
+              HTML, SVG, Mermaid, or JSX artifacts open here.
+            </p>
+          </div>
         </div>
       )}
 

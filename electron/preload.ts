@@ -145,6 +145,13 @@ const api = {
 
   clipboard: {
     writeText: (text: string) => ipcRenderer.invoke('clipboard:writeText', text)
+  },
+
+  app: {
+    onError: (cb: (e: { message: string }) => void) =>
+      ipcRenderer.on('app:error', (_, e) => cb(e)),
+    onWarning: (cb: (e: { message: string }) => void) =>
+      ipcRenderer.on('app:warning', (_, e) => cb(e))
   }
 }
 

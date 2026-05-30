@@ -5,7 +5,8 @@ Electron desktop AI assistant (React 19, TypeScript, electron-vite) powered by D
 
 ## Current State
 - **Prompts 1–20**: Committed and pushed to main
-- **Next**: Prompt 21 (Security Audit, Polish, Open Source Launch Prep)
+- **Prompt 21 + ASSETS + visual pass**: Implemented locally. Includes process-level error handlers, source-level security audit, SecurityBanner, README + SKILLS + CONTRIBUTING + LICENSE; ASSETS/* PNGs bound across the UI via `@assets` Vite alias; 3-second splash window now uses `LAMPREY MAI LOGO FINAL.png`; NSIS installer sidebar uses `Lamprey MAI Windows Install Screen.png`. Visual pass redesigns the welcome screen with a centered hero + quick-prompt cards (compose-draft seed channel in ui-store), full-width "+ New Conversation" primary button in Sidebar, and active-context chip row (model · skills · MCP) above ChatInput. Awaiting review and push.
+- **Build plan complete** — remaining work is runtime smoke-testing the packaged installer.
 - Read `DEVLOG.md` for detailed build history before making changes
 
 ## Build & Run

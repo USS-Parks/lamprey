@@ -71,6 +71,110 @@ Verification: `npx tsc --noEmit -p tsconfig.node.json` and `npx tsc --noEmit -p 
 
 (replaced by the backfill above)
 
+## Visual pass (2026-05-30, post-asset integration)
+
+Reference design cues pulled from four UI screenshots the user shared (centered hero on welcome, primary "+ New Chat" button, prompt cards, input chip strip). Three components touched, plus a small ui-store extension.
+
+**Splash swap.** The startup splash now uses `LAMPREY MAI LOGO FINAL.png` (the gold/silver MAI emblem with the wordmark). `electron/main.ts` `resolveSplashPath()` reads the new file in dev; `resources/splash.png` was re-copied from the same source so the prod path (`process.resourcesPath/splash.png`) carries the same image.
+
+**Welcome screen redesign.** Replaced the `ChatView` no-active-conversation block with a new `src/components/chat/WelcomeScreen.tsx`. Centered hero: 128×128 `Lamprey Start Up Image.png` above an `✱ What should we build?` headline in mono, with a one-line subtitle. Below that, a three-column responsive grid of "quick-prompt" cards — Review code / Explain a concept / Draft a commit. Each card has an all-caps mono label and a short description; on click, it calls `ui-store.seedComposeDraft(template)` and ChatInput picks the draft up.
+
+**Compose-draft seed channel.** `src/stores/ui-store.ts` gains `composeDraft: string`, `composeSeedToken: number`, `seedComposeDraft(text)`, and `consumeComposeDraft()`. The pattern mirrors `searchFocusToken` from Prompt 16: increment a token instead of subscribing to the string, so ChatInput's effect runs exactly once per seed. ChatInput's effect watches `composeSeedToken`, calls `consumeComposeDraft()` to read + clear the draft, sets its `content` state, focuses the textarea, and places the cursor at the end via `requestAnimationFrame`. No prop drilling; works from anywhere in the renderer.
+
+**Active-context chip row above the textarea.** `ChatInput.tsx` now renders a one-line chip strip above the input box: model name (with an accent dot), active-skill count (accent chip when > 0, muted when 0), and connected MCP servers joined by ` · ` (accent chip when connected, "No MCP" otherwise). All values pull from existing stores — no new IPC, no API churn. Echoes the workspace/branch/model chip pattern from images 3 and 4.
+
+**Full-width primary `+ New Conversation`.** Sidebar's compact "+ New" text button became a full-width accent-bordered button at the top of the sidebar with an `Ctrl+N` shortcut hint right-aligned. Border + bg use `var(--accent)` / `var(--accent-dim)`; hover flips to solid accent. The conversation list still mounts beneath, with the existing date-group headers (Today / Yesterday / This Week / Older) acting as the section hierarchy — no top-level "Conversations" label needed once the CTA is this prominent.
+
+Verification: `npx tsc --noEmit -p tsconfig.node.json` and `npx tsc --noEmit -p tsconfig.web.json` both pass with zero errors. `npx electron-vite build` succeeds — renderer index 1097 KB → 1102 KB (+5 KB for WelcomeScreen, chip row, and seed channel). Hands-on UI: open the app with no conversation selected, see the new hero + three prompt cards, click "Review code" and watch the textarea pre-fill with the template body and focus.
+
+## Asset integration (2026-05-30, post-Prompt 21)
+
+User-provided artwork in `ASSETS/` (previously untracked) is now first-class and bound to the UI. Added an `@assets` Vite alias pointing at the repo's `ASSETS/` directory, plus `server.fs.allow: [repo root]` so the dev server can serve files outside the renderer root. Vite emits each imported PNG as a hashed asset under `out/renderer/assets/` — the bundle JS size is essentially unchanged (1097 KB) because the binaries don't go into the JS.
+
+Splash window. `electron/main.ts` creates a 540×540 frameless transparent `BrowserWindow` on app ready, loads an inline data-URL HTML page that centers `Lamprey New Startup Splash.png` (dev: `<appPath>/ASSETS/`, prod: `process.resourcesPath/splash.png` via a new extraResources mapping). The main window stays hidden until both its `ready-to-show` fires and at least 3 seconds have elapsed since the splash showed, after which the splash closes and the main window shows. CSS fades the splash image in over 600 ms.
+
+Renderer wiring (filename → slot, all imported via `@assets/<filename>`):
+- `Lamprey Logo Transparent.png` → 28×28 icon in Titlebar left of the "Lamprey" wordmark.
+- `Lamprey Settings Icon.png` → Titlebar settings button (replaces the inline SVG gear).
+- `Lamprey New Chat Icon.png` → Sidebar "New" button (16×16 icon + "New" label).
+- `Lamprey Searching Icon.png` → Sidebar search-input adornment (positioned absolutely inside the input, 16×16 at 60% opacity).
+- `Lamprey Add File Icon.png` → ChatInput paperclip (replaces inline SVG).
+- `Lamprey Prompt Enter Icon.png` → ChatInput send button (replaces inline SVG, scales on hover).
+- `Lamprey Start Up Image.png` → Welcome screen hero (176×176 above the "Start a new conversation" headline).
+- `Lamprey Thinking Icon.png` → ReasoningBlock header next to the chevron, animates with `pulse` while R1 is still streaming the `<think>` block.
+- `Lamprey Code Window Icon.png` → ArtifactPanel header (active) and the right-column placeholder (no artifact open, which now also shows "HTML, SVG, Mermaid, or JSX artifacts open here.").
+
+Build-time wiring in `electron-builder.yml`:
+- `nsis.installerSidebar` and `nsis.uninstallerSidebar` → `resources/installer-sidebar.png` (copied from `ASSETS/Lamprey MAI Windows Install Screen.png`). NSIS will use it as the installer's left-side bitmap.
+- `extraResources` adds `resources/splash.png` → `process.resourcesPath/splash.png` for the prod splash. `resources/icon.png` (Lamprey Desktop Icon-1) was already wired in Prompt 19 for the tray.
+
+Committed `ASSETS/` to git so the source of truth for the artwork lives with the code.
+
+Verification: `npx tsc --noEmit -p tsconfig.node.json` and `npx tsc --noEmit -p tsconfig.web.json` both pass with zero errors. `npx electron-vite build` succeeds — 9 hashed PNGs land under `out/renderer/assets/`. Runtime checks (splash fades in for 3 s; icons render at the right sizes on dark theme; NSIS shows the install screen) are left for the user once they run `npm run dev` and `npm run build:win`.
+
+Not wired (no clear single UI slot from the filename, kept available for future use): `Lamprey ASCII Logo 1.png`, `LAMPREY LOGO RED AI.png`, `LAMPREY LOGO STANDALONE 2.png`, `LAMPREY MAI LOGO FINAL.png`, `Lamprey Auto-Review Icon.png`, `Lamprey Chat Window Icon.png`, `Lamprey Coding Icon.png`, `Lamprey Default Access Icon.png`, `Lamprey Desktop Icon 2/3/4.png`, `Lamprey Folder 1/2 Icon.png`, `Lamprey Full Access Icon.png`, `Lamprey Microphone Icon.png`, `Lamprey Plugins Icon.png`, `Lamprey Work Location Icon.png`, `Lamprey Work-Fork Icon.png`, `Lamprey Worktree Icon.png`, `lamprey-logo-standalone.webp`, `lamprey-mai-logo-red.webp`. Any of these can be wired by adding a one-line `import` + `<img>` in the relevant component.
+
+## Prompt 21 — Security Audit, Polish, Open Source Launch Prep (2026-05-30)
+
+### 1. Error handling audit
+
+Audited all 97 `ipcMain.handle` registrations across `electron/main.ts` + 9 files in `electron/ipc/`. All handlers now return the `IpcResponse<T>` shape (`{success: true, data}` / `{success: false, error}`); the three exceptions are the bare `ping` (1-line sanity check from Prompt 1, no callers), `shell:openExternal` (fire-and-forget, no return value needed), and the one-shot `clipboard:writeText` shape returned in Prompt 19. Wrapped three previously-bare `artifact:hide`, `artifact:getSource`, and `artifact:getType` handlers in `try/catch`.
+
+Added top-level `process.on('unhandledRejection')` and `process.on('uncaughtException')` handlers in `electron/main.ts`. Both log to console and forward `app:error` via `mainWindow.webContents.send`. The renderer subscribes via `useEffect` in `App.tsx` — `window.api.app.onError` becomes `toast.error`, `window.api.app.onWarning` becomes `toast.warning`. So a stray rejection no longer disappears silently into devtools; the user gets a toast and the issue is debuggable from the surface.
+
+### 2. Security audit (source-level)
+
+a. **Network block on artifacts.** `electron/main.ts:62` sets the CSP `default-src 'self' 'unsafe-inline' 'unsafe-eval'; connect-src 'none'; img-src 'self' data:;` via `session.defaultSession.webRequest.onHeadersReceived` on every artifact-URL response. `connect-src 'none'` covers `fetch`, `XHR`, `WebSocket`, `EventSource`, and `navigator.sendBeacon`. **Runtime test (user-to-validate):** render an HTML artifact with `fetch('https://httpbin.org/get').then(r => r.json()).then(console.log)` — the fetch should reject and nothing should reach httpbin's request log.
+
+b. **API key isolation in preload.** Grepped `electron/preload.ts` for `safeStorage` / `keychain` / `getKey`: zero hits. Preload imports only `contextBridge`, `ipcRenderer`, and `webUtils`. The only renderer affordances for the DeepSeek key are `settings.saveApiKey(key)` (write-only), `settings.hasApiKey()` (boolean), `settings.testApiKey()` (boolean), `settings.deleteApiKey()` (action), and `settings.isEncryptionAvailable()` (boolean) — none expose the key value itself.
+
+c. **OAuth token containment.** Grepped `electron/` for `google-access-token` / `google-refresh-token` / `Bearer ${`: every hit lives inside the main process (`electron/ipc/mcp.ts:123-125` writes them via `keychain.setKey`, `electron/services/mcp-manager.ts:237-268,386-413` reads them when establishing SSE transports). No IPC handler returns a token. The `Bearer` header is attached inside `SSEClientTransport` construction in main — never serialized across the contextBridge.
+
+d. **Chrome destructive-action gating.** `electron/ipc/chat.ts` defines `chromeDestructive = ['click', 'fill', 'submit', 'type', 'press', 'select_option']`. Inside the tool-call loop, any of those names on `serverId === 'chrome'` sends `mcp:confirmationRequired` to the renderer, stores a resolver in `pendingConfirmations`, and blocks for 30 s on the user's approval. On timeout the resolver fires `false` and the result is `'Action denied by user.'`. There is no code path that calls `mcpManager.callTool('chrome', ...)` for a destructive action without traversing this gate. Renderer doesn't get to bypass it — `mcp:approveToolCall(callId, approved)` resolves the stored promise, but it can only resolve `true` if the prompt was already shown (the renderer must know the `callId`, which is generated server-side per call).
+
+e. **safeStorage availability surfaced.** Previously the "stored as plaintext" warning lived only inside the API Key tab. Added `src/components/ui/SecurityBanner.tsx` mounted in `App.tsx` between Titlebar and ChatView — calls `window.api.settings.isEncryptionAvailable()` on mount and shows a yellow banner when it returns `false`. Banner copy points at `libsecret` for Linux and notes that real credentials shouldn't be entered until OS-level encryption is available. Dismissable per-session; persists across app launches by re-checking on mount.
+
+### 3. Performance baseline
+
+The targets — cold start <3 s, first-token <2 s, idle RAM <200 MB, 20-message RAM <350 MB — are runtime numbers that only mean anything from a packaged build. I haven't run the installer. Documenting the measurement procedure here for the user to run once `npm run build:win` produces `dist/Lamprey-0.1.0-x64.exe`:
+
+- Cold start: stopwatch from double-click to API-key modal appearing.
+- First token: stopwatch from pressing Enter on "Hello" to the first character rendering in the StreamingText component.
+- Idle RAM: `tasklist /fi "imagename eq Lamprey.exe"` (Windows) or Task Manager → details, watch the main process plus the renderer + GPU helpers.
+- 20-message RAM: send 20 round-trip messages, then re-check.
+
+If any number is over its target by more than 50 %, file an issue against the relevant subsystem.
+
+### 4–6. README, SKILLS, CONTRIBUTING, LICENSE
+
+- `README.md` — one-paragraph description, prerequisites, install (releases or source), API-key + Google OAuth walkthroughs, skills pointer, MCP overview, architecture pointer, security summary, contributing pointer, MIT license footer. The previous README was a one-line stub from `gh repo create` — replaced wholesale.
+- `SKILLS.md` — complete file format spec, dev vs production paths, system-prompt assembly order, best practices, the 3 bundled skills annotated with "why it works" commentary, plus 2 community examples (`pdf-summarize.md`, `bug-repro.md`) showing the pattern.
+- `CONTRIBUTING.md` — dev setup including the `ELECTRON_EXEC_PATH` workaround note, required-before-PR checks (both tsc configs + lint + electron-vite build), architecture overview pointing at `PLANNING/LAMPREY_HARNESS_FINAL.md`, conventional-commit format with examples from this repo's history, one-feature-per-PR rule, what we will/won't merge, issue-template fields, MIT licensing statement.
+- `LICENSE` — standard MIT, "Copyright (c) 2026 Lamprey Contributors".
+
+### 7. Verification checklist
+
+Static checks (this session):
+
+- ✅ `npx tsc --noEmit -p tsconfig.node.json` — zero errors
+- ✅ `npx tsc --noEmit -p tsconfig.web.json` — zero errors
+- ✅ `npx electron-vite build` — clean (renderer index 1093 → 1095 KB, +2 KB for SecurityBanner)
+- ⏭ `npm run lint` — not run in this session; CI's `.github/workflows/build.yml` runs both tsc configs but doesn't yet run ESLint as a separate step. Worth adding in a follow-up.
+
+Runtime checks (user-to-validate against `npm run build:win` output):
+
+- ⏭ Fresh Windows install: API-key modal → chat → streaming → skills → MCP → artifacts all working
+- ⏭ Skill hot-reload in the installed app (drop a `.md` into `%APPDATA%\Lamprey\skills`, appears in the panel without restart)
+- ⏭ Conversations persist across restarts (lamprey.db at `%APPDATA%\Lamprey\lamprey.db` survives)
+- ⏭ Memory persists across restarts (same db)
+- ⏭ Model switching mid-conversation inserts the divider, badge updates per message
+- ⏭ All three MCP servers reach connected state with Google credentials configured
+- ⏭ Artifact sandbox blocks the httpbin probe described in 2a
+- ⏭ Auto-updater check fires on launch (only meaningful with a tagged release newer than the installed version)
+- ⏭ Tray menu, minimize-to-tray, Ctrl+Shift+L global toggle
+
+The build is functionally complete. Remaining work is the runtime smoke test and any UX polish that surfaces from real use.
+
 ## Prompt 20 — Packaging and Distribution (2026-05-30)
 
 Created `electron-builder.yml` at the repo root with the spec's appId (`com.lamprey.harness`), productName (`Lamprey`), output `dist/`, `buildResources: resources`. The `files` glob ships `out/**/*` + `package.json` and excludes node_modules; `asarUnpack: **/*.node` keeps better-sqlite3's prebuilt binary unpacked so Electron can load it at runtime. The mac target is dmg with hardenedRuntime + the developer-tools category, win is a customizable nsis with desktop + Start Menu shortcuts, and linux is AppImage under category Development. Publish provider is `github` pointed at `USS-Parks/lamprey` for the future auto-updater feed. Removed the now-redundant `build` block from `package.json` (electron-builder reads the YAML directly).

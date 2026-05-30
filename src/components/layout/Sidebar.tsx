@@ -5,6 +5,8 @@ import { SkillPanel } from '@/components/skills/SkillPanel'
 import { MemoryPanel } from '@/components/memory/MemoryPanel'
 import { toast } from '@/stores/toast-store'
 import type { Conversation } from '@/lib/types'
+import newChatIconUrl from '@assets/Lamprey New Chat Icon.png'
+import searchIconUrl from '@assets/Lamprey Searching Icon.png'
 
 function formatRelativeTime(timestamp: number): string {
   const diff = Date.now() - timestamp
@@ -76,35 +78,44 @@ export function Sidebar() {
 
   return (
     <div className="flex h-full w-60 flex-col border-r border-[var(--border)] bg-[var(--bg-secondary)]">
-      <div className="flex h-12 items-center justify-between px-3">
-        <span className="text-xs font-medium uppercase tracking-wider text-[var(--text-muted)]">
-          Conversations
-        </span>
+      <div className="px-3 pb-2 pt-3">
         <button
           onClick={() => createConversation()}
           title="New conversation (Ctrl+N)"
-          className="rounded px-2 py-1 text-xs text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-tertiary)] hover:text-[var(--accent)]"
+          className="flex w-full items-center justify-between gap-2 rounded-lg border border-[var(--accent)] bg-[var(--accent-dim)] px-3 py-2 text-xs font-medium text-[var(--accent)] transition-colors hover:bg-[var(--accent)] hover:text-white"
         >
-          + New
+          <span className="flex items-center gap-2">
+            <img src={newChatIconUrl} alt="" aria-hidden className="h-4 w-4 object-contain" />
+            New Conversation
+          </span>
+          <span className="font-mono text-[10px] opacity-70">Ctrl+N</span>
         </button>
       </div>
 
       <div className="px-2 pb-2">
-        <input
-          ref={searchRef}
-          type="text"
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Escape') {
-              e.preventDefault()
-              setSearchQuery('')
-              searchRef.current?.blur()
-            }
-          }}
-          placeholder="Search… (Ctrl+K)"
-          className="w-full rounded border border-[var(--border)] bg-[var(--bg-primary)] px-2 py-1 text-xs text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)] focus:border-[var(--accent)]"
-        />
+        <div className="relative">
+          <img
+            src={searchIconUrl}
+            alt=""
+            aria-hidden
+            className="pointer-events-none absolute left-1.5 top-1/2 h-4 w-4 -translate-y-1/2 object-contain opacity-60"
+          />
+          <input
+            ref={searchRef}
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                e.preventDefault()
+                setSearchQuery('')
+                searchRef.current?.blur()
+              }
+            }}
+            placeholder="Search… (Ctrl+K)"
+            className="w-full rounded border border-[var(--border)] bg-[var(--bg-primary)] px-2 py-1 pl-7 text-xs text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)] focus:border-[var(--accent)]"
+          />
+        </div>
       </div>
 
       <div className="flex flex-1 flex-col overflow-y-auto">

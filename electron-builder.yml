@@ -21,6 +21,8 @@ extraResources:
     to: skills
   - from: resources/icon.png
     to: icon.png
+  - from: resources/splash.png
+    to: splash.png
 
 mac:
   category: public.app-category.developer-tools
@@ -41,6 +43,8 @@ nsis:
   createDesktopShortcut: true
   createStartMenuShortcut: true
   shortcutName: Lamprey
+  installerSidebar: resources/installer-sidebar.png
+  uninstallerSidebar: resources/installer-sidebar.png
 
 linux:
   icon: resources/icon.png

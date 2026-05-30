@@ -12,8 +12,12 @@ export function registerArtifactHandlers(): void {
   })
 
   ipcMain.handle('artifact:hide', async () => {
-    artifactSandbox.hide()
-    return { success: true, data: null }
+    try {
+      artifactSandbox.hide()
+      return { success: true, data: null }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
   })
 
   ipcMain.handle('artifact:resize', async (_event, bounds: { x: number; y: number; width: number; height: number }) => {
@@ -35,10 +39,18 @@ export function registerArtifactHandlers(): void {
   })
 
   ipcMain.handle('artifact:getSource', async () => {
-    return { success: true, data: artifactSandbox.getSource() }
+    try {
+      return { success: true, data: artifactSandbox.getSource() }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
   })
 
   ipcMain.handle('artifact:getType', async () => {
-    return { success: true, data: artifactSandbox.getType() }
+    try {
+      return { success: true, data: artifactSandbox.getType() }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
   })
 }

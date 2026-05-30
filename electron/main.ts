@@ -12,8 +12,30 @@ import { initializeUpdater, quitAndInstall, checkNow } from './services/updater'
 import { readSettings, patchSettings } from './services/settings-helper'
 
 let mainWindow: BrowserWindow | null = null
+let splashWindow: BrowserWindow | null = null
+const splashStart = Date.now()
+const SPLASH_MIN_MS = 3000
 let suppressBoundsPersist = false
 let boundsPersistTimer: NodeJS.Timeout | null = null
+
+function reportToRenderer(channel: 'app:error' | 'app:warning', message: string): void {
+  try {
+    mainWindow?.webContents.send(channel, { message })
+  } catch {
+    // window may already be destroyed during shutdown
+  }
+}
+
+process.on('unhandledRejection', (reason) => {
+  const msg = reason instanceof Error ? reason.message : String(reason)
+  console.error('[main] unhandledRejection:', msg)
+  reportToRenderer('app:error', `Unhandled error: ${msg}`)
+})
+
+process.on('uncaughtException', (err) => {
+  console.error('[main] uncaughtException:', err.message)
+  reportToRenderer('app:error', `Unhandled error: ${err.message}`)
+})
 
 const DEFAULT_BOUNDS = { x: undefined as number | undefined, y: undefined as number | undefined, width: 1280, height: 800 }
 const MIN_WIDTH = 800
@@ -68,6 +90,52 @@ function schedulePersistBounds(win: BrowserWindow): void {
   }, 500)
 }
 
+function resolveSplashPath(): string {
+  if (app.isPackaged) return join(process.resourcesPath, 'splash.png')
+  return join(app.getAppPath(), 'ASSETS', 'LAMPREY MAI LOGO FINAL.png')
+}
+
+function createSplashWindow(): void {
+  const splashPath = resolveSplashPath()
+  splashWindow = new BrowserWindow({
+    width: 540,
+    height: 540,
+    frame: false,
+    transparent: true,
+    alwaysOnTop: true,
+    resizable: false,
+    skipTaskbar: true,
+    backgroundColor: '#00000000',
+    show: false,
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true
+    }
+  })
+
+  const fileUrl = 'file:///' + splashPath.replace(/\\/g, '/')
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"/><style>
+    html,body{margin:0;padding:0;background:transparent;overflow:hidden;height:100vh;width:100vw;display:flex;align-items:center;justify-content:center}
+    img{max-width:100%;max-height:100%;object-fit:contain;animation:fade-in 600ms ease-out both}
+    @keyframes fade-in{from{opacity:0;transform:scale(0.96)}to{opacity:1;transform:scale(1)}}
+  </style></head><body><img src="${fileUrl}" alt="Lamprey"/></body></html>`
+  splashWindow.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html))
+  splashWindow.once('ready-to-show', () => splashWindow?.show())
+}
+
+function closeSplashWhenReady(): void {
+  const elapsed = Date.now() - splashStart
+  const wait = Math.max(0, SPLASH_MIN_MS - elapsed)
+  setTimeout(() => {
+    if (splashWindow && !splashWindow.isDestroyed()) {
+      splashWindow.close()
+      splashWindow = null
+    }
+    mainWindow?.show()
+  }, wait)
+}
+
 function createWindow(): void {
   const bounds = readSavedBounds()
 
@@ -91,7 +159,7 @@ function createWindow(): void {
   })
 
   mainWindow.on('ready-to-show', () => {
-    mainWindow?.show()
+    closeSplashWhenReady()
   })
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
@@ -161,6 +229,12 @@ app.whenReady().then(() => {
   })
 
   registerAllIpcHandlers()
+
+  try {
+    createSplashWindow()
+  } catch (err) {
+    console.error('[main] Splash window init error:', (err as Error).message)
+  }
 
   try {
     initializeSkillLoader()

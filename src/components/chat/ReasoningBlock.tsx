@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import thinkingIconUrl from '@assets/Lamprey Thinking Icon.png'
 
 interface ReasoningBlockProps {
   content: string
@@ -21,6 +22,12 @@ export function ReasoningBlock({ content, isThinking = false }: ReasoningBlockPr
           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             {expanded ? <path d="M6 9l6 6 6-6" /> : <path d="M9 6l6 6-6 6" />}
           </svg>
+          <img
+            src={thinkingIconUrl}
+            alt=""
+            aria-hidden
+            className={`h-4 w-4 object-contain ${isThinking ? 'animate-pulse' : ''}`}
+          />
           <span className="uppercase tracking-wider">Reasoning</span>
           {isThinking && (
             <span className="rounded bg-[var(--accent-dim)] px-1.5 py-0.5 text-[9px] text-[var(--accent)]">

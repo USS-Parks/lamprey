@@ -29,7 +29,13 @@ export default defineConfig({
     root: resolve(__dirname, 'src'),
     resolve: {
       alias: {
-        '@': resolve('src')
+        '@': resolve('src'),
+        '@assets': resolve('ASSETS')
+      }
+    },
+    server: {
+      fs: {
+        allow: [resolve(__dirname)]
       }
     },
     plugins: [react(), tailwindcss()],

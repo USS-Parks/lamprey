@@ -1,7 +1,12 @@
 import { useState, useRef, useEffect } from 'react'
 import { useChatStore } from '@/stores/chat-store'
+import { useSkillsStore } from '@/stores/skills-store'
+import { useMcpStore } from '@/stores/mcp-store'
+import { useUiStore } from '@/stores/ui-store'
 import { toast } from '@/stores/toast-store'
 import type { ProcessedFile } from '@/lib/types'
+import addFileIconUrl from '@assets/Lamprey Add File Icon.png'
+import sendIconUrl from '@assets/Lamprey Prompt Enter Icon.png'
 
 interface ChatInputProps {
   onSend: (content: string) => void
@@ -39,6 +44,11 @@ export function ChatInput({ onSend, onCancel, isStreaming, disabled }: ChatInput
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const addAttachments = useChatStore((s) => s.addAttachments)
   const setProcessing = useChatStore((s) => s.setAttachmentsProcessing)
+  const activeModel = useChatStore((s) => s.activeModel)
+  const activeSkillIds = useSkillsStore((s) => s.activeSkillIds)
+  const mcpServers = useMcpStore((s) => s.servers)
+  const composeSeedToken = useUiStore((s) => s.composeSeedToken)
+  const consumeComposeDraft = useUiStore((s) => s.consumeComposeDraft)
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -46,6 +56,26 @@ export function ChatInput({ onSend, onCancel, isStreaming, disabled }: ChatInput
       textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, 200) + 'px'
     }
   }, [content])
+
+  useEffect(() => {
+    if (composeSeedToken === 0) return
+    const seed = consumeComposeDraft()
+    if (!seed) return
+    setContent(seed)
+    const ta = textareaRef.current
+    if (ta) {
+      ta.focus()
+      // Place cursor at end so the user can keep typing.
+      requestAnimationFrame(() => {
+        const len = ta.value.length
+        ta.setSelectionRange(len, len)
+      })
+    }
+  }, [composeSeedToken, consumeComposeDraft])
+
+  const modelLabel = activeModel === 'deepseek-reasoner' ? 'DeepSeek R1' : 'DeepSeek V3'
+  const skillCount = activeSkillIds.length
+  const connectedMcp = mcpServers.filter((s) => s.status === 'connected')
 
   const handleSubmit = () => {
     const trimmed = content.trim()
@@ -142,6 +172,30 @@ export function ChatInput({ onSend, onCancel, isStreaming, disabled }: ChatInput
 
   return (
     <div className="border-t border-[var(--border)] bg-[var(--bg-secondary)] px-4 py-3">
+      <div className="mb-1.5 flex flex-wrap items-center gap-1.5 px-1 font-mono text-[10px] text-[var(--text-muted)]">
+        <span className="inline-flex items-center gap-1 rounded bg-[var(--bg-tertiary)] px-1.5 py-0.5 text-[var(--text-secondary)]">
+          <span aria-hidden className="inline-block h-1.5 w-1.5 rounded-full bg-[var(--accent)]" />
+          {modelLabel}
+        </span>
+        <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 ${
+          skillCount > 0
+            ? 'bg-[var(--accent-dim)] text-[var(--accent)]'
+            : 'bg-[var(--bg-tertiary)] text-[var(--text-muted)]'
+        }`}>
+          {skillCount > 0
+            ? `${skillCount} skill${skillCount === 1 ? '' : 's'} active`
+            : 'No skills'}
+        </span>
+        <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 ${
+          connectedMcp.length > 0
+            ? 'bg-[var(--accent-dim)] text-[var(--accent)]'
+            : 'bg-[var(--bg-tertiary)] text-[var(--text-muted)]'
+        }`}>
+          {connectedMcp.length > 0
+            ? connectedMcp.map((s) => s.name).join(' · ')
+            : 'No MCP'}
+        </span>
+      </div>
       {pasteOffer && (
         <div className="mb-2 flex flex-wrap items-center gap-2 rounded border border-[var(--accent)] bg-[var(--accent-dim)] px-3 py-2 text-xs text-[var(--text-primary)]">
           <span className="flex-1">
@@ -174,11 +228,9 @@ export function ChatInput({ onSend, onCancel, isStreaming, disabled }: ChatInput
           onClick={handlePickerClick}
           disabled={disabled || isStreaming}
           title="Attach files"
-          className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-tertiary)] hover:text-[var(--accent)] disabled:opacity-40"
+          className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded transition-colors hover:bg-[var(--bg-tertiary)] disabled:opacity-40"
         >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" />
-          </svg>
+          <img src={addFileIconUrl} alt="Attach" className="h-6 w-6 object-contain" />
         </button>
         <textarea
           ref={textareaRef}
@@ -204,11 +256,10 @@ export function ChatInput({ onSend, onCancel, isStreaming, disabled }: ChatInput
           <button
             onClick={handleSubmit}
             disabled={!content.trim() || disabled}
-            className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded bg-[var(--accent)] text-white transition-colors hover:opacity-80 disabled:opacity-30"
+            title="Send"
+            className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded transition-transform hover:scale-105 disabled:opacity-30"
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M22 2L11 13M22 2l-7 20-4-9-9-4z" />
-            </svg>
+            <img src={sendIconUrl} alt="Send" className="h-7 w-7 object-contain" />
           </button>
         )}
       </div>
