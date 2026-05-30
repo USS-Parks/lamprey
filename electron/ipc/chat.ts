@@ -4,6 +4,7 @@ import { deepseekClient } from '../services/deepseek'
 import * as convStore from '../services/conversation-store'
 import * as memStore from '../services/memory-store'
 import { buildSystemPrompt } from '../services/system-prompt-builder'
+import { mcpManager } from '../services/mcp-manager'
 import type { ChatCompletionMessageParam, ChatCompletionTool } from 'openai/resources/chat/completions'
 
 const activeAbortControllers = new Map<string, AbortController>()
@@ -80,24 +81,19 @@ export function registerChatHandlers(): void {
       const systemPrompt = buildSystemPrompt(skillContents, memoryBlock)
 
       // Build MCP tools list
-      let mcpTools: ChatCompletionTool[] = []
-      try {
-        const { mcpManager } = await import('../services/mcp-manager')
-        const serverTools = mcpManager.getAllTools()
-        for (const st of serverTools) {
-          for (const tool of st.tools) {
-            mcpTools.push({
-              type: 'function',
-              function: {
-                name: `${st.serverId}__${tool.name}`,
-                description: tool.description || '',
-                parameters: (tool.inputSchema as any) || { type: 'object', properties: {} }
-              }
-            })
-          }
+      const mcpTools: ChatCompletionTool[] = []
+      const serverTools = mcpManager.getAllTools()
+      for (const st of serverTools) {
+        for (const tool of st.tools) {
+          mcpTools.push({
+            type: 'function',
+            function: {
+              name: `${st.serverId}__${tool.name}`,
+              description: tool.description || '',
+              parameters: (tool.inputSchema as any) || { type: 'object', properties: {} }
+            }
+          })
         }
-      } catch {
-        // mcp-manager not yet available
       }
 
       const tools: ChatCompletionTool[] = [MEMORY_ADD_TOOL, ...mcpTools]
@@ -270,7 +266,6 @@ async function runChatRound(
                 result = 'Action denied by user.'
               } else {
                 try {
-                  const { mcpManager } = await import('../services/mcp-manager')
                   const mcpResult = await mcpManager.callTool(serverId, mcpToolName, args)
                   result = typeof mcpResult === 'string' ? mcpResult : JSON.stringify(mcpResult)
                 } catch (err: any) {
@@ -279,7 +274,6 @@ async function runChatRound(
               }
             } else {
               try {
-                const { mcpManager } = await import('../services/mcp-manager')
                 const mcpResult = await mcpManager.callTool(serverId, mcpToolName, args)
                 result = typeof mcpResult === 'string' ? mcpResult : JSON.stringify(mcpResult)
               } catch (err: any) {
