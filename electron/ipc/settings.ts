@@ -9,6 +9,7 @@ const getSettingsPath = () => join(app.getPath('userData'), 'settings.json')
 
 const defaultSettings = {
   theme: 'dark' as const,
+  themePreset: 'lamprey-default' as const,
   fontSize: 14,
   defaultModel: 'deepseek-chat',
   sidebarCollapsed: false,

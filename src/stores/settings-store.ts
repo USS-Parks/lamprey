@@ -1,8 +1,11 @@
 import { create } from 'zustand'
 import type { AppSettings } from '@/lib/types'
+import { DEFAULT_PRESET_ID, getPreset } from '@/styles/theme-presets'
+import { applyThemePreset } from '@/styles/apply-theme'
 
 const defaultSettings: AppSettings = {
   theme: 'dark',
+  themePreset: DEFAULT_PRESET_ID,
   fontSize: 14,
   defaultModel: 'deepseek-chat',
   sidebarCollapsed: false,
@@ -26,7 +29,9 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   loadSettings: async () => {
     const result = await window.api.settings.get()
     if (result.success) {
-      set({ settings: { ...defaultSettings, ...result.data }, loaded: true })
+      const merged: AppSettings = { ...defaultSettings, ...(result.data as Partial<AppSettings>) }
+      set({ settings: merged, loaded: true })
+      applyThemePreset(getPreset(merged.themePreset))
     }
   },
 
@@ -34,6 +39,9 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     const current = get().settings
     const updated = { ...current, ...partial }
     set({ settings: updated })
+    if (partial.themePreset && partial.themePreset !== current.themePreset) {
+      applyThemePreset(getPreset(updated.themePreset))
+    }
     await window.api.settings.set(partial as Record<string, unknown>)
   }
 }))

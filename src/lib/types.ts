@@ -54,8 +54,42 @@ export interface ModelInfo {
   supportsVision: boolean
 }
 
+export type ThemePresetId =
+  | 'lamprey-default'
+  | 'arcgis-blue'
+  | 'arcgis-ember'
+  | 'arcgis-violet'
+  | 'arcgis-inferno'
+  | 'arcgis-magma'
+  | 'arcgis-viridis'
+
+export interface ThemePresetTokens {
+  bgPrimary: string
+  bgSecondary: string
+  bgTertiary: string
+  border: string
+  textPrimary: string
+  textSecondary: string
+  textMuted: string
+  accent: string
+  accentDim: string
+  success: string
+  warning: string
+  error: string
+  codeBg: string
+}
+
+export interface ThemePreset {
+  id: ThemePresetId
+  name: string
+  source: string
+  swatch: string[]
+  tokens: ThemePresetTokens
+}
+
 export interface AppSettings {
   theme: 'dark'
+  themePreset: ThemePresetId
   fontSize: number
   defaultModel: string
   sidebarCollapsed: boolean
