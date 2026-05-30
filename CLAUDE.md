@@ -4,8 +4,7 @@
 Electron desktop AI assistant (React 19, TypeScript, electron-vite) powered by DeepSeek API. See `PLANNING/LAMPREY_HARNESS_FINAL.md` for the full 21-prompt build plan.
 
 ## Current State
-- **Prompts 1–8**: Committed and verified
-- **Prompt 9**: Code complete, verified, **NOT COMMITTED**
+- **Prompts 1–9**: Committed and pushed to main
 - **Next**: Prompt 10 (MCP Client Foundation)
 - Read `DEVLOG.md` for detailed build history before making changes
 
@@ -29,12 +28,16 @@ npx electron-vite build
 - **IPC pattern**: All calls return `{ success: true, data: T } | { success: false, error: string }`
 - **Database**: better-sqlite3 at `userData/lamprey.db` (WAL mode, foreign keys)
 - **API keys**: Electron safeStorage → `userData/keys.json` (base64-encoded encrypted)
+- **Artifact sandbox**: `WebContentsView` (not deprecated BrowserView) with CSP + sandbox isolation, vendor files in `resources/vendor/`
 
 ## Key Decisions
 - `window.api` guards needed in renderer code — app must not crash outside Electron (browser dev mode)
 - `skill-loader.ts` and `mcp-manager.ts` are stubs — dynamically imported with graceful catch in `chat.ts`
 - `mcp:approveToolCall` handler lives in `chat.ts` (not `mcp.ts`) because it resolves confirmation promises
 - Branding: display name "Lamprey", desktop icon = green 3D lamprey (`ASSETS/Lamprey Desktop Icon-1.png`), splash screen = `ASSETS/Lamprey New Startup Splash.png` (3s duration)
+- `WebContentsView` (Electron 42) replaces deprecated `BrowserView` — uses DIP coordinates (no scaleFactor multiplication needed)
+- React 19 has no UMD builds — JSX artifacts use a custom `react-shim.js` for createElement/createRoot
+- `react-markdown` v10 requires `pre` passthrough override to prevent double-wrapping CodeBlock components
 
 ## Execution Rules
 1. Follow the build plan (`PLANNING/LAMPREY_HARNESS_FINAL.md`) strictly sequential — no skips
