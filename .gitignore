@@ -1,0 +1,9 @@
+node_modules/
+dist/
+dist-electron/
+out/
+.env
+*.log
+lamprey.db
+.opencode/
+SESSION-LOG/

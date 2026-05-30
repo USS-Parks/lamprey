@@ -1,0 +1,5 @@
+# Lamprey Harness Dev Log
+
+## Prompt 1 — Project Initialization (2026-05-30)
+
+Scaffolded the Electron + React 19 + TypeScript project using electron-vite. Manual scaffold was required because `npm create electron-vite` has interactive prompts that don't work in non-interactive mode. All core and dev dependencies installed: better-sqlite3, openai, @modelcontextprotocol/sdk, chokidar, gray-matter, zustand, react-markdown, remark-gfm, Tailwind CSS 4, Shiki, Vitest, Playwright, electron-builder. Created the full directory structure per the plan. Three-column layout (sidebar 240px, chat flex-grow, artifact panel 420px) renders with the correct dark color palette. Custom frameless titlebar with drag region. Three bundled skill files created (direct-voice, code-review, git-commit). Electron binary required `ELECTRON_EXEC_PATH` env var workaround for electron-vite resolution. Verification: `npm run dev` launches Electron window with correct layout, dark background (#0d0d0d), no TypeScript errors, no console errors.
