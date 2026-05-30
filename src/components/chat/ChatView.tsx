@@ -3,7 +3,7 @@ import { MessageList } from './MessageList'
 import { ChatInput } from './ChatInput'
 
 export function ChatView() {
-  const { messages, isStreaming, streamingContent, activeConversationId, sendMessage, cancelStream } = useChatStore()
+  const { messages, isStreaming, streamingContent, activeConversationId, sendMessage, cancelStream, toolCalls } = useChatStore()
 
   const handleSend = (content: string) => {
     sendMessage(content, [])
@@ -31,6 +31,7 @@ export function ChatView() {
         messages={messages}
         isStreaming={isStreaming}
         streamingContent={streamingContent}
+        toolCalls={toolCalls}
       />
       <ChatInput onSend={handleSend} onCancel={cancelStream} isStreaming={isStreaming} />
     </div>
