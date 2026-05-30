@@ -3,6 +3,8 @@ import type { Message } from '@/lib/types'
 import { MarkdownRenderer } from '@/components/artifacts/MarkdownRenderer'
 import { useMemoryStore } from '@/stores/memory-store'
 import { toast } from '@/stores/toast-store'
+import { parseReasoning } from '@/lib/reasoning'
+import { ReasoningBlock } from './ReasoningBlock'
 
 interface MessageBubbleProps {
   message: Message
@@ -27,6 +29,11 @@ export function MessageBubble({ message }: MessageBubbleProps) {
   const [saving, setSaving] = useState(false)
 
   if (isTool) return null
+
+  const isReasoner = message.model === 'deepseek-reasoner'
+  const { reasoning, body } = isReasoner && !isUser
+    ? parseReasoning(message.content)
+    : { reasoning: null as string | null, body: message.content }
 
   const handleRemember = async () => {
     if (saving) return
@@ -54,7 +61,10 @@ export function MessageBubble({ message }: MessageBubbleProps) {
         {isUser ? (
           <div className="whitespace-pre-wrap break-words text-sm">{message.content}</div>
         ) : (
-          <MarkdownRenderer content={message.content} />
+          <>
+            {reasoning && <ReasoningBlock content={reasoning} />}
+            <MarkdownRenderer content={body} />
+          </>
         )}
         <div className="mt-1 flex items-center gap-2 text-[10px] text-[var(--text-muted)] opacity-0 transition-opacity group-hover:opacity-100">
           <span>{formatTime(message.timestamp)}</span>

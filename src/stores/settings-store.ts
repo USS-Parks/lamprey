@@ -12,7 +12,8 @@ const defaultSettings: AppSettings = {
   artifactPanelWidth: 420,
   minimizeToTray: false,
   autoCheckUpdates: true,
-  aiGeneratedTitles: false
+  aiGeneratedTitles: false,
+  modelConfig: {}
 }
 
 interface SettingsState {

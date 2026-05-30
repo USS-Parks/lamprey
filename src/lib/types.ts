@@ -87,6 +87,13 @@ export interface ThemePreset {
   tokens: ThemePresetTokens
 }
 
+export interface ModelConfig {
+  temperature: number
+  maxTokens: number | null
+  topP: number
+  systemPromptOverride: string
+}
+
 export interface AppSettings {
   theme: 'dark'
   themePreset: ThemePresetId
@@ -97,6 +104,14 @@ export interface AppSettings {
   minimizeToTray: boolean
   autoCheckUpdates: boolean
   aiGeneratedTitles: boolean
+  modelConfig: Record<string, ModelConfig>
+}
+
+export const DEFAULT_MODEL_CONFIG: ModelConfig = {
+  temperature: 1,
+  maxTokens: null,
+  topP: 1,
+  systemPromptOverride: ''
 }
 
 export type IpcResponse<T> = { success: true; data: T } | { success: false; error: string }

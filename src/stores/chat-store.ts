@@ -27,7 +27,7 @@ interface ChatState {
   deleteConversation: (id: string) => Promise<void>
   sendMessage: (content: string, activeSkillIds: string[]) => Promise<void>
   cancelStream: () => void
-  setModel: (model: string) => void
+  setModel: (model: string) => Promise<void>
   appendStreamChunk: (content: string) => void
   finishStream: (message: Message) => void
   streamError: (error: string) => void
@@ -157,9 +157,29 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
   },
 
-  setModel: (model: string) => {
+  setModel: async (model: string) => {
+    const state = get()
+    const previousModel = state.activeModel
+    if (previousModel === model) return
     set({ activeModel: model })
-    window.api.model.setActive(model)
+    void window.api.model.setActive(model)
+
+    const activeId = state.activeConversationId
+    const realMessageCount = state.messages.filter(
+      (m) => m.role === 'user' || m.role === 'assistant'
+    ).length
+
+    if (activeId && realMessageCount > 0) {
+      const modelName = model === 'deepseek-reasoner' ? 'DeepSeek R1' : 'DeepSeek V3'
+      const marker = `— Switched to ${modelName} —`
+      const result = await window.api.conversation.appendSystem(activeId, marker)
+      if (result.success && result.data) {
+        const msg = result.data as Message
+        set((s) => ({ messages: [...s.messages, msg] }))
+      }
+      await window.api.conversation.setModel(activeId, model)
+      await get().loadConversations()
+    }
   },
 
   appendStreamChunk: (content: string) => {

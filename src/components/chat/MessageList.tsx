@@ -10,9 +10,29 @@ interface MessageListProps {
   isStreaming: boolean
   streamingContent: string
   toolCalls: ToolCallState[]
+  activeModel: string
 }
 
-export function MessageList({ messages, isStreaming, streamingContent, toolCalls }: MessageListProps) {
+function SystemMarker({ content }: { content: string }) {
+  return (
+    <div
+      role="separator"
+      className="my-3 flex items-center gap-3 px-2 text-[10px] uppercase tracking-wider text-[var(--text-muted)]"
+    >
+      <span className="h-px flex-1 bg-[var(--border)]" />
+      <span>{content}</span>
+      <span className="h-px flex-1 bg-[var(--border)]" />
+    </div>
+  )
+}
+
+export function MessageList({
+  messages,
+  isStreaming,
+  streamingContent,
+  toolCalls,
+  activeModel
+}: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -21,16 +41,20 @@ export function MessageList({ messages, isStreaming, streamingContent, toolCalls
 
   return (
     <div className="flex-1 overflow-y-auto px-4 py-4">
-      {messages.map((msg) => (
-        <MessageBubble key={msg.id} message={msg} />
-      ))}
+      {messages.map((msg) =>
+        msg.role === 'system' ? (
+          <SystemMarker key={msg.id} content={msg.content} />
+        ) : (
+          <MessageBubble key={msg.id} message={msg} />
+        )
+      )}
       {toolCalls.map((tc) => (
         <ToolUseCard key={tc.callId} toolCall={tc} />
       ))}
       {isStreaming && streamingContent && (
         <div className="mb-3 flex justify-start">
           <div className="max-w-[80%] rounded-lg bg-[var(--bg-secondary)] px-4 py-3">
-            <StreamingText content={streamingContent} />
+            <StreamingText content={streamingContent} model={activeModel} />
           </div>
         </div>
       )}

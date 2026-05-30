@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { McpSettings } from './McpSettings'
 import { GeneralSettings } from './GeneralSettings'
 import { AppearanceSettings } from './AppearanceSettings'
+import { ModelSettings } from './ModelSettings'
+import { ApiKeySettings } from './ApiKeySettings'
 
 interface SettingsDialogProps {
   onClose: () => void
@@ -9,6 +11,8 @@ interface SettingsDialogProps {
 
 const TABS = [
   { id: 'general', label: 'General' },
+  { id: 'models', label: 'Models' },
+  { id: 'api', label: 'API Key' },
   { id: 'appearance', label: 'Appearance' },
   { id: 'mcp', label: 'MCP Servers' }
 ] as const
@@ -54,6 +58,8 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
 
           <div className="flex-1 overflow-y-auto p-4">
             {activeTab === 'general' && <GeneralSettings />}
+            {activeTab === 'models' && <ModelSettings />}
+            {activeTab === 'api' && <ApiKeySettings />}
             {activeTab === 'appearance' && <AppearanceSettings />}
             {activeTab === 'mcp' && <McpSettings />}
           </div>

@@ -1,15 +1,12 @@
-import { useChatStore } from '@/stores/chat-store'
-import { useModelStore } from '@/stores/model-store'
 import { useSettingsStore } from '@/stores/settings-store'
 import { THEME_PRESETS, getPreset } from '@/styles/theme-presets'
+import { ModelSwitcher } from '@/components/model/ModelSwitcher'
 
 interface TitlebarProps {
   onSettingsClick: () => void
 }
 
 export function Titlebar({ onSettingsClick }: TitlebarProps) {
-  const { activeModel, setModel } = useChatStore()
-  const { models } = useModelStore()
   const settings = useSettingsStore((s) => s.settings)
   const updateSettings = useSettingsStore((s) => s.updateSettings)
   const activePreset = getPreset(settings.themePreset)
@@ -27,29 +24,7 @@ export function Titlebar({ onSettingsClick }: TitlebarProps) {
         style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
         className="flex items-center gap-2"
       >
-        <select
-          value={activeModel}
-          onChange={(e) => setModel(e.target.value)}
-          className="rounded border border-[var(--border)] bg-[var(--bg-tertiary)] px-2 py-1 font-mono text-xs text-[var(--text-secondary)] outline-none focus:border-[var(--accent)]"
-          title={activeModel === 'deepseek-reasoner' ? 'R1 does not support tool use. MCP tools unavailable while R1 is active.' : undefined}
-        >
-          {models.map((m) => (
-            <option key={m.id} value={m.id}>
-              {m.name}
-            </option>
-          ))}
-          {models.length === 0 && (
-            <>
-              <option value="deepseek-chat">DeepSeek V3</option>
-              <option value="deepseek-reasoner">DeepSeek R1</option>
-            </>
-          )}
-        </select>
-        {activeModel === 'deepseek-reasoner' && (
-          <span className="font-mono text-[10px] text-[var(--warning)]" title="R1 does not support tool use. MCP tools unavailable while R1 is active.">
-            No tools
-          </span>
-        )}
+        <ModelSwitcher />
       </div>
 
       <div
