@@ -5,6 +5,7 @@ import { registerAllIpcHandlers } from './ipc'
 import { closeDb } from './services/database'
 import { destroy as destroyArtifactSandbox } from './services/artifact-sandbox'
 import { mcpManager } from './services/mcp-manager'
+import { initializeSkillLoader, shutdownSkillLoader } from './services/skill-loader'
 
 let mainWindow: BrowserWindow | null = null
 
@@ -64,6 +65,12 @@ app.whenReady().then(() => {
   })
   registerAllIpcHandlers()
 
+  try {
+    initializeSkillLoader()
+  } catch (err) {
+    console.error('[main] Skill loader init error:', (err as Error).message)
+  }
+
   mcpManager.initialize().catch((err) => {
     console.error('[main] MCP initialization error:', err.message)
   })
@@ -85,6 +92,7 @@ app.on('window-all-closed', () => {
 
 app.on('will-quit', () => {
   mcpManager.shutdown().catch(() => {})
+  shutdownSkillLoader()
   destroyArtifactSandbox()
   closeDb()
 })

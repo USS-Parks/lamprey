@@ -10,6 +10,7 @@ import { useChatStore } from '@/stores/chat-store'
 import { useModelStore } from '@/stores/model-store'
 import { useChat } from '@/hooks/useChat'
 import { useMcp } from '@/hooks/useMcp'
+import { useSkills } from '@/hooks/useSkills'
 import type { McpConfirmationEvent } from '@/lib/types'
 
 function App(): React.ReactElement {
@@ -25,6 +26,7 @@ function App(): React.ReactElement {
   // Wire IPC event listeners
   useChat()
   useMcp()
+  useSkills()
 
   const handleArtifactOpen = useCallback((type: string, source: string) => {
     setArtifactType(type)

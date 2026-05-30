@@ -1,13 +1,15 @@
 import { useChatStore } from '@/stores/chat-store'
+import { useSkillsStore } from '@/stores/skills-store'
 import { MessageList } from './MessageList'
 import { ChatInput } from './ChatInput'
 import { MCPStatusBar } from '@/components/mcp/MCPStatusBar'
 
 export function ChatView() {
   const { messages, isStreaming, streamingContent, activeConversationId, sendMessage, cancelStream, toolCalls } = useChatStore()
+  const activeSkillIds = useSkillsStore((s) => s.activeSkillIds)
 
   const handleSend = (content: string) => {
-    sendMessage(content, [])
+    sendMessage(content, activeSkillIds)
   }
 
   if (!activeConversationId) {
