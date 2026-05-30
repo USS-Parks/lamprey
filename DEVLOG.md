@@ -71,6 +71,12 @@ Verification: `npx tsc --noEmit -p tsconfig.node.json` and `npx tsc --noEmit -p 
 
 (replaced by the backfill above)
 
+## CI fixes round 2 (2026-05-30)
+
+Both Linux and Windows jobs got through `electron-vite build` cleanly this time, then died at electron-builder with `⨯ Package "electron" is only allowed in "devDependencies"`. The original scaffold put `electron` in `dependencies` (I'd noticed it earlier but didn't move it) — electron-builder enforces that runtime electron is a devDep so it isn't bundled into the packaged app's node_modules. Moved it. Local `npm install` + tsc on both configs + `npx electron-vite build` all still pass.
+
+Also added `--publish never` to `build:win` / `build:mac` / `build:linux` to suppress the "Implicit publishing triggered by CI detection" warning that was about to start auto-publishing in electron-builder 27. The workflow already uses `softprops/action-gh-release@v2` for tag pushes — electron-builder shouldn't try to publish independently.
+
 ## CI fixes (2026-05-30)
 
 Three independent CI failures landed at once:

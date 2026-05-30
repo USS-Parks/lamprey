@@ -19,9 +19,9 @@
     "preview": "electron-vite preview",
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --ext .ts,.tsx",
-    "build:win": "electron-vite build && electron-builder --win",
-    "build:mac": "electron-vite build && electron-builder --mac",
-    "build:linux": "electron-vite build && electron-builder --linux",
+    "build:win": "electron-vite build && electron-builder --win --publish never",
+    "build:mac": "electron-vite build && electron-builder --mac --publish never",
+    "build:linux": "electron-vite build && electron-builder --linux --publish never",
     "postinstall": "electron-rebuild -f -w better-sqlite3"
   },
   "dependencies": {
@@ -29,7 +29,6 @@
     "@modelcontextprotocol/sdk": "^1.29.0",
     "better-sqlite3": "^12.10.0",
     "chokidar": "^5.0.0",
-    "electron": "^35.7.5",
     "gray-matter": "^4.0.3",
     "mermaid": "^11.15.0",
     "openai": "^6.39.1",
@@ -53,6 +52,7 @@
     "@typescript-eslint/eslint-plugin": "^8.60.0",
     "@typescript-eslint/parser": "^8.60.0",
     "@vitejs/plugin-react": "^4.7.0",
+    "electron": "^35.7.5",
     "electron-builder": "^26.8.1",
     "electron-rebuild": "^3.2.9",
     "electron-updater": "^6.8.3",
