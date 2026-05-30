@@ -19,3 +19,24 @@ Built `electron/services/database.ts` as shared better-sqlite3 initialization wi
 ## Prompt 5 — Streaming Chat IPC Bridge (2026-05-30)
 
 Built `electron/services/system-prompt-builder.ts` assembling base prompt + memory block + skill blocks. Implemented full `chat:send` handler in `electron/ipc/chat.ts`: creates conversation if new, saves user message, fetches history, builds system prompt with memory and skills, collects MCP tools, registers `memory_add` pseudo-tool, and streams via DeepSeek client. Tool call loop runs up to 10 rounds: parses tool calls, handles `memory_add` internally (saves to memory_entries, emits `memory:added`), routes MCP calls with confirmation flow for destructive Chrome actions (30s timeout auto-deny), saves tool result messages, and continues streaming. `chat:cancel` uses AbortController to cleanly abort streams. Created stub services for `skill-loader` and `mcp-manager` to satisfy imports (dynamic `import()` with graceful catch for when they're not yet initialized). Verification: `tsc --noEmit` zero errors. Production build succeeds (19 main modules, 31.49 KB, with code-split chunks for skill-loader and mcp-manager).
+
+## Prompt 6 — Basic Chat UI (2026-05-30) — UNCOMMITTED
+
+**Status: Code complete, visually verified, NOT YET COMMITTED.**
+
+Built three Zustand stores: `chat-store.ts` (conversations, messages, streaming state, tool calls, model switching, auto-title on first message), `settings-store.ts` (load/update from IPC), `model-store.ts` (model list + active model). Created `useChat` hook to wire IPC event listeners (chunk/done/error/tool-call) to store actions with cleanup on unmount. Built all UI components: `Sidebar.tsx` (conversation list grouped by date, model badges, delete with confirm), `Titlebar.tsx` (wordmark, model dropdown, settings gear), `ChatView.tsx` (welcome screen + message area), `MessageList.tsx` (auto-scroll), `MessageBubble.tsx` (user/assistant styling with hover metadata), `StreamingText.tsx` (blinking cursor), `ChatInput.tsx` (auto-resize textarea, Enter/Shift+Enter, send/stop buttons). Created `ApiKeyModal.tsx` (masked input, test-on-submit, encryption notice). Added `window.api` guards for browser-mode graceful degradation. Verification: Full build compiles (42 renderer modules). Three-column layout renders with API key modal, sidebar empty state, model dropdown, and chat input. **Next session: commit this, then continue to Prompt 7.**
+
+Uncommitted files:
+- `src/App.tsx` (modified)
+- `src/components/layout/Sidebar.tsx` (new)
+- `src/components/layout/Titlebar.tsx` (new)
+- `src/components/chat/ChatView.tsx` (new)
+- `src/components/chat/MessageList.tsx` (new)
+- `src/components/chat/MessageBubble.tsx` (new)
+- `src/components/chat/StreamingText.tsx` (new)
+- `src/components/chat/ChatInput.tsx` (new)
+- `src/components/settings/ApiKeyModal.tsx` (new)
+- `src/stores/chat-store.ts` (new)
+- `src/stores/settings-store.ts` (new)
+- `src/stores/model-store.ts` (new)
+- `src/hooks/useChat.ts` (new)
