@@ -4,15 +4,18 @@ import { Titlebar } from '@/components/layout/Titlebar'
 import { ChatView } from '@/components/chat/ChatView'
 import { ArtifactPanel } from '@/components/artifacts/ArtifactPanel'
 import { ApiKeyModal } from '@/components/settings/ApiKeyModal'
+import { ConfirmationModal } from '@/components/mcp/ConfirmationModal'
 import { useChatStore } from '@/stores/chat-store'
 import { useModelStore } from '@/stores/model-store'
 import { useChat } from '@/hooks/useChat'
+import type { McpConfirmationEvent } from '@/lib/types'
 
 function App(): React.ReactElement {
   const [needsApiKey, setNeedsApiKey] = useState<boolean | null>(null)
   const [artifactOpen, setArtifactOpen] = useState(false)
   const [artifactType, setArtifactType] = useState<string | null>(null)
   const [artifactSource, setArtifactSource] = useState<string | null>(null)
+  const [confirmationEvent, setConfirmationEvent] = useState<McpConfirmationEvent | null>(null)
   const loadConversations = useChatStore((s) => s.loadConversations)
   const loadModels = useModelStore((s) => s.loadModels)
 
@@ -31,6 +34,13 @@ function App(): React.ReactElement {
       delete (window as unknown as Record<string, unknown>).__openArtifact
     }
   }, [handleArtifactOpen])
+
+  useEffect(() => {
+    if (!window.api) return
+    window.api.mcp.onConfirmationRequired((e: unknown) => {
+      setConfirmationEvent(e as McpConfirmationEvent)
+    })
+  }, [])
 
   useEffect(() => {
     const init = async () => {
@@ -60,6 +70,13 @@ function App(): React.ReactElement {
           onComplete={() => {
             setNeedsApiKey(false)
           }}
+        />
+      )}
+
+      {confirmationEvent && (
+        <ConfirmationModal
+          event={confirmationEvent}
+          onDismiss={() => setConfirmationEvent(null)}
         />
       )}
 

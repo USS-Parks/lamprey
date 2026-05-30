@@ -3,6 +3,22 @@ import type { BundledLanguage, Highlighter } from 'shiki'
 
 const ARTIFACT_LANGUAGES = new Set(['html', 'svg', 'mermaid', 'jsx', 'tsx', 'react'])
 
+function detectArtifactType(code: string, lang: string): string | null {
+  if (ARTIFACT_LANGUAGES.has(lang)) {
+    return lang === 'react' || lang === 'jsx' || lang === 'tsx' ? 'jsx' : lang
+  }
+  const trimmed = code.trimStart()
+  if (trimmed.startsWith('<!DOCTYPE') || trimmed.startsWith('<!doctype') || trimmed.startsWith('<html')) {
+    return 'html'
+  }
+  if (!lang || lang === 'javascript' || lang === 'typescript') {
+    if (/\breturn\s*\(?\s*<[A-Z]/.test(code) || /<[A-Z][a-zA-Z]*[\s/>]/.test(code)) {
+      return 'jsx'
+    }
+  }
+  return null
+}
+
 let shikiPromise: Promise<Highlighter> | null = null
 
 function getShiki(): Promise<Highlighter> {
@@ -62,7 +78,8 @@ export function CodeBlock({ code, language }: CodeBlockProps) {
   const codeRef = useRef<HTMLDivElement>(null)
 
   const lang = language?.toLowerCase() ?? ''
-  const isArtifact = ARTIFACT_LANGUAGES.has(lang)
+  const detectedType = detectArtifactType(code, lang)
+  const isArtifact = detectedType !== null
 
   useEffect(() => {
     if (isArtifact) return
@@ -94,11 +111,11 @@ export function CodeBlock({ code, language }: CodeBlockProps) {
   }
 
   const handleOpenArtifact = () => {
-    const type = lang === 'react' || lang === 'jsx' || lang === 'tsx' ? 'jsx' : lang
-    window.api?.artifact?.render(type, code)
+    if (!detectedType) return
+    window.api?.artifact?.render(detectedType, code)
     const opener = (window as unknown as Record<string, unknown>).__openArtifact
     if (typeof opener === 'function') {
-      ;(opener as (t: string, s: string) => void)(type, code)
+      ;(opener as (t: string, s: string) => void)(detectedType, code)
     }
   }
 
@@ -107,7 +124,7 @@ export function CodeBlock({ code, language }: CodeBlockProps) {
     return (
       <div className="my-2 rounded-lg border border-[var(--border)] bg-[var(--bg-primary)] overflow-hidden">
         <div className="flex items-center justify-between px-3 py-1.5 border-b border-[var(--border)] bg-[var(--bg-tertiary)]">
-          <span className="text-xs font-mono text-[var(--accent)]">{lang}</span>
+          <span className="text-xs font-mono text-[var(--accent)]">{detectedType}</span>
           <div className="flex items-center gap-2">
             <button
               onClick={handleCopy}
