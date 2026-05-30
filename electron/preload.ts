@@ -98,7 +98,8 @@ const api = {
     resize: (bounds: { x: number; y: number; width: number; height: number }) =>
       ipcRenderer.invoke('artifact:resize', bounds),
     openInWindow: (type: string, content: string) =>
-      ipcRenderer.invoke('artifact:openInWindow', type, content)
+      ipcRenderer.invoke('artifact:openInWindow', type, content),
+    openExternal: (url: string) => ipcRenderer.invoke('shell:openExternal', url)
   }
 }
 

@@ -42,6 +42,11 @@ function createWindow(): void {
 
 app.whenReady().then(() => {
   ipcMain.handle('ping', () => 'pong')
+  ipcMain.handle('shell:openExternal', (_event, url: string) => {
+    if (typeof url === 'string' && (url.startsWith('https://') || url.startsWith('http://'))) {
+      shell.openExternal(url)
+    }
+  })
   registerAllIpcHandlers()
 
   createWindow()

@@ -1,4 +1,5 @@
 import type { Message } from '@/lib/types'
+import { MarkdownRenderer } from '@/components/artifacts/MarkdownRenderer'
 
 interface MessageBubbleProps {
   message: Message
@@ -23,7 +24,11 @@ export function MessageBubble({ message }: MessageBubbleProps) {
             : 'bg-[var(--bg-secondary)] text-[var(--text-primary)]'
         }`}
       >
-        <div className="whitespace-pre-wrap break-words text-sm">{message.content}</div>
+        {isUser ? (
+          <div className="whitespace-pre-wrap break-words text-sm">{message.content}</div>
+        ) : (
+          <MarkdownRenderer content={message.content} />
+        )}
         <div className="mt-1 flex items-center gap-2 text-[10px] text-[var(--text-muted)] opacity-0 transition-opacity group-hover:opacity-100">
           <span>{formatTime(message.timestamp)}</span>
           {message.model && (
