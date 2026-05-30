@@ -6,7 +6,42 @@ import * as memStore from '../services/memory-store'
 import { buildSystemPrompt } from '../services/system-prompt-builder'
 import { mcpManager } from '../services/mcp-manager'
 import { listSkills, getSkillContent } from '../services/skill-loader'
+import { readFileSync, existsSync } from 'fs'
+import { join } from 'path'
+import { app } from 'electron'
 import type { ChatCompletionMessageParam, ChatCompletionTool } from 'openai/resources/chat/completions'
+
+interface ModelParams {
+  temperature?: number
+  topP?: number
+  maxTokens?: number | null
+}
+
+function loadModelConfig(model: string): { params: ModelParams; systemPromptOverride?: string } {
+  try {
+    const path = join(app.getPath('userData'), 'settings.json')
+    if (!existsSync(path)) return { params: {} }
+    const raw = JSON.parse(readFileSync(path, 'utf-8')) as Record<string, unknown>
+    const cfg = (raw.modelConfig as Record<string, Record<string, unknown>> | undefined)?.[model]
+    if (!cfg) return { params: {} }
+    return {
+      params: {
+        temperature: typeof cfg.temperature === 'number' ? cfg.temperature : undefined,
+        topP: typeof cfg.topP === 'number' ? cfg.topP : undefined,
+        maxTokens:
+          typeof cfg.maxTokens === 'number'
+            ? cfg.maxTokens
+            : cfg.maxTokens === null
+            ? null
+            : undefined
+      },
+      systemPromptOverride:
+        typeof cfg.systemPromptOverride === 'string' ? cfg.systemPromptOverride : undefined
+    }
+  } catch {
+    return { params: {} }
+  }
+}
 
 const activeAbortControllers = new Map<string, AbortController>()
 const pendingConfirmations = new Map<string, (approved: boolean) => void>()
@@ -73,7 +108,8 @@ export function registerChatHandlers(): void {
           .filter(Boolean) as { name: string; content: string }[]
       }
 
-      const systemPrompt = buildSystemPrompt(skillContents, memoryBlock)
+      const { params: modelParams, systemPromptOverride } = loadModelConfig(model)
+      const systemPrompt = buildSystemPrompt(skillContents, memoryBlock, systemPromptOverride)
 
       // Build MCP tools list
       const mcpTools: ChatCompletionTool[] = []
@@ -93,20 +129,21 @@ export function registerChatHandlers(): void {
 
       const tools: ChatCompletionTool[] = [MEMORY_ADD_TOOL, ...mcpTools]
 
+      // Filter out role:'system' markers (e.g. "— Switched to R1 —") — the real
+      // system prompt comes from buildSystemPrompt, not from stored markers.
       const apiMessages: ChatCompletionMessageParam[] = [
         { role: 'system' as const, content: systemPrompt },
-        ...allMessages.map((m): ChatCompletionMessageParam => {
-          if (m.role === 'tool' && m.toolCallId) {
-            return { role: 'tool' as const, content: m.content, tool_call_id: m.toolCallId }
-          }
-          if (m.role === 'assistant') {
-            return { role: 'assistant' as const, content: m.content }
-          }
-          if (m.role === 'system') {
-            return { role: 'system' as const, content: m.content }
-          }
-          return { role: 'user' as const, content: m.content }
-        })
+        ...allMessages
+          .filter((m) => m.role !== 'system')
+          .map((m): ChatCompletionMessageParam => {
+            if (m.role === 'tool' && m.toolCallId) {
+              return { role: 'tool' as const, content: m.content, tool_call_id: m.toolCallId }
+            }
+            if (m.role === 'assistant') {
+              return { role: 'assistant' as const, content: m.content }
+            }
+            return { role: 'user' as const, content: m.content }
+          })
       ]
 
       const abortController = new AbortController()
@@ -118,7 +155,8 @@ export function registerChatHandlers(): void {
         apiMessages,
         tools.length > 0 ? tools : undefined,
         abortController.signal,
-        0
+        0,
+        modelParams
       )
 
       activeAbortControllers.delete(conversationId)
@@ -175,7 +213,8 @@ async function runChatRound(
   messages: ChatCompletionMessageParam[],
   tools: ChatCompletionTool[] | undefined,
   signal: AbortSignal,
-  round: number
+  round: number,
+  params?: ModelParams
 ): Promise<void> {
   if (round >= MAX_TOOL_ROUNDS) {
     send('chat:error', {
@@ -321,7 +360,7 @@ async function runChatRound(
 
         // Continue with next round
         try {
-          await runChatRound(conversationId, model, messages, tools, signal, round + 1)
+          await runChatRound(conversationId, model, messages, tools, signal, round + 1, params)
           resolve()
         } catch (err) {
           reject(err)
@@ -331,7 +370,8 @@ async function runChatRound(
         send('chat:error', { conversationId, error })
         reject(new Error(error))
       },
-      signal
+      signal,
+      params
     )
   })
 }

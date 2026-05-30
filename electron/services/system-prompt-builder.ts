@@ -1,10 +1,13 @@
 export function buildSystemPrompt(
   activeSkillContents: { name: string; content: string }[],
-  memoryBlock: string
+  memoryBlock: string,
+  systemPromptOverride?: string
 ): string {
-  const parts: string[] = [
-    'You are Lamprey, a helpful AI assistant. Be direct and precise.'
-  ]
+  const base = systemPromptOverride?.trim()
+    ? systemPromptOverride.trim()
+    : 'You are Lamprey, a helpful AI assistant. Be direct and precise.'
+
+  const parts: string[] = [base]
 
   if (memoryBlock) {
     parts.push(memoryBlock)

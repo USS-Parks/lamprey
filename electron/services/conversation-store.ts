@@ -80,6 +80,15 @@ export function updateConversationTitle(id: string, title: string) {
   )
 }
 
+export function updateConversationModel(id: string, model: string) {
+  const db = getDb()
+  db.prepare('UPDATE conversations SET model = ?, updated_at = ? WHERE id = ?').run(
+    model,
+    Date.now(),
+    id
+  )
+}
+
 export function touchConversation(id: string) {
   const db = getDb()
   db.prepare('UPDATE conversations SET updated_at = ? WHERE id = ?').run(Date.now(), id)

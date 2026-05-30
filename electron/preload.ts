@@ -37,7 +37,10 @@ const api = {
     delete: (id: string) => ipcRenderer.invoke('conversation:delete', id),
     updateTitle: (id: string, title: string) =>
       ipcRenderer.invoke('conversation:updateTitle', id, title),
-    getMessages: (id: string) => ipcRenderer.invoke('conversation:getMessages', id)
+    getMessages: (id: string) => ipcRenderer.invoke('conversation:getMessages', id),
+    appendSystem: (id: string, content: string) =>
+      ipcRenderer.invoke('conversation:appendSystem', id, content),
+    setModel: (id: string, model: string) => ipcRenderer.invoke('conversation:setModel', id, model)
   },
 
   settings: {
@@ -47,7 +50,9 @@ const api = {
     hasApiKey: () => ipcRenderer.invoke('settings:hasApiKey'),
     testApiKey: () => ipcRenderer.invoke('settings:testApiKey'),
     saveGoogleCredentials: (clientId: string, clientSecret: string) =>
-      ipcRenderer.invoke('settings:saveGoogleCredentials', clientId, clientSecret)
+      ipcRenderer.invoke('settings:saveGoogleCredentials', clientId, clientSecret),
+    deleteApiKey: () => ipcRenderer.invoke('settings:deleteApiKey'),
+    isEncryptionAvailable: () => ipcRenderer.invoke('settings:isEncryptionAvailable')
   },
 
   model: {

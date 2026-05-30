@@ -55,7 +55,8 @@ export class DeepSeekClient {
     onChunk: (content: string) => void,
     onDone: (fullContent: string, toolCalls?: any[]) => void,
     onError: (error: string) => void,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    params?: { temperature?: number; topP?: number; maxTokens?: number | null }
   ): Promise<void> {
     const client = this.getClient()
     let fullContent = ''
@@ -69,7 +70,10 @@ export class DeepSeekClient {
           model,
           messages,
           stream: true,
-          tools: tools && tools.length > 0 ? tools : undefined
+          tools: tools && tools.length > 0 ? tools : undefined,
+          ...(params?.temperature !== undefined && { temperature: params.temperature }),
+          ...(params?.topP !== undefined && { top_p: params.topP }),
+          ...(params?.maxTokens != null && { max_tokens: params.maxTokens })
         }, { signal })
 
         for await (const chunk of stream) {

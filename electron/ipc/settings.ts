@@ -16,7 +16,8 @@ const defaultSettings = {
   artifactPanelWidth: 420,
   minimizeToTray: false,
   autoCheckUpdates: true,
-  aiGeneratedTitles: false
+  aiGeneratedTitles: false,
+  modelConfig: {} as Record<string, unknown>
 }
 
 function readSettings() {
@@ -86,6 +87,24 @@ export function registerSettingsHandlers(): void {
       keychain.setKey('google-client-id', clientId)
       keychain.setKey('google-client-secret', clientSecret)
       return { success: true, data: null }
+    } catch (err: any) {
+      return { success: false, error: err.message }
+    }
+  })
+
+  ipcMain.handle('settings:deleteApiKey', async () => {
+    try {
+      keychain.deleteKey('deepseek')
+      deepseekClient.resetClient()
+      return { success: true, data: null }
+    } catch (err: any) {
+      return { success: false, error: err.message }
+    }
+  })
+
+  ipcMain.handle('settings:isEncryptionAvailable', async () => {
+    try {
+      return { success: true, data: keychain.isEncryptionAvailable() }
     } catch (err: any) {
       return { success: false, error: err.message }
     }
