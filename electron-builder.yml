@@ -1,0 +1,55 @@
+appId: com.lamprey.harness
+productName: Lamprey
+copyright: Copyright © 2026 Lamprey Contributors
+
+directories:
+  output: dist
+  buildResources: resources
+
+files:
+  - out/**/*
+  - package.json
+  - "!node_modules/**/*"
+
+asarUnpack:
+  - "**/*.node"
+
+extraResources:
+  - from: resources/vendor
+    to: vendor
+  - from: resources/skills
+    to: skills
+  - from: resources/icon.png
+    to: icon.png
+
+mac:
+  category: public.app-category.developer-tools
+  icon: resources/icon.png
+  target:
+    - dmg
+  hardenedRuntime: true
+
+win:
+  icon: resources/icon.png
+  target:
+    - nsis
+  artifactName: ${productName}-${version}-${arch}.${ext}
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Lamprey
+
+linux:
+  icon: resources/icon.png
+  category: Development
+  target:
+    - AppImage
+  artifactName: ${productName}-${version}-${arch}.${ext}
+
+publish:
+  provider: github
+  owner: USS-Parks
+  repo: lamprey

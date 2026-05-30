@@ -17,6 +17,8 @@ import { useMcp } from '@/hooks/useMcp'
 import { useSkills } from '@/hooks/useSkills'
 import { useMemory } from '@/hooks/useMemory'
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts'
+import { useShellSignals } from '@/hooks/useShellSignals'
+import { UpdateBanner } from '@/components/ui/UpdateBanner'
 import type { McpConfirmationEvent } from '@/lib/types'
 
 function App(): React.ReactElement {
@@ -38,6 +40,7 @@ function App(): React.ReactElement {
   useSkills()
   useMemory()
   useKeyboardShortcuts()
+  useShellSignals()
 
   const handleArtifactOpen = useCallback((type: string, source: string) => {
     setArtifactType(type)
@@ -110,6 +113,7 @@ function App(): React.ReactElement {
 
       <div className="flex flex-1 flex-col">
         <Titlebar onSettingsClick={openSettings} />
+        <UpdateBanner />
         <ChatView />
       </div>
 

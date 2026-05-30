@@ -1,0 +1,102 @@
+name: Build Lamprey
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+        env:
+          ELECTRON_REBUILD_FORCE_GIT: '1'
+
+      - name: Type check (main)
+        run: npx tsc --noEmit -p tsconfig.node.json
+
+      - name: Type check (renderer)
+        run: npx tsc --noEmit -p tsconfig.web.json
+
+      - name: Build NSIS installer
+        run: npm run build:win
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: lamprey-windows
+          path: dist/*.exe
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Attach to release (tag pushes only)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.exe
+          draft: true
+
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install OS deps for AppImage + safeStorage
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsecret-1-dev libxss1 libnss3 libasound2t64 fakeroot
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check (main)
+        run: npx tsc --noEmit -p tsconfig.node.json
+
+      - name: Type check (renderer)
+        run: npx tsc --noEmit -p tsconfig.web.json
+
+      - name: Build AppImage
+        run: npm run build:linux
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload AppImage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: lamprey-linux
+          path: dist/*.AppImage
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Attach to release (tag pushes only)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.AppImage
+          draft: true
+
+  # macOS builds require an Apple Developer signing identity to notarize.
+  # Run locally with `npm run build:mac` after setting:
+  #   APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID, CSC_LINK, CSC_KEY_PASSWORD
+  # See https://www.electron.build/code-signing for the full setup.

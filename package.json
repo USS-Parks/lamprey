@@ -3,8 +3,16 @@
   "version": "0.1.0",
   "description": "Desktop AI assistant powered by DeepSeek",
   "main": "./out/main/index.js",
-  "author": "",
+  "author": {
+    "name": "Lamprey Contributors",
+    "url": "https://github.com/USS-Parks/lamprey"
+  },
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/USS-Parks/lamprey.git"
+  },
+  "homepage": "https://github.com/USS-Parks/lamprey",
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
@@ -32,14 +40,6 @@
     "remark-gfm": "^4.0.1",
     "shiki": "^4.1.0",
     "zustand": "^5.0.14"
-  },
-  "build": {
-    "extraResources": [
-      {
-        "from": "resources/vendor",
-        "to": "resources/vendor"
-      }
-    ]
   },
   "devDependencies": {
     "@electron-toolkit/preload": "^3.0.2",

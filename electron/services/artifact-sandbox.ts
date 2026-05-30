@@ -2,7 +2,12 @@ import { BrowserWindow, WebContentsView, app } from 'electron'
 import { join } from 'path'
 import { writeFileSync } from 'fs'
 
-const VENDOR_DIR = join(app.isPackaged ? process.resourcesPath : app.getAppPath(), 'resources', 'vendor')
+// In dev, vendor lives under <repo>/resources/vendor relative to the app path.
+// In production, electron-builder's extraResources mapping (from: resources/vendor → to: vendor)
+// places it directly under process.resourcesPath/vendor.
+const VENDOR_DIR = app.isPackaged
+  ? join(process.resourcesPath, 'vendor')
+  : join(app.getAppPath(), 'resources', 'vendor')
 
 function vendorFileUrl(filename: string): string {
   return `file:///${VENDOR_DIR.replace(/\\/g, '/')}/${filename}`

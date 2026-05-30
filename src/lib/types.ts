@@ -94,6 +94,13 @@ export interface ModelConfig {
   systemPromptOverride: string
 }
 
+export interface WindowBounds {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
 export interface AppSettings {
   theme: 'dark'
   themePreset: ThemePresetId
@@ -105,6 +112,7 @@ export interface AppSettings {
   autoCheckUpdates: boolean
   aiGeneratedTitles: boolean
   modelConfig: Record<string, ModelConfig>
+  windowBounds?: WindowBounds
 }
 
 export const DEFAULT_MODEL_CONFIG: ModelConfig = {

@@ -120,6 +120,31 @@ const api = {
     openExternal: (url: string) => ipcRenderer.invoke('shell:openExternal', url),
     getSource: () => ipcRenderer.invoke('artifact:getSource'),
     getType: () => ipcRenderer.invoke('artifact:getType')
+  },
+
+  update: {
+    onAvailable: (cb: (info: { version: string | null; releaseNotes: string | null }) => void) =>
+      ipcRenderer.on('update:available', (_, info) => cb(info)),
+    onDownloaded: (cb: (info: { version: string | null }) => void) =>
+      ipcRenderer.on('update:downloaded', (_, info) => cb(info)),
+    onError: (cb: (e: { message: string }) => void) =>
+      ipcRenderer.on('update:error', (_, e) => cb(e)),
+    restart: () => ipcRenderer.invoke('update:restart'),
+    check: () => ipcRenderer.invoke('update:check')
+  },
+
+  shortcuts: {
+    onCopyLastAssistant: (cb: () => void) =>
+      ipcRenderer.on('shortcut:copyLastAssistant', () => cb())
+  },
+
+  tray: {
+    onNewConversation: (cb: () => void) =>
+      ipcRenderer.on('tray:newConversation', () => cb())
+  },
+
+  clipboard: {
+    writeText: (text: string) => ipcRenderer.invoke('clipboard:writeText', text)
   }
 }
 
