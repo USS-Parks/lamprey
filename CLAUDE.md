@@ -1,11 +1,11 @@
 # Lamprey Harness — Claude Code Instructions
 
 ## What This Is
-Electron desktop AI assistant (React 19, TypeScript, electron-vite) powered by DeepSeek API. See `PLANNING/LAMPREY_HARNESS_FINAL.md` for the full 21-prompt build plan.
+Electron desktop AI assistant (React 19, TypeScript, electron-vite) powered by DeepSeek API. See `PLANNING/LAMPREY_HARNESS_FINAL.md` for the full 22-prompt build plan (Prompts 1–21 plus 16A).
 
 ## Current State
-- **Prompts 1–9**: Committed and pushed to main
-- **Next**: Prompt 10 (MCP Client Foundation)
+- **Prompts 1–14**: Committed and pushed to main
+- **Next**: Prompt 15 (Memory System — UI + memory_add wiring polish)
 - Read `DEVLOG.md` for detailed build history before making changes
 
 ## Build & Run
@@ -32,7 +32,8 @@ npx electron-vite build
 
 ## Key Decisions
 - `window.api` guards needed in renderer code — app must not crash outside Electron (browser dev mode)
-- `skill-loader.ts` and `mcp-manager.ts` are stubs — dynamically imported with graceful catch in `chat.ts`
+- `skill-loader.ts` is fully implemented (Prompt 13) with chokidar hot reload, gray-matter frontmatter parsing, and dev/prod path resolution (production bootstraps `userData/skills/` from `resources/skills/`)
+- `mcp-manager.ts` is fully implemented (Prompt 10) with SSE + stdio transports, Google OAuth token refresh, and auto-restart
 - `mcp:approveToolCall` handler lives in `chat.ts` (not `mcp.ts`) because it resolves confirmation promises
 - Branding: display name "Lamprey", desktop icon = green 3D lamprey (`ASSETS/Lamprey Desktop Icon-1.png`), splash screen = `ASSETS/Lamprey New Startup Splash.png` (3s duration)
 - `WebContentsView` (Electron 42) replaces deprecated `BrowserView` — uses DIP coordinates (no scaleFactor multiplication needed)

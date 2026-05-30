@@ -5,6 +5,7 @@ import * as convStore from '../services/conversation-store'
 import * as memStore from '../services/memory-store'
 import { buildSystemPrompt } from '../services/system-prompt-builder'
 import { mcpManager } from '../services/mcp-manager'
+import { listSkills, getSkillContent } from '../services/skill-loader'
 import type { ChatCompletionMessageParam, ChatCompletionTool } from 'openai/resources/chat/completions'
 
 const activeAbortControllers = new Map<string, AbortController>()
@@ -59,23 +60,17 @@ export function registerChatHandlers(): void {
 
       const memoryBlock = memStore.buildMemoryBlock()
 
-      // Skill loading — gracefully handle if skill-loader not yet initialized
       let skillContents: { name: string; content: string }[] = []
-      try {
-        const { getSkillContent, listSkills } = await import('../services/skill-loader')
-        if (activeSkillIds && activeSkillIds.length > 0) {
-          const skills = listSkills()
-          skillContents = activeSkillIds
-            .map((id: string) => {
-              const skill = skills.find((s: any) => s.id === id)
-              if (!skill) return null
-              const content = getSkillContent(id)
-              return content ? { name: skill.name, content } : null
-            })
-            .filter(Boolean) as { name: string; content: string }[]
-        }
-      } catch {
-        // skill-loader not yet available
+      if (activeSkillIds && activeSkillIds.length > 0) {
+        const skills = listSkills()
+        skillContents = activeSkillIds
+          .map((id: string) => {
+            const skill = skills.find((s) => s.id === id)
+            if (!skill) return null
+            const content = getSkillContent(id)
+            return content ? { name: skill.name, content } : null
+          })
+          .filter(Boolean) as { name: string; content: string }[]
       }
 
       const systemPrompt = buildSystemPrompt(skillContents, memoryBlock)

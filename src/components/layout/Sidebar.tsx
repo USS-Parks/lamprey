@@ -1,4 +1,5 @@
 import { useChatStore } from '@/stores/chat-store'
+import { SkillPanel } from '@/components/skills/SkillPanel'
 import type { Conversation } from '@/lib/types'
 
 function formatRelativeTime(timestamp: number): string {
@@ -54,7 +55,8 @@ export function Sidebar() {
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-2">
+      <div className="flex flex-1 flex-col overflow-y-auto">
+        <div className="px-2">
         {groups.length === 0 && (
           <p className="px-2 py-8 text-center text-xs text-[var(--text-muted)]">
             Start your first conversation.
@@ -99,6 +101,8 @@ export function Sidebar() {
             ))}
           </div>
         ))}
+        </div>
+        <SkillPanel />
       </div>
     </div>
   )
