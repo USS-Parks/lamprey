@@ -7,6 +7,7 @@ const api = {
       model: string
       content: string
       activeSkillIds: string[]
+      agentMode?: 'single' | 'multi'
     }) => ipcRenderer.invoke('chat:send', request),
     cancel: (conversationId: string) => ipcRenderer.invoke('chat:cancel', conversationId),
     generateTitle: (content: string) => ipcRenderer.invoke('chat:generateTitle', content),
@@ -19,13 +20,16 @@ const api = {
     onToolCall: (cb: (e: unknown) => void) => ipcRenderer.on('chat:tool-call', (_, e) => cb(e)),
     onToolCallResult: (cb: (e: unknown) => void) =>
       ipcRenderer.on('chat:tool-call-result', (_, e) => cb(e)),
+    onAgentStatus: (cb: (e: unknown) => void) =>
+      ipcRenderer.on('agent:status', (_, e) => cb(e)),
     offAll: () => {
       ;[
         'chat:chunk',
         'chat:done',
         'chat:error',
         'chat:tool-call',
-        'chat:tool-call-result'
+        'chat:tool-call-result',
+        'agent:status'
       ].forEach((ch) => ipcRenderer.removeAllListeners(ch))
     }
   },
@@ -46,6 +50,17 @@ const api = {
   settings: {
     get: () => ipcRenderer.invoke('settings:get'),
     set: (partial: Record<string, unknown>) => ipcRenderer.invoke('settings:set', partial),
+
+    listProviderKeys: () => ipcRenderer.invoke('settings:listProviderKeys'),
+    saveProviderKey: (provider: string, key: string) =>
+      ipcRenderer.invoke('settings:saveProviderKey', provider, key),
+    hasProviderKey: (provider: string) =>
+      ipcRenderer.invoke('settings:hasProviderKey', provider),
+    testProviderKey: (provider: string) =>
+      ipcRenderer.invoke('settings:testProviderKey', provider),
+    deleteProviderKey: (provider: string) =>
+      ipcRenderer.invoke('settings:deleteProviderKey', provider),
+
     saveApiKey: (key: string) => ipcRenderer.invoke('settings:saveApiKey', key),
     hasApiKey: () => ipcRenderer.invoke('settings:hasApiKey'),
     testApiKey: () => ipcRenderer.invoke('settings:testApiKey'),
@@ -57,8 +72,18 @@ const api = {
 
   model: {
     list: () => ipcRenderer.invoke('model:list'),
+    listProviders: () => ipcRenderer.invoke('model:listProviders'),
     getActive: () => ipcRenderer.invoke('model:getActive'),
-    setActive: (id: string) => ipcRenderer.invoke('model:setActive', id)
+    setActive: (id: string) => ipcRenderer.invoke('model:setActive', id),
+    addCustom: (model: {
+      id: string
+      name: string
+      provider?: string
+      contextWindow: number
+      supportsTools: boolean
+      supportsVision: boolean
+    }) => ipcRenderer.invoke('model:addCustom', model),
+    removeCustom: (id: string) => ipcRenderer.invoke('model:removeCustom', id)
   },
 
   skills: {
@@ -147,11 +172,26 @@ const api = {
     writeText: (text: string) => ipcRenderer.invoke('clipboard:writeText', text)
   },
 
+  window: {
+    minimize: () => ipcRenderer.invoke('window:minimize'),
+    maximizeToggle: () => ipcRenderer.invoke('window:maximizeToggle'),
+    close: () => ipcRenderer.invoke('window:close'),
+    isMaximized: () => ipcRenderer.invoke('window:isMaximized'),
+    onMaximizedChanged: (cb: (maximized: boolean) => void): (() => void) => {
+      const handler = (_: unknown, maximized: boolean) => cb(maximized)
+      ipcRenderer.on('window:maximizedChanged', handler)
+      return () => {
+        ipcRenderer.removeListener('window:maximizedChanged', handler)
+      }
+    }
+  },
+
   app: {
     onError: (cb: (e: { message: string }) => void) =>
       ipcRenderer.on('app:error', (_, e) => cb(e)),
     onWarning: (cb: (e: { message: string }) => void) =>
-      ipcRenderer.on('app:warning', (_, e) => cb(e))
+      ipcRenderer.on('app:warning', (_, e) => cb(e)),
+    getWorkingFolder: () => ipcRenderer.invoke('app:getWorkingFolder')
   }
 }
 

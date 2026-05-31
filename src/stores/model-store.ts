@@ -10,7 +10,7 @@ interface ModelState {
 
 export const useModelStore = create<ModelState>((set) => ({
   models: [],
-  activeModel: 'deepseek-chat',
+  activeModel: 'deepseek-v4-pro',
 
   loadModels: async () => {
     const [modelsResult, activeResult] = await Promise.all([

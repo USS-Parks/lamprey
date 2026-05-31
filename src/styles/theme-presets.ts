@@ -1,6 +1,51 @@
-import type { ThemePreset, ThemePresetId } from '@/lib/types'
+import type { ThemeMode, ThemePreset, ThemePresetId, ThemePresetTokens } from '@/lib/types'
 
 export const DEFAULT_PRESET_ID: ThemePresetId = 'lamprey-default'
+export const DEFAULT_THEME_MODE: ThemeMode = 'dark'
+
+function tintToward(hex: string, amount: number): string {
+  const clean = hex.replace('#', '')
+  const r = parseInt(clean.slice(0, 2), 16)
+  const g = parseInt(clean.slice(2, 4), 16)
+  const b = parseInt(clean.slice(4, 6), 16)
+  const tr = Math.round(r + (255 - r) * amount)
+  const tg = Math.round(g + (255 - g) * amount)
+  const tb = Math.round(b + (255 - b) * amount)
+  const toHex = (n: number): string => n.toString(16).padStart(2, '0')
+  return `#${toHex(tr)}${toHex(tg)}${toHex(tb)}`
+}
+
+function shadeToward(hex: string, amount: number): string {
+  const clean = hex.replace('#', '')
+  const r = parseInt(clean.slice(0, 2), 16)
+  const g = parseInt(clean.slice(2, 4), 16)
+  const b = parseInt(clean.slice(4, 6), 16)
+  const tr = Math.round(r * (1 - amount))
+  const tg = Math.round(g * (1 - amount))
+  const tb = Math.round(b * (1 - amount))
+  const toHex = (n: number): string => n.toString(16).padStart(2, '0')
+  return `#${toHex(tr)}${toHex(tg)}${toHex(tb)}`
+}
+
+function buildLightTokens(dark: ThemePresetTokens): ThemePresetTokens {
+  // Use the preset's accent to lightly tint the surfaces so each preset still
+  // feels distinct in light mode, without overwhelming the content.
+  return {
+    bgPrimary: '#ffffff',
+    bgSecondary: tintToward(dark.accent, 0.94),
+    bgTertiary: tintToward(dark.accent, 0.88),
+    border: tintToward(dark.accent, 0.78),
+    textPrimary: '#0f1115',
+    textSecondary: '#4a5160',
+    textMuted: '#8a92a0',
+    accent: shadeToward(dark.accent, 0.12),
+    accentDim: tintToward(dark.accent, 0.82),
+    success: shadeToward(dark.success, 0.1),
+    warning: shadeToward(dark.warning, 0.1),
+    error: shadeToward(dark.error, 0.05),
+    codeBg: tintToward(dark.accent, 0.92)
+  }
+}
 
 export const THEME_PRESETS: ThemePreset[] = [
   {
@@ -154,4 +199,11 @@ export const THEME_PRESETS: ThemePreset[] = [
 
 export function getPreset(id: ThemePresetId | undefined): ThemePreset {
   return THEME_PRESETS.find((p) => p.id === id) ?? THEME_PRESETS[0]
+}
+
+export function getActiveTokens(preset: ThemePreset, mode: ThemeMode): ThemePresetTokens {
+  if (mode === 'light') {
+    return preset.lightTokens ?? buildLightTokens(preset.tokens)
+  }
+  return preset.tokens
 }

@@ -45,6 +45,11 @@ function ModelRow({
           )}
         </div>
         <div className="mt-1 flex flex-wrap items-center gap-1 text-[10px]">
+          {model.provider && (
+            <span className="rounded bg-[var(--bg-primary)] px-1.5 py-0.5 font-mono uppercase tracking-wider text-[var(--text-muted)]">
+              {model.provider}
+            </span>
+          )}
           <span className="rounded bg-[var(--bg-primary)] px-1.5 py-0.5 text-[var(--text-secondary)]">
             {formatContext(model.contextWindow)} ctx
           </span>
@@ -62,7 +67,7 @@ function ModelRow({
               Vision
             </span>
           )}
-          {model.id === 'deepseek-reasoner' && (
+          {model.isReasoner && (
             <span className="rounded bg-[var(--accent-dim)] px-1.5 py-0.5 text-[var(--accent)]">
               Reasoning
             </span>
@@ -82,8 +87,8 @@ export function ModelSwitcher() {
   const ref = useRef<HTMLDivElement>(null)
 
   const active = models.find((m) => m.id === activeModel)
-  const fallbackName = activeModel === 'deepseek-reasoner' ? 'DeepSeek R1' : 'DeepSeek V3'
-  const activeName = active?.name ?? fallbackName
+  const activeName = active?.name ?? activeModel
+  const activeIsReasoner = !!active?.isReasoner
 
   useEffect(() => {
     if (!open) return
@@ -104,8 +109,8 @@ export function ModelSwitcher() {
       <button
         onClick={() => setOpen((v) => !v)}
         title={
-          activeModel === 'deepseek-reasoner'
-            ? 'R1 does not support tool use. MCP tools unavailable while R1 is active.'
+          activeIsReasoner
+            ? 'Reasoner does not support tool use. MCP tools unavailable while this model is active.'
             : 'Switch model'
         }
         className="flex items-center gap-1.5 rounded border border-[var(--border)] bg-[var(--bg-tertiary)] px-2 py-1 font-mono text-xs text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]"
@@ -116,10 +121,10 @@ export function ModelSwitcher() {
         </svg>
       </button>
 
-      {activeModel === 'deepseek-reasoner' && (
+      {activeIsReasoner && (
         <span
           className="ml-2 font-mono text-[10px] text-[var(--warning)]"
-          title="R1 does not support tool use. MCP tools unavailable while R1 is active."
+          title="Reasoner models do not support tool use. MCP tools unavailable while active."
         >
           No tools
         </span>
@@ -135,17 +140,35 @@ export function ModelSwitcher() {
               ? models
               : [
                   {
-                    id: 'deepseek-chat',
-                    name: 'DeepSeek V3',
-                    contextWindow: 65536,
+                    id: 'deepseek-v4-pro',
+                    name: 'DeepSeek V4 Pro',
+                    provider: 'deepseek',
+                    contextWindow: 131072,
                     supportsTools: true,
                     supportsVision: false
                   } as ModelInfo,
                   {
-                    id: 'deepseek-reasoner',
-                    name: 'DeepSeek R1',
-                    contextWindow: 65536,
-                    supportsTools: false,
+                    id: 'deepseek-v4-flash',
+                    name: 'DeepSeek V4 Flash',
+                    provider: 'deepseek',
+                    contextWindow: 131072,
+                    supportsTools: true,
+                    supportsVision: false
+                  } as ModelInfo,
+                  {
+                    id: 'gemma-3-27b-it',
+                    name: 'Gemma 3 27B',
+                    provider: 'google',
+                    contextWindow: 131072,
+                    supportsTools: true,
+                    supportsVision: true
+                  } as ModelInfo,
+                  {
+                    id: 'qwen3-coder-plus',
+                    name: 'Qwen3 Coder Plus',
+                    provider: 'dashscope',
+                    contextWindow: 1000000,
+                    supportsTools: true,
                     supportsVision: false
                   } as ModelInfo
                 ]

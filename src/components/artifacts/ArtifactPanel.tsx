@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import codeWindowIconUrl from '@assets/Lamprey Code Window Icon.png'
+import { useThemedIcon } from '@/lib/themed-icon'
+import codeWindowLight from '@assets/Lamprey Code Window Icon.png'
+import codeWindowDark from '@assets/Lamprey Code Window Icon Dark View.png'
 
 interface ArtifactPanelProps {
   artifactType: string | null
@@ -12,6 +14,7 @@ export function ArtifactPanel({ artifactType, artifactSource, onClose }: Artifac
   const [panelWidth, setPanelWidth] = useState(420)
   const dragging = useRef(false)
   const [copied, setCopied] = useState(false)
+  const codeWindowIconUrl = useThemedIcon(codeWindowLight, codeWindowDark)
 
   const reportBounds = useCallback(() => {
     if (!panelRef.current || !window.api) return
@@ -94,7 +97,7 @@ export function ArtifactPanel({ artifactType, artifactSource, onClose }: Artifac
         {/* Header */}
         <div className="flex h-12 items-center justify-between px-4 border-b border-[var(--border)]">
           <div className="flex items-center gap-2">
-            <img src={codeWindowIconUrl} alt="" aria-hidden className="h-5 w-5 object-contain" />
+            <img src={codeWindowIconUrl} alt="" aria-hidden className="icon-asset h-9 w-9 object-contain" />
             <span className="text-sm font-medium text-[var(--text-secondary)]">Artifact</span>
             {artifactType && (
               <span className="rounded bg-[var(--accent-dim)] px-1.5 py-0.5 text-[10px] font-mono text-[var(--accent)]">

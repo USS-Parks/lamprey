@@ -1,5 +1,5 @@
 import { app, BrowserWindow, ipcMain, session, shell, screen, clipboard } from 'electron'
-import { join } from 'path'
+import { basename, join } from 'path'
 import { is } from '@electron-toolkit/utils'
 import { registerAllIpcHandlers } from './ipc'
 import { closeDb } from './services/database'
@@ -92,7 +92,7 @@ function schedulePersistBounds(win: BrowserWindow): void {
 
 function resolveSplashPath(): string {
   if (app.isPackaged) return join(process.resourcesPath, 'splash.png')
-  return join(app.getAppPath(), 'ASSETS', 'LAMPREY MAI LOGO FINAL.png')
+  return join(app.getAppPath(), 'ASSETS', 'Lamprey Startup FINAL.png')
 }
 
 function createSplashWindow(): void {
@@ -179,6 +179,12 @@ function createWindow(): void {
   mainWindow.on('hide', () => refreshTrayMenu())
   mainWindow.on('minimize', () => refreshTrayMenu())
   mainWindow.on('restore', () => refreshTrayMenu())
+  mainWindow.on('maximize', () => {
+    mainWindow?.webContents.send('window:maximizedChanged', true)
+  })
+  mainWindow.on('unmaximize', () => {
+    mainWindow?.webContents.send('window:maximizedChanged', false)
+  })
 
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
     mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
@@ -226,6 +232,41 @@ app.whenReady().then(() => {
     if (typeof text !== 'string') return { success: false, error: 'text must be a string' }
     clipboard.writeText(text)
     return { success: true, data: null }
+  })
+
+  ipcMain.handle('window:minimize', () => {
+    mainWindow?.minimize()
+    return { success: true, data: null }
+  })
+
+  ipcMain.handle('window:maximizeToggle', () => {
+    if (!mainWindow) return { success: true, data: false }
+    if (mainWindow.isMaximized()) mainWindow.unmaximize()
+    else mainWindow.maximize()
+    return { success: true, data: mainWindow.isMaximized() }
+  })
+
+  ipcMain.handle('window:close', () => {
+    mainWindow?.close()
+    return { success: true, data: null }
+  })
+
+  ipcMain.handle('window:isMaximized', () => {
+    return { success: true, data: mainWindow?.isMaximized() ?? false }
+  })
+
+  ipcMain.handle('app:getWorkingFolder', () => {
+    // In dev, app.getAppPath() returns the project root (e.g. "Lamprey Harness").
+    // In a packaged build it returns the path to app.asar — fall back to the
+    // executable's parent folder, which is the install directory the user sees.
+    let raw = app.getAppPath()
+    let name = basename(raw)
+    if (name === 'app.asar' || name === 'app') {
+      raw = join(app.getPath('exe'), '..')
+      name = basename(raw)
+      if (!name) name = app.getName()
+    }
+    return { success: true, data: { name, fullPath: raw } }
   })
 
   registerAllIpcHandlers()

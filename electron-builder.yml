@@ -9,7 +9,11 @@ directories:
 files:
   - out/**/*
   - package.json
-  - "!node_modules/**/*"
+  # Production deps (openai, @modelcontextprotocol/sdk, better-sqlite3, chokidar,
+  # gray-matter, pdf-parse, @babel/standalone) are externalized by
+  # electron-vite's externalizeDepsPlugin and require()d at runtime, so
+  # node_modules must NOT be excluded. electron-builder smart-includes
+  # only the production dependencies declared in package.json.
 
 asarUnpack:
   - "**/*.node"
@@ -36,6 +40,10 @@ win:
   target:
     - nsis
   artifactName: ${productName}-${version}-${arch}.${ext}
+  # Skip the sign-and-edit step entirely. We aren't code-signing, and the
+  # winCodeSign archive contains macOS symlinks that Windows can't extract
+  # without Developer Mode / admin (A required privilege is not held by the client).
+  signAndEditExecutable: false
 
 nsis:
   oneClick: false
@@ -43,8 +51,9 @@ nsis:
   createDesktopShortcut: true
   createStartMenuShortcut: true
   shortcutName: Lamprey
-  installerSidebar: resources/installer-sidebar.png
-  uninstallerSidebar: resources/installer-sidebar.png
+  # No custom sidebar/header — NSIS expects 164x314 BMP for sidebar and
+  # 150x57 for header. Until we ship pixel-correct bitmaps the default
+  # NSIS modern UI renders sharper than a downscaled wide-aspect image.
 
 linux:
   icon: resources/icon.png

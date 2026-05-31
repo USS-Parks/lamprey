@@ -8,6 +8,7 @@ import type {
 } from '@/lib/types'
 import { useSettingsStore } from '@/stores/settings-store'
 import { useModelStore } from '@/stores/model-store'
+import { useAgentStore } from '@/stores/agent-store'
 import { toast } from '@/stores/toast-store'
 
 export interface ToolCallState {
@@ -78,7 +79,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   messages: [],
   isStreaming: false,
   streamingContent: '',
-  activeModel: 'deepseek-chat',
+  activeModel: 'deepseek-v4-pro',
   toolCalls: [],
   pendingAttachments: [],
   attachmentsProcessing: false,
@@ -170,11 +171,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
       pendingAttachments: []
     }))
 
+    const agentMode = useAgentStore.getState().mode
     const result = await window.api.chat.send({
       conversationId,
       model: state.activeModel,
       content: augmentedContent,
-      activeSkillIds
+      activeSkillIds,
+      agentMode
     })
 
     if (result.success && result.data.conversationId !== conversationId) {
@@ -226,7 +229,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
     ).length
 
     if (activeId && realMessageCount > 0) {
-      const modelName = model === 'deepseek-reasoner' ? 'DeepSeek R1' : 'DeepSeek V3'
+      const info = useModelStore.getState().models.find((m) => m.id === model)
+      const modelName = info?.name ?? model
       const marker = `— Switched to ${modelName} —`
       const result = await window.api.conversation.appendSystem(activeId, marker)
       if (result.success && result.data) {

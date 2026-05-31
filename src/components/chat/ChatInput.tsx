@@ -1,12 +1,23 @@
 import { useState, useRef, useEffect } from 'react'
 import { useChatStore } from '@/stores/chat-store'
-import { useSkillsStore } from '@/stores/skills-store'
-import { useMcpStore } from '@/stores/mcp-store'
-import { useUiStore } from '@/stores/ui-store'
+import { useModelStore } from '@/stores/model-store'
+import { useSettingsStore } from '@/stores/settings-store'
+import { useAgentStore } from '@/stores/agent-store'
+import { useUiStore, type PermissionsMode } from '@/stores/ui-store'
 import { toast } from '@/stores/toast-store'
-import type { ProcessedFile } from '@/lib/types'
-import addFileIconUrl from '@assets/Lamprey Add File Icon.png'
-import sendIconUrl from '@assets/Lamprey Prompt Enter Icon.png'
+import { useThemedIcon } from '@/lib/themed-icon'
+import type { ModelInfo, ProcessedFile } from '@/lib/types'
+
+import defaultAccessLight from '@assets/Lamprey Default Access Icon.png'
+import defaultAccessDark from '@assets/Lamprey Default Acces Icon Dark View.png'
+import autoReviewLight from '@assets/Lamprey Auto-Review Icon.png'
+import autoReviewDark from '@assets/Lamprey Auto-Review Icon Dark View.png'
+import fullAccessLight from '@assets/Lamprey Full Access Icon.png'
+import fullAccessDark from '@assets/Lamprey Full Access Icon Dark View.png'
+import micLight from '@assets/Lamprey Microphone Icon.png'
+import micDark from '@assets/Lamprey Microphone Icon Dark View.png'
+import sendLight from '@assets/Lamprey Prompt Enter Icon.png'
+import sendDark from '@assets/Lamprey Send Prompt Icon Dark View.png'
 
 interface ChatInputProps {
   onSend: (content: string) => void
@@ -16,6 +27,19 @@ interface ChatInputProps {
 }
 
 const LONG_PASTE_THRESHOLD = 500
+
+interface PermissionOption {
+  id: PermissionsMode
+  label: string
+  light: string
+  dark: string
+}
+
+const PERMISSION_OPTIONS: PermissionOption[] = [
+  { id: 'default', label: 'Default permissions', light: defaultAccessLight, dark: defaultAccessDark },
+  { id: 'auto-review', label: 'Auto Review', light: autoReviewLight, dark: autoReviewDark },
+  { id: 'full', label: 'Full Access', light: fullAccessLight, dark: fullAccessDark }
+]
 
 function looksLikeCode(text: string): boolean {
   if (text.length < LONG_PASTE_THRESHOLD) return false
@@ -38,17 +62,190 @@ function blobToDataURL(blob: Blob): Promise<string> {
   })
 }
 
+function ChevronDown() {
+  return (
+    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M6 9l6 6 6-6" />
+    </svg>
+  )
+}
+
+interface DropdownButtonProps {
+  open: boolean
+  onToggle: () => void
+  children: React.ReactNode
+  title?: string
+}
+
+function DropdownButton({ open, onToggle, children, title }: DropdownButtonProps) {
+  return (
+    <button
+      onClick={onToggle}
+      title={title}
+      aria-expanded={open}
+      className="flex items-center gap-1.5 rounded-full px-2 py-1 text-xs text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]"
+    >
+      {children}
+      <ChevronDown />
+    </button>
+  )
+}
+
+function useClickOutside(ref: React.RefObject<HTMLElement | null>, onOutside: () => void, active: boolean) {
+  useEffect(() => {
+    if (!active) return
+    const onMouseDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) onOutside()
+    }
+    window.addEventListener('mousedown', onMouseDown)
+    return () => window.removeEventListener('mousedown', onMouseDown)
+  }, [active, onOutside, ref])
+}
+
+function PermissionsDropdown() {
+  const mode = useUiStore((s) => s.permissionsMode)
+  const setMode = useUiStore((s) => s.setPermissionsMode)
+  const [open, setOpen] = useState(false)
+  const wrapRef = useRef<HTMLDivElement>(null)
+  const themeMode = useSettingsStore((s) => s.settings.themeMode)
+  useClickOutside(wrapRef, () => setOpen(false), open)
+
+  const active = PERMISSION_OPTIONS.find((o) => o.id === mode) ?? PERMISSION_OPTIONS[0]
+  const activeIcon = themeMode === 'dark' ? active.dark : active.light
+
+  return (
+    <div ref={wrapRef} className="relative">
+      <DropdownButton open={open} onToggle={() => setOpen((v) => !v)} title="Permissions mode">
+        <img src={activeIcon} alt="" aria-hidden className="icon-asset h-[25px] w-[25px] object-contain" />
+        <span>{active.label}</span>
+      </DropdownButton>
+      {open && (
+        <div className="absolute bottom-full left-0 z-30 mb-1 w-52 overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)] shadow-xl">
+          {PERMISSION_OPTIONS.map((opt) => {
+            const icon = themeMode === 'dark' ? opt.dark : opt.light
+            return (
+              <button
+                key={opt.id}
+                onClick={() => {
+                  setMode(opt.id)
+                  setOpen(false)
+                }}
+                className={`flex w-full items-center gap-2 px-3 py-2 text-left text-xs transition-colors ${
+                  opt.id === mode
+                    ? 'bg-[var(--bg-tertiary)] text-[var(--text-primary)]'
+                    : 'text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]'
+                }`}
+              >
+                <img src={icon} alt="" aria-hidden className="icon-asset h-[25px] w-[25px] object-contain" />
+                <span>{opt.label}</span>
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function AgentModeToggle() {
+  const mode = useAgentStore((s) => s.mode)
+  const setMode = useAgentStore((s) => s.setMode)
+  const updateSettings = useSettingsStore((s) => s.updateSettings)
+
+  const handleToggle = async () => {
+    const next = mode === 'multi' ? 'single' : 'multi'
+    setMode(next)
+    await updateSettings({ agentMode: next })
+    toast.info(next === 'multi' ? 'Multi-agent ON · Planner→Coder→Reviewer' : 'Single-model mode')
+  }
+
+  return (
+    <button
+      onClick={handleToggle}
+      title={
+        mode === 'multi'
+          ? 'Multi-agent pipeline active. Click to switch to single-model.'
+          : 'Single-model. Click to enable Planner→Coder→Reviewer pipeline.'
+      }
+      className={`flex items-center gap-1.5 rounded-full px-2 py-1 text-xs transition-colors ${
+        mode === 'multi'
+          ? 'bg-[var(--accent-dim)] text-[var(--accent)] hover:opacity-90'
+          : 'text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]'
+      }`}
+    >
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+        <circle cx="6" cy="6" r="2.5" />
+        <circle cx="18" cy="6" r="2.5" />
+        <circle cx="12" cy="18" r="2.5" />
+        <path d="M6 8.5l5.2 8M18 8.5l-5.2 8M8 6h8" />
+      </svg>
+      <span className="font-medium">{mode === 'multi' ? 'Multi-agent' : 'Single model'}</span>
+    </button>
+  )
+}
+
+function ModelDropdown() {
+  const activeModel = useChatStore((s) => s.activeModel)
+  const setModel = useChatStore((s) => s.setModel)
+  const allModels = useModelStore((s) => s.models)
+  const [open, setOpen] = useState(false)
+  const wrapRef = useRef<HTMLDivElement>(null)
+  useClickOutside(wrapRef, () => setOpen(false), open)
+
+  const fallback: ModelInfo[] = [
+    { id: 'deepseek-v4-pro', name: 'DeepSeek V4 Pro', provider: 'deepseek', contextWindow: 131072, supportsTools: true, supportsVision: false },
+    { id: 'deepseek-v4-flash', name: 'DeepSeek V4 Flash', provider: 'deepseek', contextWindow: 131072, supportsTools: true, supportsVision: false },
+    { id: 'gemma-3-27b-it', name: 'Gemma 3 27B', provider: 'google', contextWindow: 131072, supportsTools: true, supportsVision: true },
+    { id: 'qwen3-coder-plus', name: 'Qwen3 Coder Plus', provider: 'dashscope', contextWindow: 1000000, supportsTools: true, supportsVision: false }
+  ]
+  const models = allModels.length > 0 ? allModels : fallback
+  const active = models.find((m) => m.id === activeModel) ?? models[0]
+
+  return (
+    <div ref={wrapRef} className="relative">
+      <DropdownButton open={open} onToggle={() => setOpen((v) => !v)} title="Switch model">
+        <span className="font-medium">{active.name}</span>
+      </DropdownButton>
+      {open && (
+        <div className="absolute bottom-full right-0 z-30 mb-1 w-60 overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)] shadow-xl">
+          {models.map((m) => (
+            <button
+              key={m.id}
+              onClick={() => {
+                setOpen(false)
+                void setModel(m.id)
+              }}
+              className={`flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-xs transition-colors ${
+                m.id === activeModel
+                  ? 'bg-[var(--bg-tertiary)] text-[var(--text-primary)]'
+                  : 'text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]'
+              }`}
+            >
+              <span className="font-medium">{m.name}</span>
+              {m.id === activeModel && (
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="text-[var(--accent)]" aria-hidden>
+                  <path d="M20 6L9 17l-5-5" />
+                </svg>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function ChatInput({ onSend, onCancel, isStreaming, disabled }: ChatInputProps) {
   const [content, setContent] = useState('')
   const [pasteOffer, setPasteOffer] = useState<string | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const addAttachments = useChatStore((s) => s.addAttachments)
   const setProcessing = useChatStore((s) => s.setAttachmentsProcessing)
-  const activeModel = useChatStore((s) => s.activeModel)
-  const activeSkillIds = useSkillsStore((s) => s.activeSkillIds)
-  const mcpServers = useMcpStore((s) => s.servers)
   const composeSeedToken = useUiStore((s) => s.composeSeedToken)
   const consumeComposeDraft = useUiStore((s) => s.consumeComposeDraft)
+
+  const micIcon = useThemedIcon(micLight, micDark)
+  const sendIcon = useThemedIcon(sendLight, sendDark)
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -65,17 +262,12 @@ export function ChatInput({ onSend, onCancel, isStreaming, disabled }: ChatInput
     const ta = textareaRef.current
     if (ta) {
       ta.focus()
-      // Place cursor at end so the user can keep typing.
       requestAnimationFrame(() => {
         const len = ta.value.length
         ta.setSelectionRange(len, len)
       })
     }
   }, [composeSeedToken, consumeComposeDraft])
-
-  const modelLabel = activeModel === 'deepseek-reasoner' ? 'DeepSeek R1' : 'DeepSeek V3'
-  const skillCount = activeSkillIds.length
-  const connectedMcp = mcpServers.filter((s) => s.status === 'connected')
 
   const handleSubmit = () => {
     const trimmed = content.trim()
@@ -170,34 +362,12 @@ export function ChatInput({ onSend, onCancel, isStreaming, disabled }: ChatInput
     setPasteOffer(null)
   }
 
+  const canSend = content.trim().length > 0 && !disabled && !isStreaming
+
   return (
-    <div className="border-t border-[var(--border)] bg-[var(--bg-secondary)] px-4 py-3">
-      <div className="mb-1.5 flex flex-wrap items-center gap-1.5 px-1 font-mono text-[10px] text-[var(--text-muted)]">
-        <span className="inline-flex items-center gap-1 rounded bg-[var(--bg-tertiary)] px-1.5 py-0.5 text-[var(--text-secondary)]">
-          <span aria-hidden className="inline-block h-1.5 w-1.5 rounded-full bg-[var(--accent)]" />
-          {modelLabel}
-        </span>
-        <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 ${
-          skillCount > 0
-            ? 'bg-[var(--accent-dim)] text-[var(--accent)]'
-            : 'bg-[var(--bg-tertiary)] text-[var(--text-muted)]'
-        }`}>
-          {skillCount > 0
-            ? `${skillCount} skill${skillCount === 1 ? '' : 's'} active`
-            : 'No skills'}
-        </span>
-        <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 ${
-          connectedMcp.length > 0
-            ? 'bg-[var(--accent-dim)] text-[var(--accent)]'
-            : 'bg-[var(--bg-tertiary)] text-[var(--text-muted)]'
-        }`}>
-          {connectedMcp.length > 0
-            ? connectedMcp.map((s) => s.name).join(' · ')
-            : 'No MCP'}
-        </span>
-      </div>
+    <div className="w-full">
       {pasteOffer && (
-        <div className="mb-2 flex flex-wrap items-center gap-2 rounded border border-[var(--accent)] bg-[var(--accent-dim)] px-3 py-2 text-xs text-[var(--text-primary)]">
+        <div className="mb-2 flex w-full flex-wrap items-center gap-2 rounded-2xl border border-[var(--accent)] bg-[var(--accent-dim)] px-3 py-2 text-xs text-[var(--text-primary)]">
           <span className="flex-1">
             That looks like code ({pasteOffer.length.toLocaleString()} chars). Attach it as a file or
             paste inline?
@@ -223,45 +393,75 @@ export function ChatInput({ onSend, onCancel, isStreaming, disabled }: ChatInput
           </button>
         </div>
       )}
-      <div className="flex items-end gap-2 rounded-lg border border-[var(--border)] bg-[var(--bg-primary)] px-3 py-2">
-        <button
-          onClick={handlePickerClick}
-          disabled={disabled || isStreaming}
-          title="Attach files"
-          className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded transition-colors hover:bg-[var(--bg-tertiary)] disabled:opacity-40"
-        >
-          <img src={addFileIconUrl} alt="Attach" className="h-6 w-6 object-contain" />
-        </button>
+
+      <div className="flex w-full flex-col gap-2 rounded-3xl border border-[var(--border)] bg-[var(--bg-secondary)] px-4 pt-3 pb-2 shadow-lg backdrop-blur-sm">
         <textarea
           ref={textareaRef}
+          data-chat-input
           value={content}
           onChange={(e) => setContent(e.target.value)}
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}
-          placeholder="Send a message…"
+          placeholder=""
           rows={1}
           disabled={disabled}
-          className="max-h-[200px] min-h-[24px] flex-1 resize-none bg-transparent text-sm text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]"
+          className="max-h-[200px] min-h-[28px] w-full resize-none bg-transparent text-sm leading-relaxed text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]"
         />
-        {isStreaming ? (
+
+        <div className="flex items-center gap-1">
           <button
-            onClick={onCancel}
-            className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded bg-[var(--error)] text-white transition-colors hover:opacity-80"
+            onClick={handlePickerClick}
+            disabled={disabled || isStreaming}
+            title="Attach file"
+            aria-label="Attach file"
+            className="flex h-9 w-9 items-center justify-center rounded-full text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)] disabled:opacity-40"
           >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-              <rect x="4" y="4" width="16" height="16" rx="2" />
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <line x1="12" y1="5" x2="12" y2="19" />
+              <line x1="5" y1="12" x2="19" y2="12" />
             </svg>
           </button>
-        ) : (
+
+          <PermissionsDropdown />
+
+          <AgentModeToggle />
+
+          <div className="flex-1" />
+
+          <ModelDropdown />
+
           <button
-            onClick={handleSubmit}
-            disabled={!content.trim() || disabled}
-            title="Send"
-            className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded transition-transform hover:scale-105 disabled:opacity-30"
+            onClick={() => toast.info('Voice input coming soon')}
+            title="Voice input"
+            aria-label="Voice input"
+            className="flex h-9 w-9 items-center justify-center rounded-full text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]"
           >
-            <img src={sendIconUrl} alt="Send" className="h-7 w-7 object-contain" />
+            <img src={micIcon} alt="" aria-hidden className="icon-asset h-[25px] w-[25px] object-contain" />
           </button>
-        )}
+
+          {isStreaming ? (
+            <button
+              onClick={onCancel}
+              title="Stop streaming"
+              aria-label="Stop streaming"
+              className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--error)] text-white transition-colors hover:opacity-80"
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                <rect x="4" y="4" width="16" height="16" rx="2" />
+              </svg>
+            </button>
+          ) : (
+            <button
+              onClick={handleSubmit}
+              disabled={!canSend}
+              title="Send (Enter)"
+              aria-label="Send"
+              className="flex h-10 w-10 items-center justify-center rounded-full bg-[var(--bg-tertiary)] transition-all hover:scale-105 hover:bg-[var(--accent)] disabled:opacity-40 disabled:hover:scale-100 disabled:hover:bg-[var(--bg-tertiary)]"
+            >
+              <img src={sendIcon} alt="" aria-hidden className="icon-asset h-[30px] w-[30px] object-contain" />
+            </button>
+          )}
+        </div>
       </div>
     </div>
   )

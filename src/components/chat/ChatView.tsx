@@ -2,10 +2,10 @@ import { useChatStore } from '@/stores/chat-store'
 import { useSkillsStore } from '@/stores/skills-store'
 import { MessageList } from './MessageList'
 import { ChatInput } from './ChatInput'
-import { MCPStatusBar } from '@/components/mcp/MCPStatusBar'
 import { AttachmentPreview } from './AttachmentPreview'
 import { FileDropZone } from './FileDropZone'
 import { WelcomeScreen } from './WelcomeScreen'
+import { AgentRunBanner } from './AgentRunBanner'
 
 export function ChatView() {
   const { messages, isStreaming, streamingContent, activeConversationId, sendMessage, cancelStream, toolCalls, activeModel } = useChatStore()
@@ -16,17 +16,12 @@ export function ChatView() {
   }
 
   return (
-    <div className="relative flex flex-1 flex-col">
+    <div className="relative flex flex-1 flex-col overflow-hidden">
       <FileDropZone />
-      {!activeConversationId ? (
-        <>
+      <div className="flex flex-1 flex-col overflow-hidden pb-[220px]">
+        {!activeConversationId ? (
           <WelcomeScreen />
-          <MCPStatusBar />
-          <AttachmentPreview />
-          <ChatInput onSend={handleSend} onCancel={cancelStream} isStreaming={false} />
-        </>
-      ) : (
-        <>
+        ) : (
           <MessageList
             messages={messages}
             isStreaming={isStreaming}
@@ -34,11 +29,20 @@ export function ChatView() {
             toolCalls={toolCalls}
             activeModel={activeModel}
           />
-          <MCPStatusBar />
+        )}
+      </div>
+
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex flex-col items-center px-8 pb-[60px]">
+        <div className="pointer-events-auto w-full max-w-3xl">
+          <AgentRunBanner />
           <AttachmentPreview />
-          <ChatInput onSend={handleSend} onCancel={cancelStream} isStreaming={isStreaming} />
-        </>
-      )}
+          <ChatInput
+            onSend={handleSend}
+            onCancel={cancelStream}
+            isStreaming={!!activeConversationId && isStreaming}
+          />
+        </div>
+      </div>
     </div>
   )
 }

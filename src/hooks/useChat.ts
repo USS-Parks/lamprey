@@ -1,5 +1,7 @@
 import { useEffect } from 'react'
 import { useChatStore } from '@/stores/chat-store'
+import { useAgentStore } from '@/stores/agent-store'
+import type { AgentStatusEvent } from '@/lib/types'
 
 export function useChat(): void {
   useEffect(() => {
@@ -11,10 +13,12 @@ export function useChat(): void {
 
     window.api.chat.onDone((e) => {
       useChatStore.getState().finishStream(e.message as any)
+      useAgentStore.getState().clearRun()
     })
 
     window.api.chat.onError((e) => {
       useChatStore.getState().streamError(e.error)
+      useAgentStore.getState().clearRun()
     })
 
     window.api.chat.onToolCall((e) => {
@@ -24,6 +28,13 @@ export function useChat(): void {
     window.api.chat.onToolCallResult((e) => {
       useChatStore.getState().updateToolCall(e as any)
     })
+
+    const onAgentStatus = window.api.chat.onAgentStatus
+    if (onAgentStatus) {
+      onAgentStatus((e: unknown) => {
+        useAgentStore.getState().recordStatus(e as AgentStatusEvent)
+      })
+    }
 
     return () => {
       window.api?.chat.offAll()

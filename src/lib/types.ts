@@ -46,12 +46,45 @@ export interface McpServerConfig {
   status: 'disconnected' | 'connecting' | 'connected' | 'error'
 }
 
+export type ProviderId = 'deepseek' | 'google' | 'dashscope'
+
+export interface ProviderInfo {
+  id: ProviderId
+  label: string
+  docsUrl: string
+  hasKey?: boolean
+}
+
+export type ModelTier = 'pro' | 'flash' | 'open' | 'coder' | 'reasoner'
+
 export interface ModelInfo {
   id: string
   name: string
+  provider?: ProviderId
   contextWindow: number
   supportsTools: boolean
   supportsVision: boolean
+  isReasoner?: boolean
+  tier?: ModelTier
+  description?: string
+}
+
+export type AgentRole = 'planner' | 'coder' | 'reviewer' | 'coworker'
+export type AgentMode = 'single' | 'multi'
+
+export interface AgentRoster {
+  planner: string
+  coder: string
+  reviewer: string
+  coworker: string
+}
+
+export interface AgentStatusEvent {
+  conversationId: string
+  role: AgentRole
+  model: string
+  state: 'running' | 'done' | 'error'
+  output?: string
 }
 
 export type ThemePresetId =
@@ -85,7 +118,10 @@ export interface ThemePreset {
   source: string
   swatch: string[]
   tokens: ThemePresetTokens
+  lightTokens?: ThemePresetTokens
 }
+
+export type ThemeMode = 'light' | 'dark'
 
 export interface ModelConfig {
   temperature: number
@@ -104,6 +140,7 @@ export interface WindowBounds {
 export interface AppSettings {
   theme: 'dark'
   themePreset: ThemePresetId
+  themeMode: ThemeMode
   fontSize: number
   defaultModel: string
   sidebarCollapsed: boolean
@@ -112,7 +149,10 @@ export interface AppSettings {
   autoCheckUpdates: boolean
   aiGeneratedTitles: boolean
   modelConfig: Record<string, ModelConfig>
+  customModels: ModelInfo[]
   windowBounds?: WindowBounds
+  agentMode: AgentMode
+  agentRoster: AgentRoster
 }
 
 export const DEFAULT_MODEL_CONFIG: ModelConfig = {
@@ -129,6 +169,7 @@ export interface ChatRequest {
   model: string
   content: string
   activeSkillIds: string[]
+  agentMode?: AgentMode
 }
 
 export interface ChatChunkEvent {

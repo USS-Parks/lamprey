@@ -7,3 +7,5 @@ out/
 lamprey.db
 .opencode/
 SESSION-LOG/
+.claude/
+opencode.jsonc

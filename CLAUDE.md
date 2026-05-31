@@ -1,12 +1,19 @@
 # Lamprey Harness — Claude Code Instructions
 
 ## What This Is
-Electron desktop AI assistant (React 19, TypeScript, electron-vite) powered by DeepSeek API. See `PLANNING/LAMPREY_HARNESS_FINAL.md` for the full 22-prompt build plan (Prompts 1–21 plus 16A).
+Electron desktop **multi-agent coding harness** (React 19, TypeScript, electron-vite). Routes per-model to three providers — DeepSeek (V4 Pro, V4 Flash, V3, R1), Google (Gemma), and Alibaba DashScope (Qwen) — and can run a Planner → Coder → Reviewer pipeline that assigns a different model to each role. See `PLANNING/LAMPREY_HARNESS_FINAL.md` for the original 22-prompt build plan; the post-Prompt-21 "multi-provider revision" extends it.
+
+## Architecture quick-pointers (multi-provider revision)
+- Provider registry + dispatch: `electron/services/providers/registry.ts` — `MODEL_CATALOG`, `chatStream`, `chatOnce`, `validateProviderKey`. Adding a model = append to `MODEL_CATALOG`.
+- Agent orchestration: `electron/ipc/chat.ts` `runMultiAgent()`. System prompts in `electron/services/system-prompt-builder.ts` (`AGENT_ROLE_PROMPTS`, `buildAgentSystemPrompt`).
+- Multi-provider keychain: same `electron/services/keychain.ts` keyed by `deepseek` | `google` | `dashscope`. IPC: `settings:saveProviderKey` / `:test` / `:delete` / `:list`.
+- Agent store: `src/stores/agent-store.ts`. Mode + roster persist via `AppSettings.agentMode` + `agentRoster`.
+- UI surfaces: `src/components/settings/ApiKeySettings.tsx` (multi-provider list), `AgentSettings.tsx` (roster + mode), `chat/AgentRunBanner.tsx` (live pipeline status), `chat/ChatInput.tsx` `AgentModeToggle`.
 
 ## Current State
 - **Prompts 1–20**: Committed and pushed to main
-- **Prompt 21 + ASSETS + visual pass**: Implemented locally. Includes process-level error handlers, source-level security audit, SecurityBanner, README + SKILLS + CONTRIBUTING + LICENSE; ASSETS/* PNGs bound across the UI via `@assets` Vite alias; 3-second splash window now uses `LAMPREY MAI LOGO FINAL.png`; NSIS installer sidebar uses `Lamprey MAI Windows Install Screen.png`. Visual pass redesigns the welcome screen with a centered hero + quick-prompt cards (compose-draft seed channel in ui-store), full-width "+ New Conversation" primary button in Sidebar, and active-context chip row (model · skills · MCP) above ChatInput. Awaiting review and push.
-- **Build plan complete** — remaining work is runtime smoke-testing the packaged installer.
+- **Prompt 21 + ASSETS + visual pass**: Implemented locally (process-level error handlers, SecurityBanner, README/SKILLS/CONTRIBUTING/LICENSE, ASSETS branding, redesigned welcome).
+- **Multi-provider revision (post-21)**: provider registry, Gemma + Qwen support, agent roster + pipeline, multi-key UI. Awaiting review and push.
 - Read `DEVLOG.md` for detailed build history before making changes
 
 ## Build & Run

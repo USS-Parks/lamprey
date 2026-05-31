@@ -424,6 +424,91 @@ CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id
 }
 ```
 
+### 6.1 User-Selectable ArcGIS-Inspired Color Swatch Themes
+
+Lamprey includes six selectable interface themes inspired by ArcGIS color schemes. These themes do not alter the app layout, typography, security posture or component hierarchy. They only remap CSS color tokens used by the renderer.
+
+Theme selection is available in Settings > Appearance and persists in `AppSettings.themePreset`.
+
+Each theme provides:
+- A five-color swatch preview
+- A primary accent
+- A dim accent for selected user messages and active navigation states
+- A warning color
+- A success color
+- An optional visualization palette for charts, tool cards, status indicators and artifact metadata
+
+The default Lamprey theme remains the dark terminal-adjacent base theme.
+
+**Six ArcGIS-Inspired Lamprey Theme Presets**
+
+These six cover distinct visual moods without becoming noisy: blue, orange, purple, inferno, magma and viridis. They are all grounded in named Esri ramps or ArcGIS Colors schemes. Use the phrase "ArcGIS-inspired" in the app and documentation, not "ArcGIS themes." The presets are based on named Esri color ramps, but Lamprey's UI tokens are adapted for a dark desktop AI harness.
+
+| Lamprey Theme Name | ArcGIS Source Scheme | Swatch |
+|---|---|---|
+| Lamprey Blue | Blue 3 | `#eff3ff`, `#bdd7e7`, `#6baed6`, `#3182bd`, `#08519c` |
+| Lamprey Ember | Esri Orange 1 | `#c65a18`, `#f36f20`, `#f7975e`, `#fbc09b`, `#fdd4ba` |
+| Lamprey Violet | Esri Purple 1 | `#57318c`, `#7b5ba9`, `#a085c6`, `#c4afe2`, `#d6c4f1` |
+| Lamprey Inferno | Inferno | `#520d8e`, `#bc2e9a`, `#ff5c6a`, `#ffb71b`, `#ffff64` |
+| Lamprey Magma | Magma | `#481793`, `#b233b9`, `#ff57a5`, `#ffae85`, `#ffffd1` |
+| Lamprey Viridis | Viridis | `#6058be`, `#419ecb`, `#2cdcc6`, `#6fff99`, `#ffff37` |
+
+These values are taken from Esri's published color ramp listings. ArcGIS Pro documentation identifies Inferno, Magma, Plasma and Viridis as scientifically designed schemes intended to reduce data misinterpretation from color.
+
+**TypeScript model additions** (added in Prompt 16A):
+
+Add to `src/lib/types.ts`:
+```typescript
+export type ThemePresetId =
+  | 'lamprey-default'
+  | 'arcgis-blue'
+  | 'arcgis-ember'
+  | 'arcgis-violet'
+  | 'arcgis-inferno'
+  | 'arcgis-magma'
+  | 'arcgis-viridis';
+
+export interface ThemePreset {
+  id: ThemePresetId;
+  name: string;
+  source: string;
+  swatch: string[];
+  tokens: {
+    bgPrimary: string;
+    bgSecondary: string;
+    bgTertiary: string;
+    border: string;
+    textPrimary: string;
+    textSecondary: string;
+    textMuted: string;
+    accent: string;
+    accentDim: string;
+    success: string;
+    warning: string;
+    error: string;
+    codeBg: string;
+  };
+}
+```
+
+Update `AppSettings`:
+```typescript
+interface AppSettings {
+  theme: 'dark';
+  themePreset: ThemePresetId;
+  fontSize: number;
+  defaultModel: string;
+  sidebarCollapsed: boolean;
+  artifactPanelWidth: number;
+  minimizeToTray: boolean;
+  autoCheckUpdates: boolean;
+}
+```
+
+**Theme token file** `src/styles/theme-presets.ts`:
+
+Contains the full `THEME_PRESETS: ThemePreset[]` array with all seven presets (Lamprey Default plus six ArcGIS-inspired). Each preset defines all 13 CSS token overrides adapted for dark desktop use. See Prompt 16A for full implementation.
+
 **Typography:**
 - UI chrome (labels, nav, buttons): `JetBrains Mono` — bundled
 - Chat messages: `IBM Plex Sans`
@@ -474,6 +559,7 @@ CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id
 | 3 — MCP | 10-12 | MCP manager, Google OAuth, Gmail + Drive + Chrome |
 | 4 — Skills | 13-14 | Skill loader, hot reload, GUI editor |
 | 5 — Memory | 15-16 | Memory store, injection, UI polish |
+| 5A — Themes | 16A | ArcGIS-inspired color swatch presets, appearance settings |
 | 6 — Model Mgmt | 17-18 | Model switcher, per-model config, file attachments |
 | 7 — Polish | 19-21 | System tray, shortcuts, packaging, launch prep |
 
@@ -1373,6 +1459,88 @@ VERIFICATION:
   Delete a conversation — toast appears, conversation gone.
   Trigger an API error — error toast appears, app does not crash.
   Log in DEVLOG.md.
+```
+
+---
+
+### PROMPT 16A — ArcGIS-Inspired Theme Presets
+
+```
+WORKING DIRECTORY: C:\Users\17076\Documents\Claude\Lamprey Harness
+PREVIOUS: Conversation history polish and toast system complete.
+
+TASK: Add six ArcGIS-inspired color swatch themes as selectable app appearance presets.
+
+STEPS:
+
+1. Update src/lib/types.ts:
+   - Add ThemePresetId union type:
+     'lamprey-default' | 'arcgis-blue' | 'arcgis-ember' | 'arcgis-violet' | 'arcgis-inferno' | 'arcgis-magma' | 'arcgis-viridis'
+   - Add ThemePreset interface with id, name, source, swatch: string[], tokens (all 13 CSS token keys).
+   - Add `themePreset: ThemePresetId` to AppSettings.
+   - Default value: 'lamprey-default'.
+
+2. Create src/styles/theme-presets.ts:
+   Export THEME_PRESETS: ThemePreset[] with seven entries:
+   - Lamprey Default (native dark base)
+   - Lamprey Blue (ArcGIS Blue 3): accent #6baed6, deep navy backgrounds
+   - Lamprey Ember (Esri Orange 1): accent #f36f20, warm charcoal backgrounds
+   - Lamprey Violet (Esri Purple 1): accent #a085c6, plum-tinted backgrounds
+   - Lamprey Inferno (ArcGIS Inferno): accent #ff5c6a, magenta-dark backgrounds
+   - Lamprey Magma (ArcGIS Magma): accent #ff57a5, deep purple backgrounds
+   - Lamprey Viridis (ArcGIS Viridis): accent #2cdcc6, teal-dark backgrounds
+   Each preset defines all 13 CSS token overrides: bgPrimary, bgSecondary, bgTertiary, border,
+   textPrimary, textSecondary, textMuted, accent, accentDim, success, warning, error, codeBg.
+   Full token values are specified in Section 6.1 of this plan.
+
+3. Create src/styles/apply-theme.ts:
+   Function: applyThemePreset(preset: ThemePreset): void
+   Writes all preset tokens to document.documentElement.style:
+     --bg-primary, --bg-secondary, --bg-tertiary, --border,
+     --text-primary, --text-secondary, --text-muted,
+     --accent, --accent-dim, --success, --warning, --error, --code-bg
+
+4. Update settings-store.ts:
+   - Load themePreset from settings.
+   - On settings load, apply selected preset via applyThemePreset().
+   - On settings update, apply selected preset immediately.
+   - Persist selected preset to userData/settings.json.
+
+5. Create src/components/settings/AppearanceSettings.tsx:
+   - Section title: "Appearance"
+   - Show theme cards in a grid.
+   - Each card includes:
+     - Theme name
+     - Source name (smaller, muted text)
+     - Five circular swatches in a row
+     - Selected state: border using var(--accent)
+   - Clicking a card applies and saves the preset.
+   - Include small text: "Color presets affect interface tokens only. Layout and accessibility structure remain unchanged."
+
+6. Update SettingsDialog.tsx:
+   - Add "Appearance" tab.
+   - Mount AppearanceSettings in that tab.
+
+7. Update Titlebar.tsx:
+   - Optional compact theme indicator next to Settings gear.
+   - Shows selected preset name.
+   - Dropdown allows quick switching between presets without opening Settings.
+
+8. Accessibility requirements:
+   - Maintain readable contrast on all theme cards.
+   - Do not use color alone to communicate MCP status, tool result state or selected conversation.
+   - Keep labels, icons or borders alongside status color.
+   - Verify keyboard focus ring remains visible in all seven presets.
+
+VERIFICATION:
+  Open Settings > Appearance.
+  Select each theme.
+  Confirm CSS variables update immediately without restart.
+  Close and reopen the app.
+  Confirm selected theme persists.
+  Confirm chat bubbles, sidebar active states, buttons, code blocks, toasts, MCP status and artifact panel all respect theme tokens.
+  Confirm focus rings remain visible on keyboard navigation.
+  Log result in DEVLOG.md.
 ```
 
 ---

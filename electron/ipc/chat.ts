@@ -1,9 +1,9 @@
 import { ipcMain, BrowserWindow } from 'electron'
 import { randomUUID } from 'crypto'
-import { deepseekClient } from '../services/deepseek'
+import { chatOnce, chatStream, resolveModel } from '../services/providers/registry'
 import * as convStore from '../services/conversation-store'
 import * as memStore from '../services/memory-store'
-import { buildSystemPrompt } from '../services/system-prompt-builder'
+import { buildSystemPrompt, buildAgentSystemPrompt } from '../services/system-prompt-builder'
 import { mcpManager } from '../services/mcp-manager'
 import { listSkills, getSkillContent } from '../services/skill-loader'
 import { readFileSync, existsSync } from 'fs'
@@ -43,6 +43,19 @@ function loadModelConfig(model: string): { params: ModelParams; systemPromptOver
   }
 }
 
+function loadAgentRoster(): { mode: 'single' | 'multi'; roster: Record<string, string> } {
+  try {
+    const path = join(app.getPath('userData'), 'settings.json')
+    if (!existsSync(path)) return { mode: 'single', roster: {} }
+    const raw = JSON.parse(readFileSync(path, 'utf-8')) as Record<string, unknown>
+    const mode = raw.agentMode === 'multi' ? 'multi' : 'single'
+    const roster = (raw.agentRoster as Record<string, string>) || {}
+    return { mode, roster }
+  } catch {
+    return { mode: 'single', roster: {} }
+  }
+}
+
 const activeAbortControllers = new Map<string, AbortController>()
 const pendingConfirmations = new Map<string, (approved: boolean) => void>()
 
@@ -74,7 +87,7 @@ function send(channel: string, data: unknown): void {
 
 export function registerChatHandlers(): void {
   ipcMain.handle('chat:send', async (_event, request) => {
-    const { content, model, activeSkillIds } = request
+    const { content, model, activeSkillIds, agentMode: requestedAgentMode } = request
     let { conversationId } = request
 
     try {
@@ -83,7 +96,7 @@ export function registerChatHandlers(): void {
         conversationId = conv.id
       }
 
-      const userMsg = convStore.saveMessage({
+      convStore.saveMessage({
         id: randomUUID(),
         conversationId,
         role: 'user',
@@ -92,7 +105,6 @@ export function registerChatHandlers(): void {
       })
 
       const allMessages = convStore.getMessages(conversationId)
-
       const memoryBlock = memStore.buildMemoryBlock()
 
       let skillContents: { name: string; content: string }[] = []
@@ -129,8 +141,6 @@ export function registerChatHandlers(): void {
 
       const tools: ChatCompletionTool[] = [MEMORY_ADD_TOOL, ...mcpTools]
 
-      // Filter out role:'system' markers (e.g. "— Switched to R1 —") — the real
-      // system prompt comes from buildSystemPrompt, not from stored markers.
       const apiMessages: ChatCompletionMessageParam[] = [
         { role: 'system' as const, content: systemPrompt },
         ...allMessages
@@ -148,6 +158,22 @@ export function registerChatHandlers(): void {
 
       const abortController = new AbortController()
       activeAbortControllers.set(conversationId, abortController)
+
+      const { mode: storedMode, roster } = loadAgentRoster()
+      const mode: 'single' | 'multi' = requestedAgentMode === 'multi' ? 'multi' : storedMode
+
+      if (mode === 'multi') {
+        await runMultiAgent(
+          conversationId,
+          model,
+          systemPrompt,
+          allMessages,
+          roster,
+          abortController.signal
+        )
+        activeAbortControllers.delete(conversationId)
+        return { success: true, data: { conversationId } }
+      }
 
       await runChatRound(
         conversationId,
@@ -179,7 +205,7 @@ export function registerChatHandlers(): void {
 
   ipcMain.handle('chat:generateTitle', async (_event, content: string) => {
     try {
-      const raw = await deepseekClient.chat(
+      const raw = await chatOnce(
         [
           {
             role: 'system',
@@ -188,7 +214,7 @@ export function registerChatHandlers(): void {
           },
           { role: 'user', content }
         ],
-        'deepseek-chat'
+        'deepseek-v4-flash'
       )
       const cleaned = raw.replace(/^["'\s]+|["'\s]+$/g, '').replace(/[.!?]+$/g, '').slice(0, 60)
       return { success: true, data: cleaned || content.slice(0, 40) }
@@ -224,100 +250,106 @@ async function runChatRound(
     return
   }
 
+  const descriptor = resolveModel(model)
+  const effectiveTools = descriptor.supportsTools ? tools : undefined
+
   return new Promise<void>((resolve, reject) => {
-    deepseekClient.chatStream(
+    chatStream(
       messages,
       model,
-      model === 'deepseek-reasoner' ? undefined : tools,
-      (chunk) => {
-        send('chat:chunk', { conversationId, content: chunk })
-      },
-      async (fullContent, toolCalls) => {
-        if (!toolCalls || toolCalls.length === 0) {
-          const assistantMsg = convStore.saveMessage({
+      effectiveTools,
+      {
+        onChunk: (chunk) => {
+          send('chat:chunk', { conversationId, content: chunk })
+        },
+        onDone: async (fullContent, toolCalls) => {
+          if (!toolCalls || toolCalls.length === 0) {
+            const assistantMsg = convStore.saveMessage({
+              id: randomUUID(),
+              conversationId,
+              role: 'assistant',
+              content: fullContent,
+              model
+            })
+            send('chat:done', { conversationId, message: assistantMsg })
+            resolve()
+            return
+          }
+
+          convStore.saveMessage({
             id: randomUUID(),
             conversationId,
             role: 'assistant',
-            content: fullContent,
+            content: fullContent || '',
             model
           })
-          send('chat:done', { conversationId, message: assistantMsg })
-          resolve()
-          return
-        }
 
-        // Save assistant message with tool calls
-        const assistantId = randomUUID()
-        convStore.saveMessage({
-          id: assistantId,
-          conversationId,
-          role: 'assistant',
-          content: fullContent || '',
-          model
-        })
+          messages.push({
+            role: 'assistant',
+            content: fullContent || null,
+            tool_calls: toolCalls.map((tc) => ({
+              id: tc.id,
+              type: 'function' as const,
+              function: { name: tc.function.name, arguments: tc.function.arguments }
+            }))
+          } as any)
 
-        // Build assistant message with tool_calls for API
-        messages.push({
-          role: 'assistant',
-          content: fullContent || null,
-          tool_calls: toolCalls.map((tc) => ({
-            id: tc.id,
-            type: 'function' as const,
-            function: { name: tc.function.name, arguments: tc.function.arguments }
-          }))
-        } as any)
+          for (const tc of toolCalls) {
+            const toolName = tc.function.name
+            let args: Record<string, unknown> = {}
+            try {
+              args = JSON.parse(tc.function.arguments)
+            } catch {
+              args = {}
+            }
 
-        // Process each tool call
-        for (const tc of toolCalls) {
-          const toolName = tc.function.name
-          let args: Record<string, unknown> = {}
-          try {
-            args = JSON.parse(tc.function.arguments)
-          } catch {
-            args = {}
-          }
+            send('chat:tool-call', {
+              callId: tc.id,
+              serverId: toolName.includes('__') ? toolName.split('__')[0] : 'internal',
+              toolName: toolName.includes('__') ? toolName.split('__').slice(1).join('__') : toolName,
+              args
+            })
 
-          send('chat:tool-call', {
-            callId: tc.id,
-            serverId: toolName.includes('__') ? toolName.split('__')[0] : 'internal',
-            toolName: toolName.includes('__') ? toolName.split('__').slice(1).join('__') : toolName,
-            args
-          })
+            let result: string
+            const startTime = Date.now()
 
-          let result: string
-          const startTime = Date.now()
+            if (toolName === 'memory_add' && typeof args.content === 'string') {
+              const entry = memStore.addMemory(args.content, conversationId)
+              send('memory:added', entry)
+              result = 'Saved to memory.'
+            } else if (toolName.includes('__')) {
+              const [serverId, ...nameParts] = toolName.split('__')
+              const mcpToolName = nameParts.join('__')
 
-          if (toolName === 'memory_add' && typeof args.content === 'string') {
-            const entry = memStore.addMemory(args.content, conversationId)
-            send('memory:added', entry)
-            result = 'Saved to memory.'
-          } else if (toolName.includes('__')) {
-            // MCP tool call
-            const [serverId, ...nameParts] = toolName.split('__')
-            const mcpToolName = nameParts.join('__')
+              const chromeDestructive = ['click', 'fill', 'submit', 'type', 'press', 'select_option']
+              if (serverId === 'chrome' && chromeDestructive.includes(mcpToolName)) {
+                send('mcp:confirmationRequired', {
+                  callId: tc.id,
+                  serverId,
+                  toolName: mcpToolName,
+                  args
+                })
 
-            // Check if destructive Chrome action requiring confirmation
-            const chromeDestructive = ['click', 'fill', 'submit', 'type', 'press', 'select_option']
-            if (serverId === 'chrome' && chromeDestructive.includes(mcpToolName)) {
-              send('mcp:confirmationRequired', {
-                callId: tc.id,
-                serverId,
-                toolName: mcpToolName,
-                args
-              })
+                const approved = await new Promise<boolean>((res) => {
+                  pendingConfirmations.set(tc.id, res)
+                  setTimeout(() => {
+                    if (pendingConfirmations.has(tc.id)) {
+                      pendingConfirmations.delete(tc.id)
+                      res(false)
+                    }
+                  }, 30000)
+                })
 
-              const approved = await new Promise<boolean>((res) => {
-                pendingConfirmations.set(tc.id, res)
-                setTimeout(() => {
-                  if (pendingConfirmations.has(tc.id)) {
-                    pendingConfirmations.delete(tc.id)
-                    res(false)
+                if (!approved) {
+                  result = 'Action denied by user.'
+                } else {
+                  try {
+                    const mcpResult = await mcpManager.callTool(serverId, mcpToolName, args)
+                    result = typeof mcpResult === 'string' ? mcpResult : JSON.stringify(mcpResult)
+                  } catch (err: any) {
+                    result = `Error: ${err.message}`
                   }
-                }, 30000)
-              })
-
-              if (!approved) {
-                result = 'Action denied by user.'
+                }
               } else {
                 try {
                   const mcpResult = await mcpManager.callTool(serverId, mcpToolName, args)
@@ -327,51 +359,102 @@ async function runChatRound(
                 }
               }
             } else {
-              try {
-                const mcpResult = await mcpManager.callTool(serverId, mcpToolName, args)
-                result = typeof mcpResult === 'string' ? mcpResult : JSON.stringify(mcpResult)
-              } catch (err: any) {
-                result = `Error: ${err.message}`
-              }
+              result = `Unknown tool: ${toolName}`
             }
-          } else {
-            result = `Unknown tool: ${toolName}`
+
+            const duration = Date.now() - startTime
+            send('chat:tool-call-result', { callId: tc.id, result, duration })
+
+            convStore.saveMessage({
+              id: randomUUID(),
+              conversationId,
+              role: 'tool',
+              content: result,
+              toolCallId: tc.id
+            })
+
+            messages.push({
+              role: 'tool',
+              content: result,
+              tool_call_id: tc.id
+            } as any)
           }
 
-          const duration = Date.now() - startTime
-
-          send('chat:tool-call-result', { callId: tc.id, result, duration })
-
-          // Save tool result message
-          convStore.saveMessage({
-            id: randomUUID(),
-            conversationId,
-            role: 'tool',
-            content: result,
-            toolCallId: tc.id
-          })
-
-          messages.push({
-            role: 'tool',
-            content: result,
-            tool_call_id: tc.id
-          } as any)
+          try {
+            await runChatRound(conversationId, model, messages, tools, signal, round + 1, params)
+            resolve()
+          } catch (err) {
+            reject(err)
+          }
+        },
+        onError: (error) => {
+          send('chat:error', { conversationId, error })
+          reject(new Error(error))
         }
-
-        // Continue with next round
-        try {
-          await runChatRound(conversationId, model, messages, tools, signal, round + 1, params)
-          resolve()
-        } catch (err) {
-          reject(err)
-        }
-      },
-      (error) => {
-        send('chat:error', { conversationId, error })
-        reject(new Error(error))
       },
       signal,
       params
     )
   })
+}
+
+// Multi-agent orchestrator: Planner → Coder → Reviewer, then a final
+// consolidated message gets persisted as the assistant turn. Each role can
+// use a different provider/model from the roster.
+async function runMultiAgent(
+  conversationId: string,
+  fallbackModel: string,
+  systemPrompt: string,
+  history: Array<{ role: string; content: string }>,
+  roster: Record<string, string>,
+  signal: AbortSignal
+): Promise<void> {
+  const userTurn = [...history].reverse().find((m) => m.role === 'user')?.content || ''
+  const plannerModel = roster.planner || fallbackModel
+  const coderModel = roster.coder || fallbackModel
+  const reviewerModel = roster.reviewer || fallbackModel
+
+  send('agent:status', { conversationId, role: 'planner', model: plannerModel, state: 'running' })
+  const plannerMessages: ChatCompletionMessageParam[] = [
+    { role: 'system', content: buildAgentSystemPrompt('planner', systemPrompt) },
+    { role: 'user', content: userTurn }
+  ]
+  const planText = await chatOnce(plannerMessages, plannerModel)
+  send('agent:status', { conversationId, role: 'planner', model: plannerModel, state: 'done', output: planText })
+  if (signal.aborted) return
+
+  send('agent:status', { conversationId, role: 'coder', model: coderModel, state: 'running' })
+  const coderMessages: ChatCompletionMessageParam[] = [
+    { role: 'system', content: buildAgentSystemPrompt('coder', systemPrompt) },
+    { role: 'user', content: `User request:\n${userTurn}\n\nPlanner output:\n${planText}` }
+  ]
+  const coderText = await chatOnce(coderMessages, coderModel)
+  send('agent:status', { conversationId, role: 'coder', model: coderModel, state: 'done', output: coderText })
+  if (signal.aborted) return
+
+  send('agent:status', { conversationId, role: 'reviewer', model: reviewerModel, state: 'running' })
+  const reviewerMessages: ChatCompletionMessageParam[] = [
+    { role: 'system', content: buildAgentSystemPrompt('reviewer', systemPrompt) },
+    {
+      role: 'user',
+      content: `User request:\n${userTurn}\n\nPlan:\n${planText}\n\nCoder output:\n${coderText}`
+    }
+  ]
+  const reviewText = await chatOnce(reviewerMessages, reviewerModel)
+  send('agent:status', { conversationId, role: 'reviewer', model: reviewerModel, state: 'done', output: reviewText })
+
+  const consolidated =
+    `### Plan (${plannerModel})\n${planText}\n\n` +
+    `### Implementation (${coderModel})\n${coderText}\n\n` +
+    `### Review (${reviewerModel})\n${reviewText}`
+
+  const assistantMsg = convStore.saveMessage({
+    id: randomUUID(),
+    conversationId,
+    role: 'assistant',
+    content: consolidated,
+    model: `multi:${plannerModel}+${coderModel}+${reviewerModel}`
+  })
+  send('chat:chunk', { conversationId, content: consolidated })
+  send('chat:done', { conversationId, message: assistantMsg })
 }

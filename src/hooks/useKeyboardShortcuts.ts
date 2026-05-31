@@ -29,6 +29,13 @@ export function useKeyboardShortcuts(): void {
         return
       }
 
+      // Ctrl/Cmd+B — toggle sidebar
+      if (mod && (e.key === 'b' || e.key === 'B')) {
+        e.preventDefault()
+        useUiStore.getState().toggleSidebar()
+        return
+      }
+
       // Ctrl/Cmd+, — open settings
       if (mod && e.key === ',') {
         e.preventDefault()

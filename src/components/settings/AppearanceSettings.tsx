@@ -11,6 +11,8 @@ export function AppearanceSettings() {
     await updateSettings({ themePreset: preset.id })
   }
 
+  const isDark = settings.themeMode === 'dark'
+
   return (
     <div className="space-y-4">
       <div>
@@ -19,6 +21,36 @@ export function AppearanceSettings() {
           Color presets affect interface tokens only. Layout and accessibility structure remain
           unchanged.
         </p>
+      </div>
+
+      <div>
+        <div className="mb-2 text-[11px] font-medium uppercase tracking-wider text-[var(--text-muted)]">
+          Mode
+        </div>
+        <div className="inline-flex overflow-hidden rounded-md border border-[var(--border)]">
+          <button
+            onClick={() => updateSettings({ themeMode: 'light' })}
+            aria-pressed={!isDark}
+            className={`px-3 py-1.5 text-xs transition-colors ${
+              !isDark
+                ? 'bg-[var(--accent)] text-white'
+                : 'bg-[var(--bg-primary)] text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)]'
+            }`}
+          >
+            Light
+          </button>
+          <button
+            onClick={() => updateSettings({ themeMode: 'dark' })}
+            aria-pressed={isDark}
+            className={`px-3 py-1.5 text-xs transition-colors ${
+              isDark
+                ? 'bg-[var(--accent)] text-white'
+                : 'bg-[var(--bg-primary)] text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)]'
+            }`}
+          >
+            Dark
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-3">

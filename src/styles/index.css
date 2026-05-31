@@ -16,6 +16,27 @@
   --code-bg: #111111;
 }
 
+/* Light-mode fallback values — these are overwritten the moment
+   applyThemePreset() runs with mode === 'light', but they keep the
+   first-paint usable if a theme load is slow. */
+:root[data-theme-mode='light'] {
+  --bg-primary: #ffffff;
+  --bg-secondary: #f7f7f8;
+  --bg-tertiary: #eef0f3;
+  --border: #dcdfe4;
+  --text-primary: #0f1115;
+  --text-secondary: #4a5160;
+  --text-muted: #8a92a0;
+  --code-bg: #f3f4f6;
+}
+
+/* Icon variant — in light mode the cool half of the halo is muted so
+   bright surfaces don't bloom. */
+:root[data-theme-mode='light'] img.icon-asset {
+  filter: drop-shadow(0 0 1.5px rgba(0, 0, 0, 0.5))
+    drop-shadow(0 0 1.5px rgba(255, 255, 255, 0.15));
+}
+
 * {
   margin: 0;
   padding: 0;
@@ -54,4 +75,67 @@ body,
 ::selection {
   background-color: var(--accent-dim);
   color: var(--text-primary);
+}
+
+/* Brand icons (ASSETS/*.png) — every PNG now ships with a transparent
+   background so it floats natively on any backdrop. We only add a
+   subtle dual-direction halo (warm + cool 1.5px rings) to give the
+   alpha edge a touch of contrast on noisy/colored surfaces. */
+img.icon-asset {
+  filter: drop-shadow(0 0 1.5px rgba(0, 0, 0, 0.55))
+    drop-shadow(0 0 1.5px rgba(255, 255, 255, 0.45));
+}
+
+/* Resize handles — wide invisible hit area with a 2px visible center
+   that brightens on hover. Use on vertical (column) splitters. */
+.resize-handle-v {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 10px;
+  cursor: col-resize;
+  z-index: 20;
+  background: transparent;
+  transition: background-color 120ms ease;
+}
+.resize-handle-v::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 2px;
+  transform: translateX(-50%);
+  background-color: transparent;
+  transition: background-color 120ms ease;
+}
+.resize-handle-v:hover::before,
+.resize-handle-v.dragging::before {
+  background-color: var(--accent);
+}
+
+/* Variant: handle pinned to the right edge of its parent (sidebar). */
+.resize-handle-v-right {
+  right: -5px;
+}
+/* Variant: handle pinned to the left edge of its parent (right panel). */
+.resize-handle-v-left {
+  left: -5px;
+}
+
+/* More prominent scrollbar variant — used for the sidebar projects list
+   so the user can see at a glance that there's more to scroll. */
+.scrollbar-visible::-webkit-scrollbar {
+  width: 10px;
+}
+.scrollbar-visible::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scrollbar-visible::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border: 2px solid var(--bg-secondary);
+  border-radius: 5px;
+}
+.scrollbar-visible::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
 }

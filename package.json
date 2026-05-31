@@ -1,7 +1,7 @@
 {
   "name": "lamprey-harness",
   "version": "0.1.0",
-  "description": "Desktop AI assistant powered by DeepSeek",
+  "description": "Multi-agent coding harness for DeepSeek V4 Pro/Flash, Gemma, and Qwen.",
   "main": "./out/main/index.js",
   "author": {
     "name": "Lamprey Contributors",
@@ -58,7 +58,9 @@
     "electron-updater": "^6.8.3",
     "electron-vite": "^5.0.0",
     "eslint": "^10.4.1",
+    "pngjs": "^7.0.0",
     "prettier": "^3.8.3",
+    "sharp": "^0.34.5",
     "tailwindcss": "^4.3.0",
     "typescript": "5.7",
     "vitest": "^4.1.7"
