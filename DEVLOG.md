@@ -1,5 +1,15 @@
 # Lamprey Harness Dev Log
 
+## Paste-offer close-glyph + Codex-parity plan doc (v0.1.24, 2026-06-01)
+
+Patch release. Two narrow changes:
+
+**Paste-offer banner close button.** `src/components/chat/ChatInput.tsx` line ~813 previously rendered a bare ASCII `x` inside the Dismiss button — a fallback after the v0.1.23 mojibake sweep stripped the original `×` (U+00D7, multiplication-sign glyph). Replaced with an inline 11x11 SVG of two crossing strokes, matching the close-icon pattern used in `AttachmentPreview.tsx` and the model-row delete buttons. `aria-label="Dismiss"` added so screen readers no longer announce "x".
+
+**`PLANNING/CODEX_TOOLSET_PARITY_PLAN.md`.** Working plan for bringing Lamprey's tool surface to functional parity with the Codex desktop's observed tool inventory. Implementation roster only — no code lands with this commit.
+
+**Verification.** Both tsconfigs clean. `npm run build:win` produced `dist/Lamprey-0.1.24-x64.exe` (178 MB NSIS installer, code-signed via Windows SDK signtool) and `dist/Lamprey-0.1.24-x64.zip` (225 MB portable). README download links bumped to v0.1.24. Tag `v0.1.24` will trigger CI to attach artifacts to a draft GitHub release.
+
 ## Identity prompt, conversation replay, write-after-end suppression, key-test detail (v0.1.23, 2026-06-01)
 
 Four-fix maintenance release covering two user-reported bugs and two trust/UX gaps that surfaced in the same conversation.

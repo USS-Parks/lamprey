@@ -813,8 +813,11 @@ export function ChatInput({ onSend, onCancel, isStreaming, disabled }: ChatInput
             onClick={() => setPasteOffer(null)}
             className="rounded px-1.5 py-1 text-[var(--text-muted)] hover:text-[var(--text-primary)]"
             title="Dismiss"
+            aria-label="Dismiss"
           >
-            x
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden>
+              <path d="M18 6L6 18M6 6l12 12" />
+            </svg>
           </button>
         </div>
       )}
