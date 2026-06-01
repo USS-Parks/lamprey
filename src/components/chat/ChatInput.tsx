@@ -832,7 +832,8 @@ export function ChatInput({ onSend, onCancel, isStreaming, disabled }: ChatInput
           placeholder=""
           rows={1}
           disabled={disabled}
-          className="max-h-[200px] min-h-[28px] w-full resize-none bg-transparent pl-10 pt-6 text-sm leading-relaxed text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]"
+          style={{ paddingLeft: '20px', paddingTop: '8px' }}
+          className="max-h-[200px] min-h-[28px] w-full resize-none bg-transparent text-sm leading-relaxed text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]"
         />
 
         <div className="flex items-center gap-1">
