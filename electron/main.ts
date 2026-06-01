@@ -31,13 +31,40 @@ function reportToRenderer(channel: 'app:error' | 'app:warning', message: string)
   }
 }
 
+// electron-updater's internal HTTP path raises a secondary "write after end"
+// stream error when a release is missing latest.yml — and the original 404
+// itself can also escape its promise chain. Both surface here as unhandled
+// rejections / exceptions, get forwarded to the renderer, and pop the
+// scary stack trace in the right panel. None of it is actionable for the
+// user: it just means "no update available right now." Suppress the
+// renderer push for anything that originated in electron-updater or the
+// known stream-close pattern; the log channel still records it.
+function isUpdaterNoise(reason: unknown): boolean {
+  const stack =
+    reason instanceof Error ? reason.stack ?? '' : ''
+  if (/electron-updater|ElectronHttpExecutor|SimpleURLLoaderWrapper/.test(stack)) return true
+  const msg =
+    reason instanceof Error ? reason.message ?? '' : String(reason ?? '')
+  if (/write after end/i.test(msg)) return true
+  if (/releases\/download\/v[\d.]+\/latest\.yml/i.test(msg)) return true
+  return false
+}
+
 process.on('unhandledRejection', (reason) => {
   const msg = reason instanceof Error ? reason.message : String(reason)
+  if (isUpdaterNoise(reason)) {
+    console.warn('[updater] suppressed unhandled rejection:', msg)
+    return
+  }
   console.error('[main] unhandledRejection:', msg)
   reportToRenderer('app:error', `Unhandled error: ${msg}`)
 })
 
 process.on('uncaughtException', (err) => {
+  if (isUpdaterNoise(err)) {
+    console.warn('[updater] suppressed uncaught exception:', err.message)
+    return
+  }
   console.error('[main] uncaughtException:', err.message)
   reportToRenderer('app:error', `Unhandled error: ${err.message}`)
 })
