@@ -19,6 +19,17 @@ export interface Conversation {
   messageCount: number
   kind?: ConversationKind
   worktreePath?: string | null
+  projectId?: string | null
+}
+
+export interface Project {
+  id: string
+  name: string
+  path: string | null
+  pinned: boolean
+  archived: boolean
+  createdAt: number
+  lastActivityAt: number
 }
 
 export interface Skill {
@@ -236,4 +247,48 @@ export interface ProcessedFile {
   content: string
   previewText: string
   error?: string
+}
+
+// Right-side workspace system. `home` shows the 4 rounded pill subpanels;
+// every other mode replaces them with a full-bleed tool.
+export type RightPanelMode =
+  | 'home'
+  | 'environment'
+  | 'terminal'
+  | 'files'
+  | 'review'
+  | 'sources'
+  | 'artifacts'
+  | 'sidechat'
+  | 'browser'
+
+export interface BranchItem {
+  name: string
+  current: boolean
+  upstream?: string
+  ahead?: number
+  behind?: number
+}
+
+export interface EnvironmentSnapshot {
+  branch: string | null
+  additions: number
+  deletions: number
+  hasChanges: boolean
+  ahead: number
+  behind: number
+  cwd: string
+}
+
+// Unified entry in the Environment card's Sources section, aggregated from
+// chat attachments, active skills, pinned memory, and connected MCP servers.
+export type SourceKind = 'file' | 'skill' | 'memory' | 'mcp'
+
+export interface SourceItem {
+  id: string
+  kind: SourceKind
+  title: string
+  subtitle?: string
+  // Removal handler differs per kind; callers wire to the owning store.
+  onRemove?: () => void
 }

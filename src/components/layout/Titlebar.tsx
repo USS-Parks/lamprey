@@ -1,13 +1,25 @@
 import { useEffect, useRef, useState } from 'react'
 import { useSettingsStore } from '@/stores/settings-store'
-import { useUiStore } from '@/stores/ui-store'
+import { useUiStore, type ToolId } from '@/stores/ui-store'
 import { useChatStore } from '@/stores/chat-store'
 import { useThemedIcon } from '@/lib/themed-icon'
 import { toast } from '@/stores/toast-store'
 import { THEME_PRESETS, getActiveTokens, getPreset } from '@/styles/theme-presets'
+import { ToolLauncherPopover } from '@/components/workspace/ToolLauncherPopover'
 import settingsLight from '@assets/Lamprey Settings Icon.png'
 import settingsDark from '@assets/Lamprey Settings Icon Dark View.png'
 import lampreyLogo from '@assets/Lamprey Desktop Icon-1.png'
+
+const TOOL_TITLES: Record<ToolId, string> = {
+  files: 'Open file',
+  sidechat: 'Side chat',
+  browser: 'Browser',
+  review: 'Review',
+  terminal: 'Terminal',
+  environment: 'Environment',
+  sources: 'Sources',
+  artifacts: 'Artifacts'
+}
 
 interface TitlebarProps {
   onSettingsClick: () => void
@@ -116,7 +128,6 @@ const RIGHT_COLLAPSED_PX = 32
 
 export function Titlebar({ onSettingsClick }: TitlebarProps) {
   const settings = useSettingsStore((s) => s.settings)
-  const updateSettings = useSettingsStore((s) => s.updateSettings)
   const toggleThemeMode = useSettingsStore((s) => s.toggleThemeMode)
   const toggleSidebar = useUiStore((s) => s.toggleSidebar)
   const toggleRightPanel = useUiStore((s) => s.toggleRightPanel)
@@ -152,10 +163,7 @@ export function Titlebar({ onSettingsClick }: TitlebarProps) {
     const next = Math.min(conversations.length - 1, activeIdx + 1)
     void selectConversation(conversations[next].id)
   }
-  const activePreset = getPreset(settings.themePreset)
-  const activeTokens = getActiveTokens(activePreset, settings.themeMode)
   const isDark = settings.themeMode === 'dark'
-  const settingsIconUrl = useThemedIcon(settingsLight, settingsDark)
 
   const [isMaximized, setIsMaximized] = useState(false)
   const [openMenu, setOpenMenu] = useState<string | null>(null)
@@ -422,111 +430,177 @@ export function Titlebar({ onSettingsClick }: TitlebarProps) {
         </div>
       </div>
 
-      {/* ─── Row 2 ─── theme pill, theme toggle, settings, right-panel toggle */}
-      <div
-        className="flex h-9 items-center gap-2 border-t border-[var(--border)] px-3"
-        style={NO_DRAG}
+    </div>
+  )
+}
+
+interface SecondaryToolbarProps {
+  onSettingsClick: () => void
+}
+
+// Row 2 — extracted so it can render to the right of the sidebar instead of
+// spanning the full window width. This lets the sidebar reach up flush with
+// Row 1 of the Titlebar, with no gap.
+export function SecondaryToolbar({ onSettingsClick }: SecondaryToolbarProps) {
+  const settings = useSettingsStore((s) => s.settings)
+  const updateSettings = useSettingsStore((s) => s.updateSettings)
+  const toggleThemeMode = useSettingsStore((s) => s.toggleThemeMode)
+  const toggleRightPanel = useUiStore((s) => s.toggleRightPanel)
+  const rightPanelCollapsed = useUiStore((s) => s.rightPanelCollapsed)
+  const activeTool = useUiStore((s) => s.activeTool)
+  const closeActiveTool = useUiStore((s) => s.closeActiveTool)
+
+  const activePreset = getPreset(settings.themePreset)
+  const activeTokens = getActiveTokens(activePreset, settings.themeMode)
+  const isDark = settings.themeMode === 'dark'
+  const settingsIconUrl = useThemedIcon(settingsLight, settingsDark)
+
+  const launcherRef = useRef<HTMLButtonElement>(null)
+  const [launcherOpen, setLauncherOpen] = useState(false)
+
+  return (
+    <div
+      className="flex h-9 items-center gap-2 border-b border-[var(--border)] bg-[var(--bg-secondary)] px-3"
+      style={NO_DRAG}
+    >
+      {/* Tool launcher button: opens the Codex-style VS Code / File Explorer
+          / Terminal / Git Bash / WSL popover. The mode label sits next to it
+          so the active tool is always identified on the toolbar. */}
+      <button
+        ref={launcherRef}
+        type="button"
+        onClick={() => setLauncherOpen((v) => !v)}
+        title="Open tool"
+        aria-haspopup="menu"
+        aria-expanded={launcherOpen}
+        className="flex items-center gap-1 rounded p-1 text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]"
       >
-        <div className="flex-1" />
-
-        <label
-          className="relative flex cursor-pointer items-center gap-1.5 rounded border border-[var(--border)] bg-[var(--bg-tertiary)] px-2 py-1 font-mono text-[12px] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-          title="Switch theme preset"
-        >
-          <span
-            aria-hidden
-            className="block h-2.5 w-2.5 rounded-full border border-black/40"
-            style={{ backgroundColor: activeTokens.accent }}
-          />
-          <span className="max-w-[110px] truncate">{activePreset.name}</span>
-          <select
-            value={settings.themePreset}
-            onChange={(e) =>
-              updateSettings({ themePreset: e.target.value as typeof settings.themePreset })
-            }
-            className="absolute inset-0 cursor-pointer opacity-0"
-            aria-label="Theme preset"
-          >
-            {THEME_PRESETS.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
-        </label>
-
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+          <path d="M16 4l4 2v12l-4 2-9-7 9-9z" />
+          <path d="M16 4L4 12l12 8" />
+        </svg>
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
+      </button>
+      {activeTool && (
         <button
-          onClick={toggleThemeMode}
-          className="rounded p-1.5 text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]"
-          title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
-          aria-label="Toggle theme mode"
+          type="button"
+          onClick={closeActiveTool}
+          title={`Close ${TOOL_TITLES[activeTool]}`}
+          className="flex items-center gap-1.5 rounded border border-[var(--border)] bg-[var(--bg-tertiary)] px-1.5 py-0.5 text-[11px] text-[var(--text-secondary)] hover:border-[var(--accent)] hover:text-[var(--text-primary)]"
         >
-          {isDark ? (
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden
-            >
-              <circle cx="12" cy="12" r="4" />
-              <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
-            </svg>
-          ) : (
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden
-            >
-              <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
-            </svg>
-          )}
+          {TOOL_TITLES[activeTool]}
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
         </button>
+      )}
+      <ToolLauncherPopover
+        open={launcherOpen}
+        onClose={() => setLauncherOpen(false)}
+        anchorRef={launcherRef}
+      />
+      <div className="flex-1" />
 
-        <button
-          onClick={onSettingsClick}
-          className="rounded p-1 transition-colors hover:bg-[var(--bg-tertiary)]"
-          title="Settings (Ctrl+,)"
+      <label
+        className="relative flex cursor-pointer items-center gap-1.5 rounded border border-[var(--border)] bg-[var(--bg-tertiary)] px-2 py-1 font-mono text-[12px] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+        title="Switch theme preset"
+      >
+        <span
+          aria-hidden
+          className="block h-2.5 w-2.5 rounded-full border border-black/40"
+          style={{ backgroundColor: activeTokens.accent }}
+        />
+        <span className="max-w-[110px] truncate">{activePreset.name}</span>
+        <select
+          value={settings.themePreset}
+          onChange={(e) =>
+            updateSettings({ themePreset: e.target.value as typeof settings.themePreset })
+          }
+          className="absolute inset-0 cursor-pointer opacity-0"
+          aria-label="Theme preset"
         >
-          <img
-            src={settingsIconUrl}
-            alt="Settings"
-            className="icon-asset h-7 w-7 object-contain"
-          />
-        </button>
+          {THEME_PRESETS.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+            </option>
+          ))}
+        </select>
+      </label>
 
-        <button
-          onClick={toggleRightPanel}
-          title={rightPanelCollapsed ? 'Show right panel' : 'Hide right panel'}
-          aria-label="Toggle right panel"
-          className="rounded p-1.5 text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]"
-        >
+      <button
+        onClick={toggleThemeMode}
+        className="rounded p-1.5 text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]"
+        title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+        aria-label="Toggle theme mode"
+      >
+        {isDark ? (
           <svg
             width="16"
             height="16"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
-            strokeWidth="1.8"
+            strokeWidth="2"
             strokeLinecap="round"
             strokeLinejoin="round"
             aria-hidden
           >
-            <rect x="3" y="4" width="18" height="16" rx="2" />
-            <line x1="15" y1="4" x2="15" y2="20" />
+            <circle cx="12" cy="12" r="4" />
+            <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
           </svg>
-        </button>
-      </div>
+        ) : (
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden
+          >
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+          </svg>
+        )}
+      </button>
+
+      <button
+        onClick={onSettingsClick}
+        className="rounded p-1 transition-colors hover:bg-[var(--bg-tertiary)]"
+        title="Settings (Ctrl+,)"
+      >
+        <img
+          src={settingsIconUrl}
+          alt="Settings"
+          className="icon-asset h-7 w-7 object-contain"
+        />
+      </button>
+
+      <button
+        onClick={toggleRightPanel}
+        title={rightPanelCollapsed ? 'Show right panel' : 'Hide right panel'}
+        aria-label="Toggle right panel"
+        className="rounded p-1.5 text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]"
+      >
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden
+        >
+          <rect x="3" y="4" width="18" height="16" rx="2" />
+          <line x1="15" y1="4" x2="15" y2="20" />
+        </svg>
+      </button>
     </div>
   )
 }

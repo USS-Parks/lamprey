@@ -65,7 +65,11 @@ const api = {
     get: (id: string) => ipcRenderer.invoke('conversation:get', id),
     create: (
       model: string,
-      opts?: { kind?: 'local' | 'cloud' | 'worktree'; worktreePath?: string | null }
+      opts?: {
+        kind?: 'local' | 'cloud' | 'worktree'
+        worktreePath?: string | null
+        projectId?: string | null
+      }
     ) => ipcRenderer.invoke('conversation:create', model, opts),
     delete: (id: string) => ipcRenderer.invoke('conversation:delete', id),
     updateTitle: (id: string, title: string) =>
@@ -159,6 +163,10 @@ const api = {
     openPicker: () => ipcRenderer.invoke('files:openPicker'),
     getWorkdir: () => ipcRenderer.invoke('files:getWorkdir'),
     pickWorkdir: () => ipcRenderer.invoke('files:pickWorkdir'),
+    openInVSCode: (args?: { targetPath?: string }) =>
+      ipcRenderer.invoke('files:openInVSCode', args),
+    openInExplorer: (args?: { targetPath?: string }) =>
+      ipcRenderer.invoke('files:openInExplorer', args),
     listDir: (dirPath: string) => ipcRenderer.invoke('files:listDir', dirPath),
     readText: (filePath: string) => ipcRenderer.invoke('files:readText', filePath),
     walkProject: (rootPath: string) => ipcRenderer.invoke('files:walkProject', rootPath),
@@ -202,13 +210,47 @@ const api = {
       ipcRenderer.invoke('worktree:remove', args)
   },
 
+  projects: {
+    list: (args?: { includeArchived?: boolean }) =>
+      ipcRenderer.invoke('projects:list', args),
+    get: (id: string) => ipcRenderer.invoke('projects:get', id),
+    create: (input: { name: string; path?: string | null }) =>
+      ipcRenderer.invoke('projects:create', input),
+    rename: (id: string, name: string) => ipcRenderer.invoke('projects:rename', id, name),
+    setPinned: (id: string, pinned: boolean) =>
+      ipcRenderer.invoke('projects:setPinned', id, pinned),
+    setArchived: (id: string, archived: boolean) =>
+      ipcRenderer.invoke('projects:setArchived', id, archived),
+    delete: (id: string) => ipcRenderer.invoke('projects:delete', id),
+    openFolder: (id: string) => ipcRenderer.invoke('projects:openFolder', id),
+    copyPath: (id: string) => ipcRenderer.invoke('projects:copyPath', id),
+    assignConversation: (conversationId: string, projectId: string | null) =>
+      ipcRenderer.invoke('projects:assignConversation', conversationId, projectId),
+    ensureForPath: (path: string, fallbackName?: string) =>
+      ipcRenderer.invoke('projects:ensureForPath', path, fallbackName)
+  },
+
   review: {
     status: (args: { cwd?: string }) => ipcRenderer.invoke('review:status', args),
     diff: (args: { cwd?: string; path?: string; staged?: boolean }) =>
       ipcRenderer.invoke('review:diff', args),
     stage: (args: { cwd?: string; path: string }) => ipcRenderer.invoke('review:stage', args),
     unstage: (args: { cwd?: string; path: string }) => ipcRenderer.invoke('review:unstage', args),
-    discard: (args: { cwd?: string; path: string }) => ipcRenderer.invoke('review:discard', args)
+    discard: (args: { cwd?: string; path: string }) => ipcRenderer.invoke('review:discard', args),
+    branches: (args?: { cwd?: string }) => ipcRenderer.invoke('review:branches', args),
+    checkout: (args: { cwd?: string; name: string }) =>
+      ipcRenderer.invoke('review:checkout', args),
+    createBranch: (args: { cwd?: string; name: string }) =>
+      ipcRenderer.invoke('review:createBranch', args),
+    summary: (args?: { cwd?: string }) => ipcRenderer.invoke('review:summary', args),
+    commit: (args: { cwd?: string; message: string; stageAll?: boolean }) =>
+      ipcRenderer.invoke('review:commit', args),
+    push: (args?: { cwd?: string }) => ipcRenderer.invoke('review:push', args),
+    onChanged: (cb: (e: { cwd: string }) => void) => {
+      const handler = (_: unknown, e: { cwd: string }) => cb(e)
+      ipcRenderer.on('review:changed', handler)
+      return () => ipcRenderer.removeListener('review:changed', handler)
+    }
   },
 
   browser: {
@@ -245,15 +287,26 @@ const api = {
   },
 
   terminal: {
-    spawn: (args: { id: string; cwd?: string }) => ipcRenderer.invoke('terminal:spawn', args),
+    spawn: (args: {
+      id: string
+      cwd?: string
+      shellKind?: 'powershell' | 'cmd' | 'git-bash' | 'wsl'
+    }) => ipcRenderer.invoke('terminal:spawn', args),
     write: (args: { id: string; data: string }) => ipcRenderer.invoke('terminal:write', args),
     resize: (args: { id: string; cols: number; rows: number }) =>
       ipcRenderer.invoke('terminal:resize', args),
     kill: (args: { id: string }) => ipcRenderer.invoke('terminal:kill', args),
-    onData: (cb: (e: { id: string; chunk: string }) => void) =>
-      ipcRenderer.on('terminal:data', (_, e) => cb(e)),
-    onExit: (cb: (e: { id: string; code: number | null; signal: string | null }) => void) =>
-      ipcRenderer.on('terminal:exit', (_, e) => cb(e)),
+    onData: (cb: (e: { id: string; chunk: string }) => void) => {
+      const handler = (_: unknown, e: { id: string; chunk: string }) => cb(e)
+      ipcRenderer.on('terminal:data', handler)
+      return () => ipcRenderer.removeListener('terminal:data', handler)
+    },
+    onExit: (cb: (e: { id: string; code: number | null; signal: string | null }) => void) => {
+      const handler = (_: unknown, e: { id: string; code: number | null; signal: string | null }) =>
+        cb(e)
+      ipcRenderer.on('terminal:exit', handler)
+      return () => ipcRenderer.removeListener('terminal:exit', handler)
+    },
     offAll: () => {
       ;['terminal:data', 'terminal:exit'].forEach((ch) => ipcRenderer.removeAllListeners(ch))
     }
@@ -320,7 +373,10 @@ const api = {
       ipcRenderer.on('app:warning', (_, e) => cb(e)),
     getWorkingFolder: () => ipcRenderer.invoke('app:getWorkingFolder'),
     getDataDir: () => ipcRenderer.invoke('app:getDataDir'),
-    openPath: (p: string) => ipcRenderer.invoke('app:openPath', p)
+    openPath: (p: string) => ipcRenderer.invoke('app:openPath', p),
+    // Synchronous from preload — process.platform is available in the
+    // sandbox. Renderer reads it once via window.api.app.platform.
+    platform: process.platform as NodeJS.Platform
   }
 }
 

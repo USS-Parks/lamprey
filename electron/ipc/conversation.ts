@@ -27,7 +27,11 @@ export function registerConversationHandlers(): void {
     async (
       _event,
       model: string,
-      opts?: { kind?: 'local' | 'cloud' | 'worktree'; worktreePath?: string | null }
+      opts?: {
+        kind?: 'local' | 'cloud' | 'worktree'
+        worktreePath?: string | null
+        projectId?: string | null
+      }
     ) => {
       try {
         return { success: true, data: store.createConversation(model, opts) }

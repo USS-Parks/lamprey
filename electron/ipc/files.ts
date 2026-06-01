@@ -1,4 +1,5 @@
-import { ipcMain, dialog, BrowserWindow } from 'electron'
+import { ipcMain, dialog, BrowserWindow, shell } from 'electron'
+import { spawn } from 'child_process'
 import * as path from 'path'
 import * as fs from 'fs/promises'
 import { processFiles } from '../services/file-handler'
@@ -193,6 +194,60 @@ export function registerFilesHandlers(): void {
       return { success: true, data: processed }
     } catch (err: any) {
       return { success: false, error: err?.message ?? 'File picker failed' }
+    }
+  })
+
+  ipcMain.handle('files:openInVSCode', async (_event, args?: { targetPath?: string }) => {
+    try {
+      const target = args?.targetPath || process.cwd()
+      // Probe `code` first so we can surface a real error to the renderer
+      // rather than firing a detached child that silently fails on ENOENT.
+      // On Windows `code` is a .cmd shim → shell: true is required for both
+      // probe and launch.
+      const probeCmd = process.platform === 'win32' ? 'where code' : 'command -v code'
+      const probe = await new Promise<boolean>((resolve) => {
+        const p = spawn(probeCmd, {
+          shell: true,
+          windowsHide: true,
+          stdio: 'ignore'
+        })
+        p.on('exit', (code) => resolve(code === 0))
+        p.on('error', () => resolve(false))
+      })
+      if (!probe) {
+        return {
+          success: false,
+          error:
+            "VS Code's `code` CLI was not found on PATH. Install VS Code or add it to PATH (Command Palette → Shell Command: Install 'code' command in PATH)."
+        }
+      }
+      const child = spawn('code', [target], {
+        detached: true,
+        stdio: 'ignore',
+        shell: true,
+        windowsHide: true
+      })
+      // After the probe succeeded a spawn error here is rare; log it but
+      // don't promise-reject (the IPC already returned). The probe is the
+      // real gate.
+      child.on('error', () => {
+        // Could pipe through app:warning here; for v1 the toast already
+        // fires on probe-fail which is the common case.
+      })
+      child.unref()
+      return { success: true, data: { path: target } }
+    } catch (err: any) {
+      return { success: false, error: err?.message ?? 'Could not launch VS Code' }
+    }
+  })
+
+  ipcMain.handle('files:openInExplorer', async (_event, args?: { targetPath?: string }) => {
+    try {
+      const target = args?.targetPath || process.cwd()
+      await shell.openPath(target)
+      return { success: true, data: { path: target } }
+    } catch (err: any) {
+      return { success: false, error: err?.message ?? 'Could not open file explorer' }
     }
   })
 }

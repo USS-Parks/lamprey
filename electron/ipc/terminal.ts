@@ -1,20 +1,23 @@
 import { ipcMain, BrowserWindow } from 'electron'
-import { ptySpawn, ptyWrite, ptyResize, ptyKill } from '../services/pty-manager'
+import { ptySpawn, ptyWrite, ptyResize, ptyKill, type ShellKind } from '../services/pty-manager'
 
 export function registerTerminalHandlers(): void {
-  ipcMain.handle('terminal:spawn', async (event, args: { id: string; cwd?: string }) => {
-    try {
-      if (!args?.id || typeof args.id !== 'string') {
-        return { success: false, error: 'id required' }
+  ipcMain.handle(
+    'terminal:spawn',
+    async (event, args: { id: string; cwd?: string; shellKind?: ShellKind }) => {
+      try {
+        if (!args?.id || typeof args.id !== 'string') {
+          return { success: false, error: 'id required' }
+        }
+        const win = BrowserWindow.fromWebContents(event.sender)
+        if (!win) return { success: false, error: 'no window' }
+        const info = ptySpawn(args.id, win, { cwd: args.cwd, shellKind: args.shellKind })
+        return { success: true, data: info }
+      } catch (err: any) {
+        return { success: false, error: err?.message ?? 'spawn failed' }
       }
-      const win = BrowserWindow.fromWebContents(event.sender)
-      if (!win) return { success: false, error: 'no window' }
-      const info = ptySpawn(args.id, win, { cwd: args.cwd })
-      return { success: true, data: info }
-    } catch (err: any) {
-      return { success: false, error: err?.message ?? 'spawn failed' }
     }
-  })
+  )
 
   ipcMain.handle('terminal:write', async (_event, args: { id: string; data: string }) => {
     try {

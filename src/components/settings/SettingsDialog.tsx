@@ -7,6 +7,7 @@ import { ApiKeySettings } from './ApiKeySettings'
 import { AgentSettings } from './AgentSettings'
 import { HooksSettings } from './HooksSettings'
 import { AutomationsSettings } from './AutomationsSettings'
+import { useUiStore } from '@/stores/ui-store'
 
 interface SettingsDialogProps {
   onClose: () => void
@@ -26,7 +27,8 @@ const TABS = [
 type TabId = (typeof TABS)[number]['id']
 
 export function SettingsDialog({ onClose }: SettingsDialogProps) {
-  const [activeTab, setActiveTab] = useState<TabId>('general')
+  const initialTab = useUiStore((s) => s.settingsInitialTab)
+  const [activeTab, setActiveTab] = useState<TabId>(initialTab ?? 'general')
 
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/60">

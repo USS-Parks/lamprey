@@ -16,27 +16,70 @@ interface PtySession {
 
 const sessions = new Map<string, PtySession>()
 
-function defaultShell(): { cmd: string; args: string[] } {
+export type ShellKind = 'powershell' | 'cmd' | 'git-bash' | 'wsl'
+
+// Common Git Bash install locations (64-bit and 32-bit), Scoop, and PATH.
+const GIT_BASH_CANDIDATES = [
+  'C:\\Program Files\\Git\\bin\\bash.exe',
+  'C:\\Program Files (x86)\\Git\\bin\\bash.exe',
+  'C:\\Users\\Public\\scoop\\apps\\git\\current\\bin\\bash.exe'
+]
+
+function resolveGitBash(): string | null {
+  // Synchronous existence check; falling back to PATH name lets `spawn`
+  // surface ENOENT to the renderer which is fine for our error UX.
+  try {
+    const fs = require('fs') as typeof import('fs')
+    for (const p of GIT_BASH_CANDIDATES) {
+      try {
+        if (fs.existsSync(p)) return p
+      } catch {
+        // ignore individual probe failures
+      }
+    }
+  } catch {
+    // require unavailable; fall through
+  }
+  return null
+}
+
+function shellForKind(kind: ShellKind | undefined): { cmd: string; args: string[] } {
   if (process.platform === 'win32') {
-    return { cmd: process.env.COMSPEC || 'cmd.exe', args: [] }
+    switch (kind) {
+      case 'powershell':
+        return { cmd: 'powershell.exe', args: ['-NoLogo'] }
+      case 'cmd':
+        return { cmd: process.env.COMSPEC || 'cmd.exe', args: [] }
+      case 'git-bash': {
+        const bash = resolveGitBash() ?? 'bash.exe'
+        return { cmd: bash, args: ['--login', '-i'] }
+      }
+      case 'wsl':
+        return { cmd: 'wsl.exe', args: [] }
+      default:
+        // PowerShell is the modern Windows default and matches what the
+        // Codex tool launcher offers as the unlabeled "Terminal" entry.
+        return { cmd: 'powershell.exe', args: ['-NoLogo'] }
+    }
   }
   return { cmd: process.env.SHELL || '/bin/bash', args: ['-i'] }
 }
 
 export interface SpawnOptions {
   cwd?: string
+  shellKind?: ShellKind
 }
 
 export function ptySpawn(
   id: string,
   win: BrowserWindow,
   opts: SpawnOptions = {}
-): { cwd: string; shell: string } {
+): { cwd: string; shell: string; shellKind: ShellKind | null } {
   if (sessions.has(id)) {
     throw new Error(`PTY session ${id} already exists`)
   }
   const cwd = opts.cwd || process.cwd()
-  const { cmd, args } = defaultShell()
+  const { cmd, args } = shellForKind(opts.shellKind)
 
   const proc = spawn(cmd, args, {
     cwd,
@@ -70,7 +113,7 @@ export function ptySpawn(
     send('terminal:data', { id, chunk: `\r\n[terminal error: ${err.message}]\r\n` })
   })
 
-  return { cwd, shell: cmd }
+  return { cwd, shell: cmd, shellKind: opts.shellKind ?? null }
 }
 
 export function ptyWrite(id: string, data: string): boolean {

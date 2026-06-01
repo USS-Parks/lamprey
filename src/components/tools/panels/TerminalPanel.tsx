@@ -2,30 +2,70 @@ import { useEffect, useRef } from 'react'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
+import { useUiStore, type ShellKind } from '@/stores/ui-store'
 
-// Stable id so closing+reopening the tool reuses the same pty session for
-// the lifetime of the window. Per-thread sessions can come later when we
-// move threads into the Sidebar.
-const TERMINAL_ID = 'lamprey-main'
+// Per-shell-kind session id. Each Codex shell (PowerShell, Git Bash, WSL,
+// cmd) gets its own pty so swapping shells in the launcher doesn't kill
+// the previous session — it just hides while the new one runs.
+const terminalIdFor = (kind: ShellKind): string => `lamprey-main:${kind}`
 
-let spawnPromise: Promise<boolean> | null = null
+const spawnPromises = new Map<string, Promise<boolean>>()
 
-async function ensureSpawned(): Promise<boolean> {
+// Per-session ring buffer of pty output. Survives panel unmount/remount and
+// shell-kind switches so the next mounted xterm can replay history on attach.
+// Cap each session at ~256 KB to bound memory.
+const HISTORY_CAP = 256 * 1024
+const historyBuffers = new Map<string, string>()
+const historyListenerInstalled = { value: false }
+
+function recordHistory(id: string, chunk: string): void {
+  const prev = historyBuffers.get(id) ?? ''
+  const next = prev + chunk
+  historyBuffers.set(id, next.length > HISTORY_CAP ? next.slice(-HISTORY_CAP) : next)
+}
+
+function clearHistory(id: string): void {
+  historyBuffers.delete(id)
+}
+
+// Install a single, module-level pty-data listener that records every chunk
+// into the per-session history buffer. The component-level listener (below)
+// still mirrors chunks into the live xterm; this one only captures.
+function ensureHistoryListener(): void {
+  if (historyListenerInstalled.value) return
+  if (!window.api?.terminal) return
+  historyListenerInstalled.value = true
+  window.api.terminal.onData((e: { id: string; chunk: string }) => {
+    recordHistory(e.id, e.chunk)
+  })
+  window.api.terminal.onExit((e: { id: string; code: number | null }) => {
+    recordHistory(
+      e.id,
+      `\r\n[shell exited${e.code != null ? ` (code ${e.code})` : ''}]\r\n`
+    )
+  })
+}
+
+async function ensureSpawned(id: string, shellKind: ShellKind): Promise<boolean> {
   if (!window.api?.terminal) return false
-  if (spawnPromise) return spawnPromise
-  spawnPromise = (async () => {
+  ensureHistoryListener()
+  const cached = spawnPromises.get(id)
+  if (cached) return cached
+  const promise = (async () => {
     const wd = await window.api.files.getWorkdir()
     const cwd = wd.success && wd.data ? wd.data.path : undefined
-    const res = await window.api.terminal.spawn({ id: TERMINAL_ID, cwd })
+    const res = await window.api.terminal.spawn({ id, cwd, shellKind })
     return res.success
   })()
-  return spawnPromise
+  spawnPromises.set(id, promise)
+  return promise
 }
 
 export function TerminalPanel() {
   const containerRef = useRef<HTMLDivElement>(null)
   const termRef = useRef<Terminal | null>(null)
   const fitRef = useRef<FitAddon | null>(null)
+  const activeShell = useUiStore((s) => s.activeShell)
 
   useEffect(() => {
     const container = containerRef.current
@@ -53,30 +93,38 @@ export function TerminalPanel() {
     termRef.current = term
     fitRef.current = fit
 
+    const sessionId = terminalIdFor(activeShell)
+
+    // Replay buffered history so re-mounting (panel close/open, shell switch)
+    // restores what the previous xterm rendered.
+    const replay = historyBuffers.get(sessionId)
+    if (replay) term.write(replay)
+
     // Pipe keystrokes to backend.
     const inputDisposable = term.onData((data) => {
-      void window.api.terminal.write({ id: TERMINAL_ID, data })
+      void window.api.terminal.write({ id: sessionId, data })
     })
 
-    // Pipe pty data to terminal. We register a single onData listener for the
-    // app lifetime, but multiple TerminalPanel mounts could clobber each other.
-    // Filter by id and write to whichever term is currently mounted.
+    // Mirror pty data into the live xterm. History recording is handled by
+    // the module-level listener installed in ensureSpawned() — don't double
+    // record here.
     const onData = (e: { id: string; chunk: string }) => {
-      if (e.id !== TERMINAL_ID) return
+      if (e.id !== sessionId) return
       term.write(e.chunk)
     }
     const onExit = (e: { id: string; code: number | null }) => {
-      if (e.id !== TERMINAL_ID) return
+      if (e.id !== sessionId) return
       term.write(`\r\n[shell exited${e.code != null ? ` (code ${e.code})` : ''}]\r\n`)
-      spawnPromise = null
+      spawnPromises.delete(sessionId)
+      clearHistory(sessionId)
     }
-    window.api.terminal.onData(onData)
-    window.api.terminal.onExit(onExit)
+    const offData = window.api.terminal.onData(onData)
+    const offExit = window.api.terminal.onExit(onExit)
 
     void (async () => {
-      const ok = await ensureSpawned()
+      const ok = await ensureSpawned(sessionId, activeShell)
       if (!ok) {
-        term.write('\x1b[31m[failed to spawn shell]\x1b[0m\r\n')
+        term.write(`\x1b[31m[failed to spawn ${activeShell}]\x1b[0m\r\n`)
       }
     })()
 
@@ -92,7 +140,11 @@ export function TerminalPanel() {
     return () => {
       ro.disconnect()
       inputDisposable.dispose()
-      window.api?.terminal?.offAll?.()
+      // Remove only this mount's listeners. The module-level history listener
+      // (installed inside ensureSpawned) stays alive so background ptys keep
+      // recording into their buffers while the panel is unmounted.
+      offData?.()
+      offExit?.()
       try {
         term.dispose()
       } catch {
@@ -101,7 +153,7 @@ export function TerminalPanel() {
       termRef.current = null
       fitRef.current = null
     }
-  }, [])
+  }, [activeShell])
 
   return (
     <div className="flex flex-1 flex-col bg-black">

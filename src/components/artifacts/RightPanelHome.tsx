@@ -1,135 +1,169 @@
-import { useChatStore } from '@/stores/chat-store'
-import { useUiStore } from '@/stores/ui-store'
+import { useUiStore, type ToolId } from '@/stores/ui-store'
 import { useThemedIcon } from '@/lib/themed-icon'
-import { pickAndAttachFiles } from '@/lib/attach-file'
-import artifactsHeaderLight from '@assets/Lamprey Code Window Icon.png'
-import artifactsHeaderDark from '@assets/Lamprey Code Window Icon Dark View.png'
-import addFileLight from '@assets/Lamprey Add File Icon.png'
-import addFileDark from '@assets/Lamprey Add File Icon Dark View.png'
 import folderLight from '@assets/Lamprey Folder 1 Icon.png'
 import folderDark from '@assets/Lamprey Folder 1 Dark View.png'
-import thinkingLight from '@assets/Lamprey Thinking Icon.png'
-import thinkingDark from '@assets/Lamprey Thinking Icon Dark View.png'
-import { ActivityFeed } from './ActivityFeed'
-import { AddToolMenu } from '@/components/layout/AddToolMenu'
-
-interface QuickAction {
-  iconLight: string
-  iconDark: string
-  label: string
-  description: string
-  shortcut?: string
-  onClick: () => void
-}
+import chatLight from '@assets/Lamprey Chat Window Icon.png'
+import chatDark from '@assets/Lamprey Chat Icon Dark View.png'
+import workLocationLight from '@assets/Lamprey Work Location Icon.png'
+import workLocationDark from '@assets/Lamprey Work Location Icon Dark View.png'
+import codeWindowLight from '@assets/Lamprey Code Window Icon.png'
+import codeWindowDark from '@assets/Lamprey Code Window Icon Dark View.png'
+import codingLight from '@assets/Lamprey Coding Icon.png'
+import codingDark from '@assets/Lamprey Coding Icon Dark View.png'
+import fullAccessLight from '@assets/Lamprey Full Access Icon.png'
+import fullAccessDark from '@assets/Lamprey Full Access Icon Dark View.png'
 
 interface RightPanelHomeProps {
   onCollapse: () => void
 }
 
-export function RightPanelHome({ onCollapse }: RightPanelHomeProps) {
-  const openMemory = useUiStore((s) => s.openMemory)
-  const isStreaming = useChatStore((s) => s.isStreaming)
-  const toolCalls = useChatStore((s) => s.toolCalls)
+interface Pill {
+  id: ToolId
+  label: string
+  description: string
+  iconLight: string
+  iconDark: string
+}
 
-  const artifactsHeaderIconUrl = useThemedIcon(artifactsHeaderLight, artifactsHeaderDark)
-  const thinkingIconUrl = useThemedIcon(thinkingLight, thinkingDark)
+// 4 rounded pill subpanels, each one an entry point into the docked mode
+// of the same name. Visual language matches the chat column (rounded-xl +
+// border + bg-primary). Removed Memory and Add file cards entirely — the
+// user has the chat composer + Skills sidebar + Memory modal for those.
+export function RightPanelHome({ onCollapse }: RightPanelHomeProps): React.ReactElement {
+  const setActiveTool = useUiStore((s) => s.setActiveTool)
 
-  const actions: QuickAction[] = [
+  const folderIcon = useThemedIcon(folderLight, folderDark)
+  const chatIcon = useThemedIcon(chatLight, chatDark)
+  const workLocationIcon = useThemedIcon(workLocationLight, workLocationDark)
+  const codeWindowIcon = useThemedIcon(codeWindowLight, codeWindowDark)
+  const codingIcon = useThemedIcon(codingLight, codingDark)
+  const fullAccessIcon = useThemedIcon(fullAccessLight, fullAccessDark)
+
+  const pills: Array<Pill & { iconUrl: string }> = [
     {
-      iconLight: addFileLight,
-      iconDark: addFileDark,
-      label: 'Add file',
-      description: 'Attach a file to your prompt',
-      shortcut: 'Ctrl+U',
-      onClick: () => void pickAndAttachFiles()
-    },
-    {
+      id: 'files',
+      label: 'Files',
+      description: 'Workspace tree, filter, preview',
       iconLight: folderLight,
       iconDark: folderDark,
-      label: 'Memory',
-      description: 'Browse stored memories',
-      shortcut: 'Ctrl+Shift+M',
-      onClick: openMemory
+      iconUrl: folderIcon
+    },
+    {
+      id: 'sidechat',
+      label: 'Side chat',
+      description: 'Branch the current conversation',
+      iconLight: chatLight,
+      iconDark: chatDark,
+      iconUrl: chatIcon
+    },
+    {
+      id: 'browser',
+      label: 'Browser',
+      description: 'Embedded webview for docs and references',
+      iconLight: workLocationLight,
+      iconDark: workLocationDark,
+      iconUrl: workLocationIcon
+    },
+    {
+      id: 'artifacts',
+      label: 'Artifacts',
+      description: 'Generated HTML, SVG, Mermaid, JSX',
+      iconLight: codeWindowLight,
+      iconDark: codeWindowDark,
+      iconUrl: codeWindowIcon
+    },
+    {
+      id: 'terminal',
+      label: 'Terminal',
+      description: 'PowerShell, Git Bash, WSL, or cmd',
+      iconLight: codingLight,
+      iconDark: codingDark,
+      iconUrl: codingIcon
+    },
+    {
+      id: 'review',
+      label: 'Review',
+      description: 'Git status, diffs, stage and commit',
+      iconLight: fullAccessLight,
+      iconDark: fullAccessDark,
+      iconUrl: fullAccessIcon
     }
   ]
 
-  const showActivity = isStreaming || toolCalls.length > 0
-
   return (
     <>
-      <div className="flex h-12 items-center justify-between border-b border-[var(--border)] pl-3 pr-[28px] text-sm font-medium text-[var(--text-secondary)]">
-        <span className="flex items-center gap-2">
-          <img
-            src={showActivity ? thinkingIconUrl : artifactsHeaderIconUrl}
-            alt=""
-            aria-hidden
-            className={`icon-asset h-9 w-9 object-contain ${showActivity ? 'animate-pulse' : ''}`}
-          />
-          {showActivity ? 'Activity' : 'Artifacts'}
-        </span>
+      <div className="flex h-10 items-center justify-between border-b border-[var(--border)] pl-3 pr-2 text-[12px] font-medium text-[var(--text-secondary)]">
+        <span>Workspace</span>
         <button
           onClick={onCollapse}
           title="Collapse panel"
           aria-label="Collapse panel"
           className="rounded-md p-1 text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]"
         >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-            <line x1="18" y1="6" x2="6" y2="18" />
-            <line x1="6" y1="6" x2="18" y2="18" />
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden
+          >
+            <polyline points="15 18 9 12 15 6" />
           </svg>
         </button>
       </div>
 
-      {showActivity ? (
-        <ActivityFeed />
-      ) : (
-        <div className="flex flex-1 flex-col gap-4 overflow-y-auto px-5 pb-5 pt-5">
-          <div className="flex justify-center">
-            <AddToolMenu variant="panel" />
-          </div>
-          <div className="flex flex-col gap-4">
-            {actions.map((action) => (
-              <button
-                key={action.label}
-                onClick={action.onClick}
-                className="group flex items-center gap-4 rounded-xl border border-[var(--border)] bg-[var(--bg-primary)] p-4 text-left transition-all hover:-translate-y-0.5 hover:border-[var(--accent)] hover:bg-[var(--bg-tertiary)]"
+      <div className="flex flex-1 flex-col gap-2.5 overflow-y-auto p-2.5">
+        {pills.map((pill) => (
+          <button
+            key={pill.id}
+            type="button"
+            onClick={() => setActiveTool(pill.id)}
+            className="group flex items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--bg-primary)] p-3 text-left transition-all hover:-translate-y-0.5 hover:border-[var(--accent)] hover:bg-[var(--bg-tertiary)]"
+          >
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center">
+              <img
+                src={pill.iconLight}
+                alt=""
+                aria-hidden
+                className="themed-variant-light icon-asset h-11 w-11 object-contain transition-transform group-hover:scale-110"
+              />
+              <img
+                src={pill.iconDark}
+                alt=""
+                aria-hidden
+                className="themed-variant-dark icon-asset h-11 w-11 object-contain transition-transform group-hover:scale-110"
+              />
+            </span>
+            <span className="flex min-w-0 flex-1 flex-col">
+              <span className="text-[14px] font-medium text-[var(--text-primary)]">
+                {pill.label}
+              </span>
+              <span className="text-[12px] leading-tight text-[var(--text-muted)]">
+                {pill.description}
+              </span>
+            </span>
+            <span className="shrink-0 text-[var(--text-muted)] transition-transform group-hover:translate-x-0.5">
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden
               >
-                <span className="relative flex h-[50px] w-[50px] shrink-0 items-center justify-center">
-                  <img
-                    src={action.iconLight}
-                    alt=""
-                    aria-hidden
-                    className="themed-variant-light icon-asset h-[50px] w-[50px] object-contain transition-transform group-hover:scale-110"
-                  />
-                  <img
-                    src={action.iconDark}
-                    alt=""
-                    aria-hidden
-                    className="themed-variant-dark icon-asset h-[50px] w-[50px] object-contain transition-transform group-hover:scale-110"
-                  />
-                </span>
-                <span className="flex min-w-0 flex-1 flex-col gap-1">
-                  <span className="text-[15px] font-medium text-[var(--text-primary)]">
-                    {action.label}
-                  </span>
-                  <span className="text-[13px] leading-tight text-[var(--text-muted)]">
-                    {action.description}
-                  </span>
-                </span>
-                {action.shortcut && (
-                  <span className="ml-auto shrink-0 self-start rounded border border-[var(--border)] bg-[var(--bg-secondary)] px-1.5 py-0.5 font-mono text-[11px] text-[var(--text-muted)]">
-                    {action.shortcut}
-                  </span>
-                )}
-              </button>
-            ))}
-          </div>
-
-          <p className="px-2 pt-2 text-center text-[13px] leading-relaxed text-[var(--text-muted)]">
-            HTML, SVG, Mermaid, or JSX artifacts open here when the assistant generates them.
-          </p>
-        </div>
-      )}
+                <polyline points="9 18 15 12 9 6" />
+              </svg>
+            </span>
+          </button>
+        ))}
+      </div>
     </>
   )
 }

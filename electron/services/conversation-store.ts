@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto'
 import { getDb } from './database'
+import { touchProject } from './projects-store'
 
 export interface ConversationRow {
   id: string
@@ -9,6 +10,7 @@ export interface ConversationRow {
   updated_at: number
   kind?: string
   worktree_path?: string | null
+  project_id?: string | null
 }
 
 export interface MessageRow {
@@ -23,16 +25,22 @@ export interface MessageRow {
 
 export function createConversation(
   model: string,
-  opts?: { kind?: 'local' | 'cloud' | 'worktree'; worktreePath?: string | null }
+  opts?: {
+    kind?: 'local' | 'cloud' | 'worktree'
+    worktreePath?: string | null
+    projectId?: string | null
+  }
 ) {
   const db = getDb()
   const id = randomUUID()
   const now = Date.now()
   const kind = opts?.kind ?? 'local'
   const worktreePath = opts?.worktreePath ?? null
+  const projectId = opts?.projectId ?? null
   db.prepare(
-    'INSERT INTO conversations (id, title, model, created_at, updated_at, kind, worktree_path) VALUES (?, ?, ?, ?, ?, ?, ?)'
-  ).run(id, null, model, now, now, kind, worktreePath)
+    'INSERT INTO conversations (id, title, model, created_at, updated_at, kind, worktree_path, project_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+  ).run(id, null, model, now, now, kind, worktreePath, projectId)
+  if (projectId) touchProject(projectId)
   return {
     id,
     title: null,
@@ -41,7 +49,8 @@ export function createConversation(
     updatedAt: now,
     messageCount: 0,
     kind,
-    worktreePath
+    worktreePath,
+    projectId
   }
 }
 
@@ -62,7 +71,8 @@ export function getConversation(id: string) {
     updatedAt: row.updated_at,
     messageCount: count.cnt,
     kind: (row.kind as 'local' | 'cloud' | 'worktree' | undefined) ?? 'local',
-    worktreePath: row.worktree_path ?? null
+    worktreePath: row.worktree_path ?? null,
+    projectId: row.project_id ?? null
   }
 }
 
@@ -81,7 +91,8 @@ export function listConversations() {
       updatedAt: row.updated_at,
       messageCount: count.cnt,
       kind: (row.kind as 'local' | 'cloud' | 'worktree' | undefined) ?? 'local',
-      worktreePath: row.worktree_path ?? null
+      worktreePath: row.worktree_path ?? null,
+      projectId: row.project_id ?? null
     }
   })
 }
@@ -109,9 +120,24 @@ export function updateConversationModel(id: string, model: string) {
   )
 }
 
+export function setConversationProject(id: string, projectId: string | null) {
+  const db = getDb()
+  db.prepare('UPDATE conversations SET project_id = ?, updated_at = ? WHERE id = ?').run(
+    projectId,
+    Date.now(),
+    id
+  )
+  if (projectId) touchProject(projectId)
+}
+
 export function touchConversation(id: string) {
   const db = getDb()
   db.prepare('UPDATE conversations SET updated_at = ? WHERE id = ?').run(Date.now(), id)
+  // Bubble activity up to the parent project so it sorts to the top.
+  const row = db
+    .prepare('SELECT project_id FROM conversations WHERE id = ?')
+    .get(id) as { project_id?: string | null } | undefined
+  if (row?.project_id) touchProject(row.project_id)
 }
 
 export function saveMessage(msg: {

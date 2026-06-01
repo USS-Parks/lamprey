@@ -3,6 +3,10 @@ import type { MemoryEntry } from '@/lib/types'
 
 interface MemoryState {
   memories: MemoryEntry[]
+  // Per-conversation pinned memory IDs. Drives the Sources section in the
+  // Environment card. Not persisted across app restarts in v1 — that would
+  // need a schema migration.
+  pinnedByConversation: Record<string, number[]>
   loadMemories: () => Promise<void>
   receiveMemory: (entry: MemoryEntry) => void
   addMemory: (content: string) => Promise<MemoryEntry | null>
@@ -12,10 +16,14 @@ interface MemoryState {
   clearAll: () => Promise<void>
   exportMemories: () => Promise<string | null>
   importMemories: (json: string) => Promise<void>
+  toggleMemoryPin: (conversationId: string, memoryId: number) => void
+  isPinned: (conversationId: string, memoryId: number) => boolean
+  pinnedForConversation: (conversationId: string) => MemoryEntry[]
 }
 
 export const useMemoryStore = create<MemoryState>((set, get) => ({
   memories: [],
+  pinnedByConversation: {},
 
   loadMemories: async () => {
     if (!window.api) return
@@ -96,5 +104,28 @@ export const useMemoryStore = create<MemoryState>((set, get) => ({
     if (!Array.isArray(parsed)) throw new Error('Import JSON must be an array')
     await window.api.memory.import(parsed)
     await get().loadMemories()
+  },
+
+  toggleMemoryPin: (conversationId: string, memoryId: number) => {
+    set((state) => {
+      const current = state.pinnedByConversation[conversationId] ?? []
+      const next = current.includes(memoryId)
+        ? current.filter((id) => id !== memoryId)
+        : [...current, memoryId]
+      return {
+        pinnedByConversation: { ...state.pinnedByConversation, [conversationId]: next }
+      }
+    })
+  },
+
+  isPinned: (conversationId: string, memoryId: number) => {
+    return (get().pinnedByConversation[conversationId] ?? []).includes(memoryId)
+  },
+
+  pinnedForConversation: (conversationId: string) => {
+    const ids = get().pinnedByConversation[conversationId] ?? []
+    if (ids.length === 0) return []
+    const memMap = new Map(get().memories.map((m) => [m.id, m]))
+    return ids.map((id) => memMap.get(id)).filter((m): m is MemoryEntry => Boolean(m))
   }
 }))

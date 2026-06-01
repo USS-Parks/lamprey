@@ -10,6 +10,7 @@ import { useSettingsStore } from '@/stores/settings-store'
 import { useModelStore } from '@/stores/model-store'
 import { useAgentStore } from '@/stores/agent-store'
 import { toast } from '@/stores/toast-store'
+import { useNavHistoryStore } from '@/stores/nav-history-store'
 
 export interface ToolCallState {
   callId: string
@@ -94,6 +95,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   selectConversation: async (id: string) => {
+    if (get().activeConversationId === id) return
+    useNavHistoryStore.getState().push(id)
     set({ activeConversationId: id, toolCalls: [] })
     const result = await window.api.conversation.getMessages(id)
     if (result.success) {
@@ -110,6 +113,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const result = await window.api.conversation.create(model)
     if (result.success) {
       const conv = result.data
+      useNavHistoryStore.getState().push(conv.id)
       set((state) => ({
         conversations: [conv, ...state.conversations],
         activeConversationId: conv.id,

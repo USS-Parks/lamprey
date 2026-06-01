@@ -6,10 +6,28 @@ const RIGHT_WIDTH_KEY = 'lamprey.ui.rightPanelWidth'
 const RIGHT_COLLAPSED_KEY = 'lamprey.ui.rightPanelCollapsed'
 const PERMISSIONS_KEY = 'lamprey.ui.permissionsMode'
 const CONV_FILTERS_KEY = 'lamprey.ui.convFilters'
+const ACTIVE_SHELL_KEY = 'lamprey.ui.activeShell'
 
 export type PermissionsMode = 'default' | 'auto-review' | 'full'
 
-export type ToolId = 'files' | 'sidechat' | 'browser' | 'review' | 'terminal'
+export type ToolId =
+  | 'files'
+  | 'sidechat'
+  | 'browser'
+  | 'review'
+  | 'terminal'
+  | 'environment'
+  | 'sources'
+  | 'artifacts'
+
+export type ShellKind = 'powershell' | 'cmd' | 'git-bash' | 'wsl'
+
+function readShell(): ShellKind {
+  if (typeof window === 'undefined') return 'powershell'
+  const raw = window.localStorage?.getItem(ACTIVE_SHELL_KEY)
+  if (raw === 'powershell' || raw === 'cmd' || raw === 'git-bash' || raw === 'wsl') return raw
+  return 'powershell'
+}
 
 export type ConvStatus = 'active' | 'all'
 export type ConvProject = 'all'
@@ -86,10 +104,21 @@ function writeLocal(key: string, value: string): void {
   }
 }
 
+export type SettingsTabId =
+  | 'general'
+  | 'models'
+  | 'agents'
+  | 'api'
+  | 'appearance'
+  | 'mcp'
+  | 'hooks'
+  | 'automations'
+
 interface UiState {
   searchQuery: string
   searchFocusToken: number
   settingsOpen: boolean
+  settingsInitialTab: SettingsTabId | null
   memoryOpen: boolean
   composeDraft: string
   composeSeedToken: number
@@ -102,6 +131,8 @@ interface UiState {
   setActiveTool: (tool: ToolId | null) => void
   closeActiveTool: () => void
   toggleTool: (tool: ToolId) => void
+  activeShell: ShellKind
+  setActiveShell: (kind: ShellKind) => void
   quickOpenVisible: boolean
   openQuickOpen: () => void
   closeQuickOpen: () => void
@@ -120,7 +151,7 @@ interface UiState {
   resetConvFilters: () => void
   setSearchQuery: (q: string) => void
   requestSearchFocus: () => void
-  openSettings: () => void
+  openSettings: (tab?: SettingsTabId) => void
   closeSettings: () => void
   toggleSettings: () => void
   openMemory: () => void
@@ -141,6 +172,7 @@ export const useUiStore = create<UiState>((set, get) => ({
   searchQuery: '',
   searchFocusToken: 0,
   settingsOpen: false,
+  settingsInitialTab: null,
   memoryOpen: false,
   composeDraft: '',
   composeSeedToken: 0,
@@ -150,6 +182,7 @@ export const useUiStore = create<UiState>((set, get) => ({
   rightPanelWidth: readNumber(RIGHT_WIDTH_KEY, RIGHT_DEFAULT, RIGHT_MIN, RIGHT_MAX),
   permissionsMode: readPermissions(),
   activeTool: null,
+  activeShell: readShell(),
   quickOpenVisible: false,
   requestedOpenFilePath: null,
   requestedOpenFileToken: 0,
@@ -159,9 +192,14 @@ export const useUiStore = create<UiState>((set, get) => ({
   setSearchQuery: (q: string) => set({ searchQuery: q }),
   requestSearchFocus: () =>
     set((s) => ({ searchFocusToken: s.searchFocusToken + 1, searchQuery: get().searchQuery })),
-  openSettings: () => set({ settingsOpen: true }),
-  closeSettings: () => set({ settingsOpen: false }),
-  toggleSettings: () => set((s) => ({ settingsOpen: !s.settingsOpen })),
+  openSettings: (tab?: SettingsTabId) =>
+    set({ settingsOpen: true, settingsInitialTab: tab ?? null }),
+  closeSettings: () => set({ settingsOpen: false, settingsInitialTab: null }),
+  toggleSettings: () =>
+    set((s) => ({
+      settingsOpen: !s.settingsOpen,
+      settingsInitialTab: s.settingsOpen ? null : s.settingsInitialTab
+    })),
   openMemory: () => set({ memoryOpen: true }),
   closeMemory: () => set({ memoryOpen: false }),
   toggleMemory: () => set((s) => ({ memoryOpen: !s.memoryOpen })),
@@ -212,6 +250,10 @@ export const useUiStore = create<UiState>((set, get) => ({
     set({ activeTool: tool })
   },
   closeActiveTool: () => set({ activeTool: null }),
+  setActiveShell: (kind: ShellKind) => {
+    writeLocal(ACTIVE_SHELL_KEY, kind)
+    set({ activeShell: kind })
+  },
   toggleTool: (tool: ToolId) => {
     const current = get().activeTool
     if (current === tool) {

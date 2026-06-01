@@ -43,6 +43,7 @@ win:
   icon: resources/icon.ico
   target:
     - nsis
+    - zip
   artifactName: ${productName}-${version}-${arch}.${ext}
   # Skip the sign-and-edit step entirely. We aren't code-signing, and the
   # winCodeSign archive contains macOS symlinks that Windows can't extract

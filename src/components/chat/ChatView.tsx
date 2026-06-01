@@ -32,7 +32,7 @@ export function ChatView() {
   }
 
   return (
-    <div className="chat-column relative flex flex-1 flex-col overflow-hidden">
+    <div className="chat-column relative flex flex-1 flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--bg-primary)]">
       <FileDropZone />
 
       <div className="flex flex-1 flex-col overflow-hidden">

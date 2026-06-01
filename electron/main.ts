@@ -11,6 +11,7 @@ import { fireHooks } from './services/hooks-runner'
 import { startAutomations, stopAutomations } from './services/automations-runner'
 import { mcpManager } from './services/mcp-manager'
 import { initializeSkillLoader, shutdownSkillLoader } from './services/skill-loader'
+import { shutdownReviewWatcher } from './ipc/review'
 import { destroyTray, handleWindowClose, initializeTray, refreshTrayMenu } from './services/tray'
 import { registerGlobalShortcuts } from './services/shortcuts'
 import { initializeUpdater, quitAndInstall, checkNow } from './services/updater'
@@ -428,5 +429,6 @@ app.on('will-quit', () => {
   ptyKillAll()
   destroyBrowserTabs()
   stopAutomations()
+  void shutdownReviewWatcher()
   closeDb()
 })

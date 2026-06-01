@@ -13,6 +13,7 @@ import { registerReviewHandlers } from './review'
 import { registerWorktreeHandlers } from './worktree'
 import { registerHooksHandlers } from './hooks'
 import { registerAutomationsHandlers } from './automations'
+import { registerProjectsHandlers } from './projects'
 
 export function registerAllIpcHandlers(): void {
   registerChatHandlers()
@@ -30,4 +31,5 @@ export function registerAllIpcHandlers(): void {
   registerWorktreeHandlers()
   registerHooksHandlers()
   registerAutomationsHandlers()
+  registerProjectsHandlers()
 }

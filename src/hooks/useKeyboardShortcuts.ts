@@ -79,6 +79,20 @@ export function useKeyboardShortcuts(): void {
         return
       }
 
+      // Ctrl/Cmd+Shift+E — toggle Environment mode in the docked panel
+      if (mod && e.shiftKey && (e.key === 'e' || e.key === 'E')) {
+        e.preventDefault()
+        useUiStore.getState().toggleTool('environment')
+        return
+      }
+
+      // Ctrl/Cmd+Shift+S — toggle Sources mode in the docked panel
+      if (mod && e.shiftKey && (e.key === 's' || e.key === 'S')) {
+        e.preventDefault()
+        useUiStore.getState().toggleTool('sources')
+        return
+      }
+
       // Ctrl/Cmd+, — open settings
       if (mod && e.key === ',') {
         e.preventDefault()

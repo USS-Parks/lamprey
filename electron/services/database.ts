@@ -76,11 +76,30 @@ function initSchema(db: Database.Database): void {
       last_run_at INTEGER,
       last_result TEXT
     );
+
+    CREATE TABLE IF NOT EXISTS projects (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      path TEXT,
+      pinned INTEGER NOT NULL DEFAULT 0,
+      archived INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL,
+      last_activity_at INTEGER NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_projects_archived_activity
+      ON projects(archived, last_activity_at DESC);
   `)
 
-  // Migrations for older DBs that predate kind/worktree_path columns.
+  // Migrations for older DBs that predate kind/worktree_path/project_id columns.
   safeAddColumn(db, 'conversations', "kind TEXT NOT NULL DEFAULT 'local'")
   safeAddColumn(db, 'conversations', 'worktree_path TEXT')
+  safeAddColumn(db, 'conversations', 'project_id TEXT')
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_conversations_project
+      ON conversations(project_id, updated_at DESC);
+  `)
 }
 
 export function closeDb(): void {
