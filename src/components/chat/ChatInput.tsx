@@ -462,7 +462,7 @@ function ContextChipRow({ onAddFile }: ContextChipRowProps) {
   ]
 
   return (
-    <div className="mb-2 flex flex-wrap items-center gap-2 px-1">
+    <div className="mt-2 flex flex-wrap items-center gap-2 px-1">
       <ContextChip
         iconLight={workLocationLight}
         iconDark={workLocationDark}
@@ -819,22 +819,50 @@ export function ChatInput({ onSend, onCancel, isStreaming, disabled }: ChatInput
         </div>
       )}
 
-      <ContextChipRow onAddFile={handlePickerClick} />
-
       <div className="flex w-full flex-col gap-2 rounded-3xl border border-[var(--border)] bg-[var(--bg-secondary)] px-4 pt-3 pb-2 shadow-lg backdrop-blur-sm">
-        <textarea
-          ref={textareaRef}
-          data-chat-input
-          value={content}
-          onChange={(e) => setContent(e.target.value)}
-          onKeyDown={handleKeyDown}
-          onPaste={handlePaste}
-          placeholder=""
-          rows={1}
-          disabled={disabled}
-          style={{ paddingLeft: '20px', paddingTop: '8px' }}
-          className="max-h-[200px] min-h-[28px] w-full resize-none bg-transparent text-sm leading-relaxed text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]"
-        />
+        <div className="flex items-start gap-2">
+          <textarea
+            ref={textareaRef}
+            data-chat-input
+            value={content}
+            onChange={(e) => setContent(e.target.value)}
+            onKeyDown={handleKeyDown}
+            onPaste={handlePaste}
+            placeholder=""
+            rows={1}
+            disabled={disabled}
+            style={{ paddingLeft: '20px', paddingTop: '8px' }}
+            className="max-h-[200px] min-h-[28px] flex-1 resize-none bg-transparent text-sm leading-relaxed text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]"
+          />
+
+          {isStreaming ? (
+            <button
+              onClick={onCancel}
+              title="Stop streaming"
+              aria-label="Stop streaming"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--error)] text-white transition-colors hover:opacity-80"
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                <rect x="4" y="4" width="16" height="16" rx="2" />
+              </svg>
+            </button>
+          ) : (
+            <button
+              onClick={handleSubmit}
+              disabled={!canSend}
+              title="Send (Enter)"
+              aria-label="Send"
+              className="flex h-[60px] w-[60px] shrink-0 items-center justify-center rounded-full bg-[var(--bg-tertiary)] transition-all hover:scale-105 hover:bg-[var(--accent)] disabled:opacity-40 disabled:hover:scale-100 disabled:hover:bg-[var(--bg-tertiary)]"
+            >
+              <img
+                src={sendIcon}
+                alt=""
+                aria-hidden
+                className="icon-asset-crisp h-[45px] w-[45px] object-contain"
+              />
+            </button>
+          )}
+        </div>
 
         <div className="flex items-center gap-1">
           <AddMenu
@@ -860,35 +888,9 @@ export function ChatInput({ onSend, onCancel, isStreaming, disabled }: ChatInput
           >
             <img src={micIcon} alt="" aria-hidden className="icon-asset h-[25px] w-[25px] object-contain" />
           </button>
-
-          {isStreaming ? (
-            <button
-              onClick={onCancel}
-              title="Stop streaming"
-              aria-label="Stop streaming"
-              className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--error)] text-white transition-colors hover:opacity-80"
-            >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-                <rect x="4" y="4" width="16" height="16" rx="2" />
-              </svg>
-            </button>
-          ) : (
-            <button
-              onClick={handleSubmit}
-              disabled={!canSend}
-              title="Send (Enter)"
-              aria-label="Send"
-              className="flex h-[60px] w-[60px] items-center justify-center rounded-full bg-[var(--bg-tertiary)] transition-all hover:scale-105 hover:bg-[var(--accent)] disabled:opacity-40 disabled:hover:scale-100 disabled:hover:bg-[var(--bg-tertiary)]"
-            >
-              <img
-                src={sendIcon}
-                alt=""
-                aria-hidden
-                className="icon-asset-crisp h-[45px] w-[45px] object-contain"
-              />
-            </button>
-          )}
         </div>
+
+        <ContextChipRow onAddFile={handlePickerClick} />
       </div>
 
       {keyPromptProvider && (

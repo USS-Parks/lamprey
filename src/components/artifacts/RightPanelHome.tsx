@@ -6,13 +6,12 @@ import artifactsHeaderLight from '@assets/Lamprey Code Window Icon.png'
 import artifactsHeaderDark from '@assets/Lamprey Code Window Icon Dark View.png'
 import addFileLight from '@assets/Lamprey Add File Icon.png'
 import addFileDark from '@assets/Lamprey Add File Icon Dark View.png'
-import pluginsLight from '@assets/Lamprey Plugins Icon.png'
-import pluginsDark from '@assets/Lamprey Plugins Icon Dark View.png'
 import folderLight from '@assets/Lamprey Folder 1 Icon.png'
 import folderDark from '@assets/Lamprey Folder 1 Dark View.png'
 import thinkingLight from '@assets/Lamprey Thinking Icon.png'
 import thinkingDark from '@assets/Lamprey Thinking Icon Dark View.png'
 import { ActivityFeed } from './ActivityFeed'
+import { AddToolMenu } from '@/components/layout/AddToolMenu'
 
 interface QuickAction {
   iconLight: string
@@ -28,7 +27,6 @@ interface RightPanelHomeProps {
 }
 
 export function RightPanelHome({ onCollapse }: RightPanelHomeProps) {
-  const openSettings = useUiStore((s) => s.openSettings)
   const openMemory = useUiStore((s) => s.openMemory)
   const isStreaming = useChatStore((s) => s.isStreaming)
   const toolCalls = useChatStore((s) => s.toolCalls)
@@ -44,14 +42,6 @@ export function RightPanelHome({ onCollapse }: RightPanelHomeProps) {
       description: 'Attach a file to your prompt',
       shortcut: 'Ctrl+U',
       onClick: () => void pickAndAttachFiles()
-    },
-    {
-      iconLight: pluginsLight,
-      iconDark: pluginsDark,
-      label: 'Skills',
-      description: 'Manage installed skills',
-      shortcut: 'Ctrl+Shift+S',
-      onClick: openSettings
     },
     {
       iconLight: folderLight,
@@ -94,6 +84,9 @@ export function RightPanelHome({ onCollapse }: RightPanelHomeProps) {
         <ActivityFeed />
       ) : (
         <div className="flex flex-1 flex-col gap-4 overflow-y-auto px-5 pb-5 pt-5">
+          <div className="flex justify-center">
+            <AddToolMenu variant="panel" />
+          </div>
           <div className="flex flex-col gap-4">
             {actions.map((action) => (
               <button

@@ -39,9 +39,9 @@ function TerminalGlyph(): React.ReactElement {
   )
 }
 
-function PlusGlyph(): React.ReactElement {
+function PlusGlyph({ size = 16 }: { size?: number }): React.ReactElement {
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
       <line x1="12" y1="5" x2="12" y2="19" />
       <line x1="5" y1="12" x2="19" y2="12" />
     </svg>
@@ -49,7 +49,7 @@ function PlusGlyph(): React.ReactElement {
 }
 
 interface AddToolMenuProps {
-  variant?: 'expanded' | 'collapsed'
+  variant?: 'expanded' | 'collapsed' | 'panel'
 }
 
 export function AddToolMenu({ variant = 'expanded' }: AddToolMenuProps) {
@@ -94,6 +94,13 @@ export function AddToolMenu({ variant = 'expanded' }: AddToolMenuProps) {
     setOpen(false)
   }
 
+  const buttonClass =
+    variant === 'collapsed'
+      ? 'rounded-md p-1.5 text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]'
+      : variant === 'panel'
+      ? 'flex h-14 w-14 items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--bg-primary)] text-[var(--text-secondary)] transition-all hover:-translate-y-0.5 hover:border-[var(--accent)] hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]'
+      : 'flex h-7 w-7 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--bg-primary)] text-[var(--text-secondary)] transition-colors hover:border-[var(--accent)] hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]'
+
   return (
     <div ref={wrapperRef} className="relative">
       <button
@@ -103,13 +110,9 @@ export function AddToolMenu({ variant = 'expanded' }: AddToolMenuProps) {
         aria-label="Open tool"
         aria-haspopup="menu"
         aria-expanded={open}
-        className={
-          variant === 'collapsed'
-            ? 'rounded-md p-1.5 text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]'
-            : 'flex h-7 w-7 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--bg-primary)] text-[var(--text-secondary)] transition-colors hover:border-[var(--accent)] hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]'
-        }
+        className={buttonClass}
       >
-        <PlusGlyph />
+        <PlusGlyph size={variant === 'panel' ? 32 : 16} />
       </button>
 
       {open && (

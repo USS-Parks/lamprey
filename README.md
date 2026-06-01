@@ -15,14 +15,14 @@
 
 ---
 
-## ⬇ Download v0.1.9
+## ⬇ Download v0.1.14
 
-Pick one — both contain the same signed Windows installer.
+Pick one — the `.exe` is the standard installer, the `.zip` is the portable bundle (unzip and run `Lamprey.exe` directly, no install required).
 
 | Format | File | Size | Direct link |
 |---|---|---:|---|
-| **NSIS installer** | `Lamprey-0.1.9-x64.exe` | 178 MB | [Download .exe](https://github.com/USS-Parks/lamprey/releases/download/v0.1.9/Lamprey-0.1.9-x64.exe) |
-| **Zipped installer** | `Lamprey-0.1.9-x64.zip` | 177 MB | [Download .zip](https://github.com/USS-Parks/lamprey/releases/download/v0.1.9/Lamprey-0.1.9-x64.zip) |
+| **NSIS installer** | `Lamprey-0.1.14-x64.exe` | 178 MB | [Download .exe](https://github.com/USS-Parks/lamprey/releases/download/v0.1.14/Lamprey-0.1.14-x64.exe) |
+| **Portable ZIP** | `Lamprey-0.1.14-x64.zip` | 233 MB | [Download .zip](https://github.com/USS-Parks/lamprey/releases/download/v0.1.14/Lamprey-0.1.14-x64.zip) |
 
 Or browse all releases → <https://github.com/USS-Parks/lamprey/releases>
 
@@ -38,7 +38,7 @@ It's an Electron app that:
 
 - **Routes per-model** to four providers — DeepSeek (V4 Pro, V4 Flash, V3, R1), Google (Gemma), Alibaba DashScope (Qwen), and OpenRouter for everything else. Bring your own keys.
 - **Runs a Planner → Coder → Reviewer pipeline** if you want, with a different model on each role.
-- **Ships full Codex-style developer panes** — file tree, Chromium browser, git diff review, integrated terminal, side-thread chat — all reachable from a `+` button at the top of the sidebar.
+- **Ships full Codex-style developer panes** — file tree, Chromium browser, git diff review, integrated terminal, side-thread chat — all reachable from the `+` button at the top of the right panel.
 - **Persists everything locally.** SQLite. No telemetry. API keys encrypted with the OS keychain via Electron `safeStorage`.
 
 ## What it's for
@@ -62,9 +62,9 @@ It is **not** a SaaS. There is no Lamprey cloud. Your prompts go to whichever pr
 - **Attachments**: drag-drop or `Ctrl+U` for files, paste images, paste >1 KB code triggers an "attach or inline?" prompt.
 - **Side-chat panel** for ephemeral asides — separate conversation thread, own stream, persists across sessions.
 
-### Codex-style sidebar tools (`+` menu)
+### Codex-style developer tools (`+` menu)
 
-Click the `+` button at the top of the sidebar (or use the keyboard):
+Click the oversized `+` button at the top of the right panel (or use the keyboard):
 
 | Tool | Shortcut | What it does |
 |---|---|---|
@@ -122,7 +122,7 @@ Fire-and-forget. Context arrives as `LAMPREY_HOOK_*` env vars. Use for desktop n
 
 ## Quick start
 
-1. **Download** the [v0.1.9 installer](https://github.com/USS-Parks/lamprey/releases/download/v0.1.9/Lamprey-0.1.9-x64.exe) and run it.
+1. **Download** the [v0.1.14 installer](https://github.com/USS-Parks/lamprey/releases/download/v0.1.14/Lamprey-0.1.14-x64.exe) and run it.
 2. **Get a key.** Easiest: <https://platform.deepseek.com> → sign up → create key → load $5. Lamprey also accepts Google AI Studio (Gemma), Alibaba DashScope (Qwen), and OpenRouter keys.
 3. **Paste your key** in the first-run modal. It's stored with `safeStorage` (OS keychain) under `userData/keys.json`.
 4. **Type something.** That's it.
@@ -196,11 +196,11 @@ Build history: [DEVLOG.md](DEVLOG.md).
 
 ## Roadmap
 
-Built and shipped (v0.1.9):
+Built and shipped (v0.1.14):
 
 - ✅ Multi-provider routing (DeepSeek / Gemma / Qwen / OpenRouter)
 - ✅ Planner → Coder → Reviewer agent pipeline
-- ✅ Sidebar `+` tools menu (Files / Side chat / Browser / Review / Terminal)
+- ✅ Right-panel `+` tools menu (Files / Side chat / Browser / Review / Terminal)
 - ✅ Chromium Browser pane with tabs
 - ✅ Git Review pane with `Fix this →` chat seeding
 - ✅ Files tree + `Ctrl+P` fuzzy quick-open

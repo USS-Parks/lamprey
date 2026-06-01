@@ -6,7 +6,6 @@ import { toast } from '@/stores/toast-store'
 import { useThemedIcon } from '@/lib/themed-icon'
 import type { Conversation } from '@/lib/types'
 import { SidebarFilterMenu } from './SidebarFilterMenu'
-import { AddToolMenu } from './AddToolMenu'
 
 import newChatLight from '@assets/Lamprey New Chat Icon.png'
 import newChatDark from '@assets/Lamprey New Chat Icon Dark View.png'
@@ -279,9 +278,6 @@ export function Sidebar() {
             <polyline points="9 18 15 12 9 6" />
           </svg>
         </button>
-        <div className="mt-2">
-          <AddToolMenu variant="collapsed" />
-        </div>
         <button
           onClick={() => createConversation()}
           title="New chat (Ctrl+N)"
@@ -324,10 +320,7 @@ export function Sidebar() {
       className="relative flex h-full flex-col border-r border-[var(--border)] bg-[var(--bg-secondary)]"
       style={{ width: sidebarWidth, minWidth: sidebarWidth }}
     >
-      <div className="flex items-center pl-[22px] pr-2 pt-3">
-        <AddToolMenu />
-      </div>
-      <div className="space-y-0.5 pl-[22px] pr-2 pt-2">
+      <div className="space-y-0.5 pl-[22px] pr-2 pt-3">
         <NavRow
           icon={newChatIcon}
           label="New chat"
