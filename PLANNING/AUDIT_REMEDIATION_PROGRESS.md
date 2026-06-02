@@ -25,7 +25,7 @@ _None yet — populate as prompts land._
 |---|-------|----------|--------|
 | 1 | Hygiene & quick wins | DOC-4, STRUCT-1/2, DEP-1/2/3, CI-3 | Done |
 | 2 | Documentation refresh | DOC-1/2/3/5/6, SEC-4 | Done |
-| 3 | CI: run smokes on PRs | CI-1 | Pending |
+| 3 | CI: run smokes on PRs | CI-1 | Done |
 | 4 | Streaming & connection bugs | BUG-1, BUG-2 | Pending |
 | 5 | Test foundation (jsdom + stores/services) | TEST-1, TEST-2 | Pending |
 | 6 | Renderer privilege hardening | SEC-1, SEC-7 | Pending |
@@ -45,6 +45,19 @@ _None yet — populate as prompts land._
 - `npm run typecheck` — **no-op** (DOC-4; fixed in Prompt 1).
 
 ## Prompt entries
+
+## Prompt 3 — Run bundle smokes on PRs — Done (2026-06-02)
+
+Closes CI-1. CI-only change.
+
+### Files
+- `.github/workflows/ci.yml` — new `smoke` job (PR + push): `npm ci --ignore-scripts` → `electron-vite build` → `smoke:bundle` + `smoke:renderer`. Heavy `build.yml` jobs stay main/tags-only.
+
+### Verification
+- Workflow YAML valid (jobs: lint, test, smoke). Simulated from a clean `npm ci --ignore-scripts` (Electron binary absent): build exit 0; both smokes PASS.
+
+### Acceptance
+- ✅ A PR now runs both bundle smokes; a deliberately broken bundle would fail the PR.
 
 ## Prompt 2 — Documentation refresh — Done (2026-06-02)
 

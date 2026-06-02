@@ -1,5 +1,13 @@
 # Lamprey Harness Dev Log
 
+## Audit remediation Prompt 3 — Run bundle smokes on PRs (2026-06-02)
+
+Closes REPO_AUDIT CI-1. Added a `smoke` job to `.github/workflows/ci.yml` (PR + push + workflow_dispatch) that runs `npx electron-vite build` then `npm run smoke:bundle` + `npm run smoke:renderer`. Previously the smokes only ran in `build.yml` (main/tags), so the TDZ/bundler-regression class they exist to catch (the v0.1.25 launch crash) was invisible on PRs — exactly the gap CI-1 flagged. Every later remediation PR is now smoke-guarded pre-merge.
+
+The job uses `npm ci --ignore-scripts` (no native rebuild, no Electron binary): the build is pure bundling and the smokes stub `electron`/`better-sqlite3` (bundle) or only inspect emitted files (renderer), so neither is needed — keeps the job fast.
+
+**Verification.** Workflow YAML valid (jobs: lint, test, smoke). Simulated the job from a clean `npm ci --ignore-scripts` with the Electron binary absent: `electron-vite build` — exit 0; `smoke:bundle` + `smoke:renderer` — PASS. The change is CI-only; lint/typecheck/tests are unaffected.
+
 ## Audit remediation Prompt 2 — Documentation refresh (2026-06-02)
 
 Docs only; no behavior change. Closes REPO_AUDIT DOC-1/2/3/5/6 and the SEC-4 doc note.

@@ -65,3 +65,30 @@ jobs:
 
       - name: Unit + integration tests
         run: npm test
+
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Use Node.js 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      # The build is pure bundling and both smokes stub electron + better-sqlite3
+      # (bundle) or only inspect emitted files (renderer), so neither the native
+      # rebuild nor the Electron binary is needed — keep this job fast.
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Build
+        run: npx electron-vite build
+
+      - name: Headless smoke of main bundle
+        run: npm run smoke:bundle
+
+      - name: Integrity smoke of renderer bundle
+        run: npm run smoke:renderer
