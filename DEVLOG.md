@@ -1,5 +1,19 @@
 # Lamprey Harness Dev Log
 
+## Plan + goal state persistence (2026-06-02)
+
+Closes the top carry-forward gap from the Regression Pass: plan steps and goals were in-memory only and wiped on restart. They now persist to SQLite, following the same write-through + memory-fallback pattern Prompt 7 used for permission policies.
+
+**Schema (`database.ts`).** Two new tables created in `initSchema`: `plan_steps` (`id`, `conversation_id`, `text`, `status` CHECK pending/in_progress/done, `position` for order, timestamps) and `goals` (`id`, `conversation_id`, `title`, `description`, `due_date`, `status` CHECK open/in_progress/done/abandoned, timestamps), each with a `conversation_id` index. No FK to `conversations` — the `__global__` bucket and ephemeral runs need rows without a conversation row.
+
+**Persistence layer (`plan-goal-persistence.ts`, new).** Mirrors `permission-policies-store`: `loadPlanSteps` / `savePlanSteps` (replace-all in a transaction, `position` = array index), `loadGoals` / `upsertGoal` (`ON CONFLICT(id) DO UPDATE`), `clearConversation`, `clearAllPlanGoalState`. A `getDb()` failure activates an in-memory fallback so the API never throws into the caller.
+
+**Store wiring (`plan-goal-store.ts`).** Now a per-session cache in front of persistence: `getState` hydrates a conversation from disk on first access; `applyUpdatePlan` writes through `savePlanSteps`; `createGoal`/`updateGoal` write through `upsertGoal`. Added public `clearConversationState` / `clearAllState` (for a future settings UI and for cleanup), and `deleteConversation` now clears a deleted conversation's plan/goal rows (no FK cascade exists). The `monoNow` ordering and all snapshot/merge/replace semantics are unchanged, so consumers (`native-dev-tool-pack`, `plan.ts` IPC, `PlanChecklist`) need no changes — persistence is transparent.
+
+**Verification.** `tsc` (node + web) pass; ESLint 0 errors; `electron-vite build` + `smoke:bundle` PASS. Vitest **320 tests / 24 files** (was 307/23): a new `plan-goal-persistence.test.ts` (9 tests, exercises the layer through its forced memory fallback) plus 5 new "survives a simulated restart" tests in `plan-goal-store.test.ts` that drop the session cache and confirm rehydration of plan order/status, goal fields, replace-mode wipes, per-conversation isolation, and `clearConversationState`. Both test files mock `electron` to force the fallback, matching the permission-policies test.
+
+**Still open (next sprint):** no settings UI to inspect/clear plan+goal state (the `clear*` API is ready for it), and no cross-device sync.
+
 ## Codex-parity Prompt 15 — Regression Pass (2026-06-02)
 
 Final QA sweep that closes the Codex toolset parity sprint. No new features — verification + documentation only, per the Prompt 15 spec. Full write-up in the `## Sprint complete — Regression Pass` block of `PLANNING/CODEX_TOOLSET_PARITY_PROGRESS.md`.

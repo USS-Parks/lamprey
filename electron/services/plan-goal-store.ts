@@ -1,15 +1,24 @@
 import { randomUUID } from 'crypto'
+import {
+  clearAllPlanGoalState,
+  clearConversation as persistClearConversation,
+  loadGoals,
+  loadPlanSteps,
+  savePlanSteps,
+  upsertGoal,
+  __resetPlanGoalPersistence
+} from './plan-goal-persistence'
 
 // Per-conversation plan + goal state for the `update_plan`, `get_goal`,
 // `create_goal`, and `update_goal` native tools.
 //
-// KNOWN GAP — provisional in-memory only. State lives in process maps and
-// resets on Lamprey restart; nothing is persisted to disk yet, no settings
-// UI surfaces or clears it, and there is no cross-device sync. The
-// `{ planSteps, goals }` shape per conversation maps cleanly onto two
-// small SQLite tables when persistence lands — same migration path as
-// permissions-store. Documented alongside the permissions-store gap in
-// PLANNING/CODEX_TOOLSET_PARITY_PROGRESS.md.
+// Durability: this module is a per-session cache in front of
+// plan-goal-persistence, which writes through to two SQLite tables
+// (`plan_steps`, `goals`). State is hydrated from disk on the first access to a
+// conversation and survives Lamprey restarts. If persistence is unavailable
+// (headless tests, disk failure) the persistence layer transparently falls back
+// to memory, so this cache still works for the session — same fallback contract
+// as permissions-store.
 //
 // Conversation id is optional everywhere: missing/undefined ids map to a
 // shared GLOBAL_KEY bucket so a tool run without a conversation context
@@ -56,11 +65,19 @@ function monoNow(): number {
   return __monoCursor
 }
 
+function keyOf(conversationId: string | undefined): string {
+  return conversationId ?? GLOBAL_KEY
+}
+
 function getState(conversationId: string | undefined): ConversationState {
-  const key = conversationId ?? GLOBAL_KEY
+  const key = keyOf(conversationId)
   let s = state.get(key)
   if (!s) {
-    s = { planSteps: [], goals: new Map() }
+    // First access this session — hydrate from persistence. Returns empty when
+    // nothing was stored (or when persistence is unavailable).
+    const goals = new Map<string, Goal>()
+    for (const g of loadGoals(key)) goals.set(g.id, g)
+    s = { planSteps: loadPlanSteps(key), goals }
     state.set(key, s)
   }
   return s
@@ -103,6 +120,7 @@ export function applyUpdatePlan(
       text: String(step.text ?? ''),
       status: step.status ?? 'pending'
     }))
+    savePlanSteps(keyOf(conversationId), s.planSteps)
     return planSnapshot(conversationId, s)
   }
 
@@ -127,6 +145,7 @@ export function applyUpdatePlan(
     }
   }
 
+  savePlanSteps(keyOf(conversationId), s.planSteps)
   return planSnapshot(conversationId, s)
 }
 
@@ -183,6 +202,7 @@ export function createGoal(
   }
   if (!goal.title) throw new Error('create_goal: title is required')
   s.goals.set(goal.id, goal)
+  upsertGoal(keyOf(conversationId), goal)
   return goal
 }
 
@@ -199,6 +219,7 @@ export function updateGoal(
   if (input.status !== undefined) goal.status = input.status
   goal.updatedAt = monoNow()
   s.goals.set(goal.id, goal)
+  upsertGoal(keyOf(conversationId), goal)
   return goal
 }
 
@@ -215,8 +236,30 @@ export function listGoals(conversationId: string | undefined): Goal[] {
   return Array.from(s.goals.values()).sort((a, b) => b.updatedAt - a.updatedAt)
 }
 
-/** Test-only: reset all per-conversation state. */
+/** Drop all plan + goal state for one conversation, in cache and on disk.
+ * Call when a conversation is deleted so its rows don't linger. */
+export function clearConversationState(conversationId: string | undefined): void {
+  const key = keyOf(conversationId)
+  state.delete(key)
+  persistClearConversation(key)
+}
+
+/** Drop every conversation's plan + goal state (cache + disk). */
+export function clearAllState(): void {
+  state.clear()
+  clearAllPlanGoalState()
+}
+
+/** Test-only: reset all per-conversation state (cache + persistence). */
 export function __resetPlanGoalStore(): void {
+  state.clear()
+  __monoCursor = 0
+  __resetPlanGoalPersistence()
+}
+
+/** Test-only: drop the per-session cache without touching persistence, to
+ * simulate an app restart that must rehydrate plan + goal state from disk. */
+export function __dropPlanGoalCache(): void {
   state.clear()
   __monoCursor = 0
 }

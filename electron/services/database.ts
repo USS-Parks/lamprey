@@ -130,6 +130,38 @@ function initSchema(db: Database.Database): void {
       ON permission_policies(conversation_id);
     CREATE INDEX IF NOT EXISTS idx_permission_policies_workspace
       ON permission_policies(workspace_path);
+
+    -- Per-conversation plan steps for the update_plan tool / PlanChecklist.
+    -- conversation_id holds '__global__' for the shared (no-conversation)
+    -- bucket; no FK so global + ephemeral-conversation state is allowed.
+    -- Order is carried by position (the in-memory plan is an ordered array).
+    CREATE TABLE IF NOT EXISTS plan_steps (
+      id TEXT PRIMARY KEY,
+      conversation_id TEXT NOT NULL,
+      text TEXT NOT NULL,
+      status TEXT NOT NULL CHECK(status IN ('pending','in_progress','done')),
+      position INTEGER NOT NULL,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_plan_steps_conversation
+      ON plan_steps(conversation_id, position);
+
+    -- Per-conversation goals for create_goal / update_goal / get_goal.
+    CREATE TABLE IF NOT EXISTS goals (
+      id TEXT PRIMARY KEY,
+      conversation_id TEXT NOT NULL,
+      title TEXT NOT NULL,
+      description TEXT,
+      due_date TEXT,
+      status TEXT NOT NULL CHECK(status IN ('open','in_progress','done','abandoned')),
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_goals_conversation
+      ON goals(conversation_id, updated_at DESC);
   `)
 
   // Migrations for older DBs that predate kind/worktree_path/project_id columns.

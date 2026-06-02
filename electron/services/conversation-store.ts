@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto'
 import { getDb } from './database'
 import { touchProject } from './projects-store'
+import { clearConversationState } from './plan-goal-store'
 
 export interface ConversationRow {
   id: string
@@ -108,6 +109,9 @@ export function listConversations() {
 export function deleteConversation(id: string) {
   const db = getDb()
   db.prepare('DELETE FROM conversations WHERE id = ?').run(id)
+  // plan_steps / goals have no FK to conversations (the '__global__' bucket and
+  // ephemeral runs need rows without a conversation row), so clear them here.
+  clearConversationState(id)
 }
 
 export function updateConversationTitle(id: string, title: string) {
