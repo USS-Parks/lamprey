@@ -1,3 +1,10 @@
+// Load the native tool packs once, before any IPC handler can dispatch a
+// tool call. Must precede the chat handler import: chat.ts pulls in
+// tool-registry, and the registry must already exist when each pack's
+// top-level `toolRegistry.registerNative(...)` runs. See
+// electron/services/tool-packs.ts for why this is its own module.
+import '../services/tool-packs'
+
 import { registerChatHandlers } from './chat'
 import { registerConversationHandlers } from './conversation'
 import { registerSettingsHandlers } from './settings'
@@ -19,6 +26,7 @@ import { registerPermissionsHandlers } from './permissions'
 import { registerWebToolsHandlers } from './web-tools'
 import { registerCurrentInfoHandlers } from './current-info'
 import { registerImageToolsHandlers } from './image-tools'
+import { registerPlanHandlers } from './plan'
 
 export function registerAllIpcHandlers(): void {
   registerChatHandlers()
@@ -44,4 +52,5 @@ export function registerAllIpcHandlers(): void {
   registerWebToolsHandlers()
   registerCurrentInfoHandlers()
   registerImageToolsHandlers()
+  registerPlanHandlers()
 }

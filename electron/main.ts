@@ -10,6 +10,7 @@ import { destroyAll as destroyBrowserTabs } from './services/browser-manager'
 import { fireHooks } from './services/hooks-runner'
 import { startAutomations, stopAutomations } from './services/automations-runner'
 import { mcpManager } from './services/mcp-manager'
+import { ensureNodeReplDefaultServer } from './services/node-repl-default-server'
 import { initializeSkillLoader, shutdownSkillLoader } from './services/skill-loader'
 import { shutdownReviewWatcher } from './ipc/review'
 import { destroyTray, handleWindowClose, initializeTray, refreshTrayMenu } from './services/tray'
@@ -415,9 +416,11 @@ app.whenReady().then(() => {
     console.error('[main] hooks/automations init error:', (err as Error).message)
   }
 
-  mcpManager.initialize().catch((err) => {
-    console.error('[main] MCP initialization error:', err.message)
-  })
+  mcpManager.initialize()
+    .then(() => ensureNodeReplDefaultServer())
+    .catch((err) => {
+      console.error('[main] MCP initialization error:', err.message)
+    })
 
   createWindow()
 

@@ -37,6 +37,12 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Headless smoke of main bundle
+        # Loads out/main/index.js under a stub-electron Node process. Catches
+        # bundler-specific failures (TDZ from hoisted side-effect imports,
+        # missing pack registrations) that vitest cannot observe.
+        run: npm run smoke:bundle
+
       - name: Upload installer artifact
         uses: actions/upload-artifact@v6
         with:
@@ -84,6 +90,12 @@ jobs:
         run: npm run build:linux
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Headless smoke of main bundle
+        # Loads out/main/index.js under a stub-electron Node process. Catches
+        # bundler-specific failures (TDZ from hoisted side-effect imports,
+        # missing pack registrations) that vitest cannot observe.
+        run: npm run smoke:bundle
 
       - name: Upload AppImage artifact
         uses: actions/upload-artifact@v6

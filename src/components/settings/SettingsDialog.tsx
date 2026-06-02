@@ -5,11 +5,13 @@ import { AppearanceSettings } from './AppearanceSettings'
 import { ModelSettings } from './ModelSettings'
 import { ApiKeySettings } from './ApiKeySettings'
 import { AgentSettings } from './AgentSettings'
+import { AgenticCodingSettings } from './AgenticCodingSettings'
 import { HooksSettings } from './HooksSettings'
 import { AutomationsSettings } from './AutomationsSettings'
 import { WebToolsSettings } from './WebToolsSettings'
 import { CurrentInfoSettings } from './CurrentInfoSettings'
 import { ImageGenSettings } from './ImageGenSettings'
+import { PermissionsSettings } from './PermissionsSettings'
 import { useUiStore } from '@/stores/ui-store'
 
 interface SettingsDialogProps {
@@ -20,12 +22,14 @@ const TABS = [
   { id: 'general', label: 'General' },
   { id: 'models', label: 'Models' },
   { id: 'agents', label: 'Agents' },
+  { id: 'agenticCoding', label: 'Coding Mode' },
   { id: 'api', label: 'API Keys' },
   { id: 'appearance', label: 'Appearance' },
   { id: 'mcp', label: 'MCP Servers' },
   { id: 'webTools', label: 'Web Tools' },
   { id: 'currentInfo', label: 'Current Info' },
   { id: 'imageGen', label: 'Image Gen' },
+  { id: 'permissions', label: 'Permissions' },
   { id: 'hooks', label: 'Hooks' },
   { id: 'automations', label: 'Automations' }
 ] as const
@@ -74,12 +78,14 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
             {activeTab === 'general' && <GeneralSettings />}
             {activeTab === 'models' && <ModelSettings />}
             {activeTab === 'agents' && <AgentSettings />}
+            {activeTab === 'agenticCoding' && <AgenticCodingSettings />}
             {activeTab === 'api' && <ApiKeySettings />}
             {activeTab === 'appearance' && <AppearanceSettings />}
             {activeTab === 'mcp' && <McpSettings />}
             {activeTab === 'webTools' && <WebToolsSettings />}
             {activeTab === 'currentInfo' && <CurrentInfoSettings />}
             {activeTab === 'imageGen' && <ImageGenSettings />}
+            {activeTab === 'permissions' && <PermissionsSettings />}
             {activeTab === 'hooks' && <HooksSettings />}
             {activeTab === 'automations' && <AutomationsSettings />}
           </div>

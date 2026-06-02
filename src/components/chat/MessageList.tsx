@@ -6,6 +6,7 @@ import { useThemedIcon } from '@/lib/themed-icon'
 import { MessageBubble } from './MessageBubble'
 import { StreamingText } from './StreamingText'
 import { ToolUseCard } from './ToolUseCard'
+import { MultiAgentRunCard } from './MultiAgentRunCard'
 import { StreamStatusLine } from './StreamStatusLine'
 import { CHAT_COLUMN_CLASS } from './ChatView'
 import thinkingLight from '@assets/Lamprey Thinking Icon.png'
@@ -99,9 +100,13 @@ export function MessageList({
               <MessageBubble key={msg.id} message={msg} />
             )
           )}
-          {toolCalls.map((tc) => (
-            <ToolUseCard key={tc.callId} toolCall={tc} />
-          ))}
+          {toolCalls.map((tc) =>
+            tc.toolName === 'multi_agent_run' ? (
+              <MultiAgentRunCard key={tc.callId} toolCall={tc} />
+            ) : (
+              <ToolUseCard key={tc.callId} toolCall={tc} />
+            )
+          )}
           {isStreaming && (streamingContent || streamStartedAt) && (
             <div className="mb-3 flex justify-start">
               <div className="max-w-[80%] rounded-lg bg-[var(--bg-secondary)] px-4 py-3">

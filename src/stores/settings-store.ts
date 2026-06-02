@@ -22,7 +22,10 @@ const defaultSettings: AppSettings = {
     coder: 'deepseek-v4-flash',
     reviewer: 'deepseek-v4-pro',
     coworker: 'qwen3-coder-plus'
-  }
+  },
+  agenticCodingMode: false,
+  agenticCodingSkills: ['codex-plan', 'codex-context', 'codex-verify'],
+  agenticCodingComposer: 'auto'
 }
 
 interface SettingsState {

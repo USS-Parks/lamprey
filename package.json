@@ -1,6 +1,6 @@
 {
   "name": "lamprey-harness",
-  "version": "0.1.24",
+  "version": "0.1.26",
   "description": "Multi-agent coding harness for DeepSeek V4 Pro/Flash, Gemma, and Qwen.",
   "main": "./out/main/index.js",
   "author": {
@@ -21,6 +21,7 @@
     "lint": "eslint . --ext .ts,.tsx",
     "test": "vitest run",
     "test:watch": "vitest",
+    "smoke:bundle": "node scripts/smoke-bundle.cjs",
     "build:win": "electron-vite build && electron-builder --win --publish never",
     "build:mac": "electron-vite build && electron-builder --mac --publish never",
     "build:linux": "electron-vite build && electron-builder --linux --publish never",

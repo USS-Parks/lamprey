@@ -6,6 +6,10 @@ export interface Message {
   conversationId: string
   model?: string
   toolCallId?: string
+  // Internal replay/inspection field. For tool-using turns the visible
+  // assistant body may be composer-generated while draft preserves the
+  // model's raw post-tool reply.
+  draft?: string
 }
 
 export type ConversationKind = 'local' | 'cloud' | 'worktree'
@@ -152,6 +156,8 @@ export interface WindowBounds {
   height: number
 }
 
+export type AgenticCodingComposerMode = 'auto' | 'always' | 'never'
+
 export interface AppSettings {
   theme: 'dark'
   themePreset: ThemePresetId
@@ -168,7 +174,20 @@ export interface AppSettings {
   windowBounds?: WindowBounds
   agentMode: AgentMode
   agentRoster: AgentRoster
+  // End-to-end agentic coding mode (Prompt 14). When `agenticCodingMode` is
+  // on, every turn uses the coding contract role, auto-activates the listed
+  // skill ids, and runs the final-response composer per the composer mode.
+  // Off by default so existing chats are unchanged.
+  agenticCodingMode: boolean
+  agenticCodingSkills: string[]
+  agenticCodingComposer: AgenticCodingComposerMode
 }
+
+export const DEFAULT_AGENTIC_CODING_SKILLS: string[] = [
+  'codex-plan',
+  'codex-context',
+  'codex-verify'
+]
 
 export const DEFAULT_MODEL_CONFIG: ModelConfig = {
   temperature: 1,
@@ -202,17 +221,76 @@ export interface ChatErrorEvent {
   error: string
 }
 
+// Codex-style run phase. Mirrored from electron/services/agent-run-phase.ts —
+// the two tsconfig roots cannot share types directly, so this is the
+// renderer-visible source of truth. Keep the two in sync.
+export type AgentRunPhase =
+  | 'understanding'
+  | 'gathering_context'
+  | 'planning'
+  | 'acting'
+  | 'verifying'
+  | 'summarizing'
+  | 'done'
+  | 'error'
+
+export interface ChatPhaseEvent {
+  conversationId: string
+  phase: AgentRunPhase
+}
+
+// Plan checklist mirrors. Source of truth is electron/services/plan-goal-store.ts;
+// duplicated here because the two tsconfig roots cannot share types directly.
+// Keep in sync if the plan shape changes.
+export type PlanStepStatus = 'pending' | 'in_progress' | 'done'
+
+export interface PlanStep {
+  id: string
+  text: string
+  status: PlanStepStatus
+}
+
+export interface PlanSnapshot {
+  conversationId: string
+  steps: PlanStep[]
+  totals: { pending: number; in_progress: number; done: number; total: number }
+}
+
+export interface PlanUpdatedEvent {
+  conversationId: string
+  snapshot: PlanSnapshot
+}
+
 export interface ToolCallEvent {
   callId: string
+  // Required so the renderer's per-conversation filter (useChat
+  // matchesActive) routes the event to the right chat. Without it every
+  // tool card is dropped because the equality check fails on undefined.
+  conversationId: string
   serverId: string
   toolName: string
   args: Record<string, unknown>
+  // Descriptor metadata mirrored onto the event so the UI does not have to
+  // round-trip back to the registry for label + risks. Optional because
+  // unknown tools still flow through.
+  title?: string
+  risks?: ToolRisk[]
+  providerKind?: ToolProviderKind
+  startedAt?: number
 }
+
+export type ToolCallResultStatus = 'success' | 'error' | 'denied'
 
 export interface ToolCallResultEvent {
   callId: string
+  conversationId: string
   result: string
   duration: number
+  // Explicit audit status from the backend so the card distinguishes
+  // 'Action denied by user.' from a real tool failure without string-
+  // sniffing the result body. Optional because not every emitter on the
+  // main side fills it yet.
+  status?: ToolCallResultStatus
 }
 
 // Unified tool registry. Descriptors are produced by tool-registry.ts from
@@ -235,6 +313,7 @@ export interface LampreyToolDescriptor {
   risks: ToolRisk[]
   requiresApproval: boolean
   enabled: boolean
+  parallelizable?: boolean
 }
 
 export type LampreyToolCallStatus =
@@ -257,6 +336,7 @@ export interface LampreyToolCall {
   result?: string
   error?: string
   durationMs?: number
+  parentCallId?: string
 }
 
 // Permission and approval types. Risk metadata already lives on tool
@@ -266,8 +346,27 @@ export interface LampreyToolCall {
 // persists policy itself — it just reflects the user's choice back via
 // tools:respondToApproval.
 
-export type ApprovalScope = 'once' | 'conversation' | 'always'
+export type ApprovalScope = 'once' | 'conversation' | 'workspace' | 'always'
 export type ApprovalDecision = 'allow' | 'deny'
+
+// Persisted policy shape — mirrored from electron/services/permission-policies-store.ts.
+// Settings UI reads these via window.api.permissions.listPolicies(); the
+// renderer never mutates rows directly, only via addPolicy / deletePolicy /
+// clearScope IPC calls.
+export type PolicyScope = 'conversation' | 'workspace' | 'global'
+export type PolicySubjectKind = 'tool' | 'risk'
+
+export interface PermissionPolicy {
+  id: string
+  scope: PolicyScope
+  subjectKind: PolicySubjectKind
+  subject: string
+  decision: ApprovalDecision
+  conversationId?: string
+  workspacePath?: string
+  createdAt: number
+  updatedAt: number
+}
 
 export interface ToolApprovalRequest {
   callId: string

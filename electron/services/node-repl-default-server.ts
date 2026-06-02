@@ -3,14 +3,13 @@ import { mcpManager } from './mcp-manager'
 
 // Registers the bundled Node REPL MCP server with the running mcp-manager.
 // Idempotent: an entry the user has already configured (or disabled) in
-// mcp-servers.json is preserved verbatim. addServerIfMissing only appends.
+// mcp-servers.json is preserved verbatim.
 //
-// mcpManager.initialize() must run before we mutate the server list; if it
-// has not, we await it here so the on-disk config is loaded and the in-memory
-// map is the authoritative source. initialize() guards against double-init,
-// so calling it from main.ts AND here is safe.
+// This is intentionally an explicit app-ready call, not a side effect from
+// tool-pack registration. It touches app.getPath('userData') through
+// mcp-manager initialization and may start stdio MCP processes.
 let ensured = false
-async function ensureOnce(): Promise<void> {
+export async function ensureNodeReplDefaultServer(): Promise<void> {
   if (ensured) return
   ensured = true
   try {
@@ -21,5 +20,3 @@ async function ensureOnce(): Promise<void> {
     console.error('[node-repl-default-server] Failed to ensure default MCP servers:', message)
   }
 }
-
-void ensureOnce()

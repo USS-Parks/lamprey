@@ -28,9 +28,26 @@ npx tsc --noEmit -p tsconfig.node.json    # main + preload typecheck
 npx tsc --noEmit -p tsconfig.web.json     # renderer typecheck
 npm run lint                              # ESLint
 npx electron-vite build                   # full build, no warnings
+npm run smoke:bundle                      # headless load of out/main/index.js
 ```
 
-All four must pass. CI runs these jobs on Windows and Linux — anything red there will block the PR.
+All five must pass. CI runs these jobs on Windows and Linux — anything red there will block the PR.
+
+`smoke:bundle` stubs `electron` and `better-sqlite3` at the Node module loader and `require()`s the packaged main bundle. It catches the class of bundler-specific failures vitest cannot observe — ES-module import hoisting that puts a side-effect register call ahead of its target's initialization, TDZ ReferenceErrors during module evaluation, and missing pack registrations. Source-tree tests can be green while the bundle is broken; the smoke is the last gate before that ships.
+
+The unit suite runs through `npx vitest run` (also exposed as `npm test`). It targets `electron/**/*.test.ts` and `src/**/*.test.{ts,tsx}`.
+
+### Troubleshooting
+
+**`vitest` fails to start on Windows with `spawn EPERM` while loading `vitest.config.ts`.** The runner uses esbuild as the config transformer and spawns `node_modules/esbuild/bin/esbuild.exe`. On Windows that binary is a frequent false-positive for Defender and several third-party endpoint products — the spawn is blocked before any test code runs.
+
+Pick one:
+
+- **Add an antivirus exclusion** for the project's `node_modules/esbuild` directory (Defender: *Settings → Virus & threat protection → Manage settings → Exclusions → Add folder*). This is the persistent fix.
+- **Whitelist via single-run prompt**: from the repo root, run `node node_modules/esbuild/bin/esbuild --version`. If your AV uses an on-access prompt, allowing this single invocation usually lifts the block for subsequent spawns. The version flag is harmless.
+- **Reinstall after exclusion**: if the binary was quarantined, `rm -rf node_modules/esbuild && npm install` will restore it once the exclusion is in place.
+
+Symptom of a different cause: if the EPERM message references a path outside `node_modules/esbuild`, the issue isn't AV — check Windows long-path support (`git config --global core.longpaths true`) or the npm cache (`npm cache verify`).
 
 ---
 

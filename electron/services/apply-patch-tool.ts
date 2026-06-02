@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'fs'
 import { dirname, isAbsolute, relative, resolve } from 'path'
+import { resolveWorkspaceRelative } from './path-utils'
 
 // Codex-style "Begin/End Patch" envelope with Add/Update/Delete file
 // directives. Hand-rolled parser and applier - no shell, no `git apply`,
@@ -56,7 +57,7 @@ export function resolvePathWithinWorkspace(
   if (segments.some((s) => s === '..')) return null
 
   const root = resolve(workspaceRoot)
-  const target = isAbsolute(candidate) ? resolve(candidate) : resolve(root, candidate)
+  const target = resolveWorkspaceRelative(candidate, root)
   const rel = relative(root, target)
   if (rel === '') return null // refusing to operate on the root itself
   if (rel.startsWith('..') || isAbsolute(rel)) return null

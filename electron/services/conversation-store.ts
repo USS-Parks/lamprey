@@ -21,6 +21,7 @@ export interface MessageRow {
   model: string | null
   tool_call_id: string | null
   tool_calls: string | null
+  draft: string | null
   created_at: number
 }
 
@@ -155,13 +156,24 @@ export function saveMessage(msg: {
   model?: string
   toolCallId?: string
   toolCalls?: StoredToolCall[]
+  draft?: string
 }) {
   const db = getDb()
   const now = Date.now()
   const toolCallsJson = msg.toolCalls && msg.toolCalls.length > 0 ? JSON.stringify(msg.toolCalls) : null
   db.prepare(
-    'INSERT INTO messages (id, conversation_id, role, content, model, tool_call_id, tool_calls, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-  ).run(msg.id, msg.conversationId, msg.role, msg.content, msg.model || null, msg.toolCallId || null, toolCallsJson, now)
+    'INSERT INTO messages (id, conversation_id, role, content, model, tool_call_id, tool_calls, draft, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+  ).run(
+    msg.id,
+    msg.conversationId,
+    msg.role,
+    msg.content,
+    msg.model || null,
+    msg.toolCallId || null,
+    toolCallsJson,
+    msg.draft || null,
+    now
+  )
   touchConversation(msg.conversationId)
   return {
     id: msg.id,
@@ -171,7 +183,8 @@ export function saveMessage(msg: {
     timestamp: now,
     model: msg.model,
     toolCallId: msg.toolCallId,
-    toolCalls: msg.toolCalls
+    toolCalls: msg.toolCalls,
+    draft: msg.draft
   }
 }
 

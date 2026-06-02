@@ -32,7 +32,12 @@ const defaultSettings = {
     reviewer: 'deepseek-v4-pro',
     coworker: 'qwen3-coder-plus'
   } as Record<string, string>,
-  agentMode: 'single' as 'single' | 'multi'
+  agentMode: 'single' as 'single' | 'multi',
+  // Prompt 14: agentic coding mode. Off by default; existing settings.json
+  // files migrate cleanly via the readSettings shallow-merge below.
+  agenticCodingMode: false,
+  agenticCodingSkills: ['codex-plan', 'codex-context', 'codex-verify'] as string[],
+  agenticCodingComposer: 'auto' as 'auto' | 'always' | 'never'
 }
 
 function readSettings() {

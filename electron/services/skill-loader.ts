@@ -1,6 +1,6 @@
 import { app, BrowserWindow } from 'electron'
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, copyFileSync } from 'fs'
-import { join, basename } from 'path'
+import { join, basename, dirname, resolve } from 'path'
 import matter from 'gray-matter'
 import chokidar, { FSWatcher } from 'chokidar'
 import { is } from '@electron-toolkit/utils'
@@ -30,27 +30,58 @@ function bundledSkillsDir(): string {
   return join(process.resourcesPath, 'skills')
 }
 
+function copyMissingEntry(src: string, dest: string): void {
+  const stats = statSync(src)
+  if (stats.isDirectory()) {
+    if (!existsSync(dest)) mkdirSync(dest, { recursive: true })
+    for (const child of readdirSync(src)) {
+      copyMissingEntry(join(src, child), join(dest, child))
+    }
+    return
+  }
+  if (!stats.isFile() || existsSync(dest)) return
+  try {
+    copyFileSync(src, dest)
+  } catch (err) {
+    console.error('[skill-loader] failed to copy bundled skill', src, err)
+  }
+}
+
 function ensureSkillsDir(dir: string): void {
-  if (existsSync(dir)) return
-  mkdirSync(dir, { recursive: true })
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
 
   const bundled = bundledSkillsDir()
-  if (!existsSync(bundled)) return
+  if (!existsSync(bundled) || resolve(bundled) === resolve(dir)) return
 
   for (const entry of readdirSync(bundled)) {
-    if (!entry.endsWith('.md')) continue
-    const src = join(bundled, entry)
-    const dest = join(dir, entry)
-    try {
-      copyFileSync(src, dest)
-    } catch (err) {
-      console.error('[skill-loader] failed to copy bundled skill', entry, err)
-    }
+    copyMissingEntry(join(bundled, entry), join(dir, entry))
   }
 }
 
 function fileIdFromPath(filePath: string): string {
+  if (basename(filePath).toLowerCase() === 'skill.md') {
+    return basename(dirname(filePath))
+  }
   return basename(filePath, '.md')
+}
+
+function isSkillFile(filePath: string): boolean {
+  const base = basename(filePath).toLowerCase()
+  return base === 'skill.md' || base.endsWith('.md')
+}
+
+function discoverSkillFiles(dir: string): string[] {
+  const files: string[] = []
+  for (const entry of readdirSync(dir)) {
+    const full = join(dir, entry)
+    const stats = statSync(full)
+    if (stats.isDirectory()) {
+      files.push(...discoverSkillFiles(full))
+    } else if (stats.isFile() && isSkillFile(full)) {
+      files.push(full)
+    }
+  }
+  return files
 }
 
 function parseSkillFile(filePath: string): LoadedSkill | null {
@@ -88,7 +119,7 @@ function broadcastChange(): void {
 }
 
 function upsertFromPath(filePath: string): void {
-  if (!filePath.endsWith('.md')) return
+  if (!isSkillFile(filePath)) return
   const skill = parseSkillFile(filePath)
   if (!skill) return
   skills.set(skill.id, skill)
@@ -96,7 +127,7 @@ function upsertFromPath(filePath: string): void {
 }
 
 function removeByPath(filePath: string): void {
-  if (!filePath.endsWith('.md')) return
+  if (!isSkillFile(filePath)) return
   const id = fileIdFromPath(filePath)
   if (skills.delete(id)) {
     broadcastChange()
@@ -111,9 +142,8 @@ export function initializeSkillLoader(): void {
 
   // Initial scan
   try {
-    for (const entry of readdirSync(dir)) {
-      if (!entry.endsWith('.md')) continue
-      const skill = parseSkillFile(join(dir, entry))
+    for (const file of discoverSkillFiles(dir)) {
+      const skill = parseSkillFile(file)
       if (skill) skills.set(skill.id, skill)
     }
   } catch (err) {
@@ -162,4 +192,10 @@ export function getSkill(id: string): LoadedSkill | undefined {
 export function getSkillContent(id: string): string | null {
   const skill = skills.get(id)
   return skill ? skill.content : null
+}
+
+export const __skillLoaderTest = {
+  discoverSkillFiles,
+  parseSkillFile,
+  fileIdFromPath
 }

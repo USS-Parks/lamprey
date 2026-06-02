@@ -36,4 +36,18 @@ describe('node-repl default server packaging', () => {
     // pair is present so the production resolver finds the file.
     expect(yml).toMatch(/from:\s*resources\/mcp\s*\n\s*to:\s*mcp/)
   })
+
+  it('does not start from the tool-pack descriptor bootstrap', () => {
+    const toolPacks = readFileSync(join(REPO_ROOT, 'electron', 'services', 'tool-packs.ts'), 'utf8')
+    const main = readFileSync(join(REPO_ROOT, 'electron', 'main.ts'), 'utf8')
+    const nodeReplDefault = readFileSync(
+      join(REPO_ROOT, 'electron', 'services', 'node-repl-default-server.ts'),
+      'utf8'
+    )
+
+    expect(toolPacks).not.toContain('node-repl-default-server')
+    expect(main).toContain('ensureNodeReplDefaultServer')
+    expect(nodeReplDefault).toContain('export async function ensureNodeReplDefaultServer')
+    expect(nodeReplDefault).not.toContain('void ensure')
+  })
 })

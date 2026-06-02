@@ -21,7 +21,7 @@ whenever this skill is active.
 - `description` (string, required) — hover-tooltip text. Keep it short.
 - `content` (everything after the frontmatter) — appended to the system prompt inside a `<skill name="...">...</skill>` tag.
 
-Filename → slug. `Direct Voice` → `direct-voice.md`. The GUI editor (sidebar `+` button) handles slugging + collision suffixes (`-2`, `-3`, ...) automatically.
+Filename → slug for flat skills. `Direct Voice` → `direct-voice.md`. Directory skills use the folder name as the slug: `resources/skills/codex-plan/SKILL.md` → `codex-plan`. The GUI editor (sidebar `+` button) handles slugging + collision suffixes (`-2`, `-3`, ...) automatically.
 
 ---
 
@@ -66,6 +66,20 @@ Skills run after memory but inside the same single system message. They don't re
 ---
 
 ## Bundled skills
+
+### Codex workflow skills
+
+These directory-style skills ship under `resources/skills/<id>/SKILL.md` and are copied into the user skills directory when missing.
+
+| Skill | Example trigger | What it does |
+|---|---|---|
+| `codex-plan` | "plan this refactor" | Runs `workspace_context`, creates an `update_plan` checklist, and stops before editing unless asked to proceed. |
+| `codex-context` | "orient me in this repo" | Runs `workspace_context`, reads instruction files, and summarizes the active codebase before action. |
+| `codex-debug` | "debug this failing test" | Reproduce, isolate, fix narrowly, and verify the original failure path. |
+| `codex-review` | "review this before I ship" | Reviews diffs for correctness, security, performance, and test gaps with file/line findings. |
+| `codex-verify` | "check the change" | Runs `verify_workspace`, reports PASS / FAIL / SKIPPED evidence, and calls out gaps. |
+| `codex-frontend-qa` | "test the UI at this URL" | Uses `frontend_qa` for browser observation, screenshot capture, and visible assertion checks. |
+| `codex-fan-out` | "compare approaches in parallel" | Uses `multi_agent_run` for independent planner, reader, verifier, reviewer, or coworker passes. |
 
 ### `direct-voice.md`
 
