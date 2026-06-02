@@ -83,7 +83,7 @@ function lineCount(text: string): number {
 async function processOne(filePath: string): Promise<ProcessedFile> {
   const name = basename(filePath)
   const ext = extname(filePath).toLowerCase()
-  let size = 0
+  let size: number
   try {
     size = (await stat(filePath)).size
   } catch (err) {

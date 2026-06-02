@@ -74,7 +74,9 @@ export function executeViewImage(args: ViewImageArgs, workspaceRoot: string): st
   try {
     stat = statSync(absolute)
   } catch (err: any) {
-    throw new Error(`view_image: cannot stat "${absolute}": ${err?.message ?? 'unknown error'}.`)
+    throw new Error(`view_image: cannot stat "${absolute}": ${err?.message ?? 'unknown error'}.`, {
+      cause: err
+    })
   }
   if (!stat.isFile()) {
     throw new Error(`view_image: "${absolute}" is not a regular file.`)

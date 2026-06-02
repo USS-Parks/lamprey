@@ -184,7 +184,9 @@ class OpenAIImageGenProvider implements ImageGenProvider {
         body: JSON.stringify(body)
       })
     } catch (err) {
-      throw new Error(`OpenAI image generation request failed: ${sanitizeError(err, key)}`)
+      throw new Error(`OpenAI image generation request failed: ${sanitizeError(err, key)}`, {
+        cause: err
+      })
     }
 
     return parseOpenAIImageResponse(resp, key)
@@ -225,7 +227,9 @@ class OpenAIImageGenProvider implements ImageGenProvider {
         body: form
       })
     } catch (err) {
-      throw new Error(`OpenAI image edit request failed: ${sanitizeError(err, key)}`)
+      throw new Error(`OpenAI image edit request failed: ${sanitizeError(err, key)}`, {
+        cause: err
+      })
     }
     return parseOpenAIImageResponse(resp, key)
   }
@@ -257,7 +261,9 @@ class OpenAIImageGenProvider implements ImageGenProvider {
         body: form
       })
     } catch (err) {
-      throw new Error(`OpenAI image variation request failed: ${sanitizeError(err, key)}`)
+      throw new Error(`OpenAI image variation request failed: ${sanitizeError(err, key)}`, {
+        cause: err
+      })
     }
     return parseOpenAIImageResponse(resp, key)
   }
@@ -293,7 +299,9 @@ async function parseOpenAIImageResponse(
   try {
     payload = (await resp.json()) as typeof payload
   } catch (err) {
-    throw new Error(`OpenAI image API returned non-JSON body: ${sanitizeError(err, key)}`)
+    throw new Error(`OpenAI image API returned non-JSON body: ${sanitizeError(err, key)}`, {
+      cause: err
+    })
   }
   const data = payload.data ?? []
   if (!Array.isArray(data) || data.length === 0) {
@@ -311,9 +319,9 @@ async function parseOpenAIImageResponse(
       try {
         imgResp = await fetchWithTimeout(entry.url, { method: 'GET' })
       } catch (err) {
-        throw new Error(
-          `failed to fetch generated image url: ${sanitizeError(err, key)}`
-        )
+        throw new Error(`failed to fetch generated image url: ${sanitizeError(err, key)}`, {
+          cause: err
+        })
       }
       if (!imgResp.ok) {
         throw new Error(

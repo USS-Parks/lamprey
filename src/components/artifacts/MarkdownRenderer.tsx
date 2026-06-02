@@ -36,8 +36,11 @@ export function MarkdownRenderer({ content }: MarkdownRendererProps) {
             const handleClick = (e: React.MouseEvent) => {
               e.preventDefault()
               if (href) {
-                window.api?.artifact?.openExternal?.(href) ??
+                if (window.api?.artifact?.openExternal) {
+                  window.api.artifact.openExternal(href)
+                } else {
                   window.open(href, '_blank')
+                }
               }
             }
             return (

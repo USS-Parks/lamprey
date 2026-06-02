@@ -83,21 +83,26 @@ conflicts (CI-safe); both `tsc` projects pass.
 `no-floating-promises`). It roughly doubles lint time and would surface a large
 new error set; worth a dedicated pass.
 
-### Pre-existing findings newly surfaced by the now-working linter
+### Pre-existing findings surfaced by the now-working linter (FIXED)
 
-These are **not** introduced by this change — they are latent issues the broken
-linter could never report. Left for a separate cleanup (19 errors):
+These were latent issues the broken linter could never report. All 19 are now
+fixed, so `npm run lint` is clean (0 errors; the remaining 200 `no-explicit-any`
+warnings are intentional and non-blocking). Verified: lint clean, both `tsc`
+projects pass, all 307 tests pass.
 
-- `react-hooks/rules-of-hooks` — `src/components/settings/ModelSettings.tsx:494`.
-  A click handler named `usePreset` trips the hook-naming rule. **Most worth
-  attention:** rename to `applyPreset` (it is not a hook) to remove the
-  misleading name and the error.
+- `react-hooks/rules-of-hooks` — `ModelSettings.tsx`: the click handler `usePreset`
+  was renamed to `applyPreset` (it was never a hook; the `use*` name tripped the
+  rule and was misleading).
 - `preserve-caught-error` (7) — `image-gen-providers.ts` (×5),
-  `native-aux-tools.ts`, `resources/mcp/node-repl/server.js`: re-thrown errors
-  drop the original via `cause`. Mechanical: add `{ cause: err }`.
-- `@typescript-eslint/no-unused-expressions` (3) — `MarkdownRenderer.tsx:39`,
-  `ApiKeyModal.tsx:60`, `ApiKeySettings.tsx:77`: `cond ? a() : b()` /
-  `a ?? b` used as statements. Convert to `if/else`.
-- `no-useless-assignment` (3), `no-useless-escape` (4 in `smoke-bundle.cjs`),
-  `@typescript-eslint/no-require-imports` (1, a lazy `require('fs')` in
-  `pty-manager.ts`) — trivial.
+  `native-aux-tools.ts`, `resources/mcp/node-repl/server.js`: re-thrown errors now
+  pass `{ cause: err }`, preserving the original error chain.
+- `@typescript-eslint/no-unused-expressions` (3) — `MarkdownRenderer.tsx`,
+  `ApiKeyModal.tsx`, `ApiKeySettings.tsx`: `cond ? a() : b()` / `a ?? b`
+  side-effect statements converted to `if/else`.
+- `no-useless-assignment` (3) — `file-handler.ts`, `frontend-qa-tool.ts`,
+  `tool-calls-store.ts`: dropped dead initializers (`let x: T` declared, assigned
+  on every path).
+- `no-useless-escape` (4) — `smoke-bundle.cjs`: removed needless backtick escapes
+  inside a single-quoted string.
+- `@typescript-eslint/no-require-imports` (1) — `pty-manager.ts`: the lazy
+  `require('fs')` became a top-level `import { existsSync } from 'fs'`.

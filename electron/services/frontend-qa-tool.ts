@@ -135,7 +135,7 @@ export async function executeFrontendQa(
     new_tab: normalized.new_tab
   })
 
-  let screenshotResult = ''
+  let screenshotResult: string
   let title: string | undefined
   let finalUrl: string | undefined
   let bodyText = ''

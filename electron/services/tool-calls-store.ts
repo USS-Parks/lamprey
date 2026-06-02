@@ -25,7 +25,7 @@ interface ToolCallRow {
 }
 
 function toToolCall(row: ToolCallRow): LampreyToolCall {
-  let args: Record<string, unknown> = {}
+  let args: Record<string, unknown>
   try {
     args = JSON.parse(row.args_json) as Record<string, unknown>
   } catch {

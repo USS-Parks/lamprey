@@ -74,7 +74,8 @@ export function ApiKeySettings() {
       } else if (typeof data === 'boolean') {
         const msg = data ? `${label} authenticated.` : 'Provider rejected the key.'
         setTestStatus((s) => ({ ...s, [providerId]: { ok: data, message: msg } }))
-        data ? toast.success(`${label} key valid`) : toast.error(`Invalid ${label} key`)
+        if (data) toast.success(`${label} key valid`)
+        else toast.error(`Invalid ${label} key`)
       } else {
         const reason = result.success ? 'No response from provider.' : (result.error || 'Unknown error.')
         setTestStatus((s) => ({ ...s, [providerId]: { ok: false, message: reason } }))

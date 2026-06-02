@@ -5,6 +5,7 @@
 // chain on Windows; pivoting to pipes keeps install/build reliable.
 
 import { spawn, ChildProcessWithoutNullStreams } from 'child_process'
+import { existsSync } from 'fs'
 import type { BrowserWindow } from 'electron'
 
 interface PtySession {
@@ -45,17 +46,12 @@ const GIT_BASH_CANDIDATES = [
 function resolveGitBash(): string | null {
   // Synchronous existence check; falling back to PATH name lets `spawn`
   // surface ENOENT to the renderer which is fine for our error UX.
-  try {
-    const fs = require('fs') as typeof import('fs')
-    for (const p of GIT_BASH_CANDIDATES) {
-      try {
-        if (fs.existsSync(p)) return p
-      } catch {
-        // ignore individual probe failures
-      }
+  for (const p of GIT_BASH_CANDIDATES) {
+    try {
+      if (existsSync(p)) return p
+    } catch {
+      // ignore individual probe failures
     }
-  } catch {
-    // require unavailable; fall through
   }
   return null
 }

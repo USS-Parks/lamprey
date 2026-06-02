@@ -336,7 +336,9 @@ function addNodeModuleDir(rawPath) {
   try {
     stat = statSync(absolute)
   } catch (err) {
-    throw new Error(`Path not accessible: ${absolute} (${err?.code ?? err?.message ?? 'error'})`)
+    throw new Error(`Path not accessible: ${absolute} (${err?.code ?? err?.message ?? 'error'})`, {
+      cause: err
+    })
   }
   if (!stat.isDirectory()) {
     throw new Error(`Path is not a directory: ${absolute}`)

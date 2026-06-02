@@ -57,7 +57,8 @@ export function ApiKeyModal({ onComplete, onDismiss, defaultProvider, required =
           setError(data.reason || 'Provider rejected the key.')
         }
       } else if (typeof data === 'boolean') {
-        data ? onComplete() : setError('Provider rejected the key.')
+        if (data) onComplete()
+        else setError('Provider rejected the key.')
       } else {
         setError(result.success ? 'No response from provider.' : (result.error || 'Unknown error.'))
       }

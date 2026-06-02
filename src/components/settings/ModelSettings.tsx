@@ -141,7 +141,7 @@ export function ModelSettings() {
     [models]
   )
 
-  const usePreset = (preset: ModelInfo) => {
+  const applyPreset = (preset: ModelInfo) => {
     setDraft({ ...preset })
   }
 
@@ -491,7 +491,7 @@ export function ModelSettings() {
             {PRESET_TEMPLATES.map((p) => (
               <button
                 key={p.id}
-                onClick={() => usePreset(p)}
+                onClick={() => applyPreset(p)}
                 className="rounded bg-[var(--bg-tertiary)] px-2 py-0.5 font-mono text-[12px] text-[var(--text-secondary)] hover:text-[var(--accent)]"
               >
                 {p.name}
