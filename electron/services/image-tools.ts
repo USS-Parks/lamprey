@@ -1,7 +1,8 @@
 import { app } from 'electron'
 import { existsSync, mkdirSync, writeFileSync } from 'fs'
-import { extname, join, relative, resolve, sep } from 'path'
+import { extname, isAbsolute, join, relative, resolve, sep } from 'path'
 import { getImageGenProvider, type ImageBytes } from './image-gen-providers'
+import { resolveWorkspaceRelative } from './path-utils'
 
 // image_generate / image_edit / image_variation executors.
 //
@@ -73,12 +74,13 @@ function truncate(text: string, max: number): string {
   return text.slice(0, max) + '…'
 }
 
-// Allowed input roots for image_edit / image_variation: the workspace tree
-// and the Lamprey userData/artifacts directory (where image_generate writes).
-// Without this boundary the tool can read arbitrary files off disk and upload
-// them to the configured image-gen API — a quiet exfiltration path.
-function allowedImageRoots(): string[] {
-  const roots = [resolve(process.cwd())]
+// Allowed input roots for image_edit / image_variation: the caller-supplied
+// workspace tree and the Lamprey userData/artifacts directory (where
+// image_generate writes). Without this boundary the tool can read arbitrary
+// files off disk and upload them to the configured image-gen API — a quiet
+// exfiltration path.
+function allowedImageRoots(workspaceRoot: string): string[] {
+  const roots = [resolve(workspaceRoot)]
   try {
     roots.push(resolve(join(app.getPath('userData'), 'artifacts')))
   } catch {
@@ -87,25 +89,45 @@ function allowedImageRoots(): string[] {
   return roots
 }
 
-function isWithin(child: string, parent: string): boolean {
+// Exported for unit tests. Returns true when `child` is the same path as
+// `parent` or sits inside it. Uses `isAbsolute(rel)` (not `resolve(rel)`)
+// for the different-drive / outside-root check: `resolve("a.png")` on
+// Windows returns a drive-prefixed absolute path even when the input is a
+// bare relative segment, so the previous regex rejected every legitimate
+// child path on Windows.
+export function isWithin(child: string, parent: string): boolean {
   const rel = relative(parent, child)
-  return rel === '' || (!rel.startsWith('..') && !rel.startsWith(`..${sep}`) && !resolve(rel).match(/^[A-Za-z]:/))
+  if (rel === '') return true
+  if (rel.startsWith('..')) return false
+  if (rel.startsWith(`..${sep}`)) return false
+  if (isAbsolute(rel)) return false
+  return true
 }
 
-function validateExistingImagePath(p: string, label: string): string | { error: string } {
+// Exported for unit tests. Returns the resolved absolute path when `p` is a
+// valid image inside the workspace or userData/artifacts; otherwise returns
+// an `{ error }` shape with a model-readable reason. Relative paths resolve
+// against `workspaceRoot` so the user-picked workspace governs the lookup
+// — without this, a relative `image_path` would silently target
+// process.cwd() (Lamprey's launch folder) instead of the active workspace.
+export function validateExistingImagePath(
+  p: string,
+  label: string,
+  workspaceRoot: string
+): string | { error: string } {
   if (typeof p !== 'string' || p.trim() === '') {
     return { error: `${label} is required` }
   }
   if (p.includes('..')) {
     return { error: `${label} must not contain ".." segments` }
   }
-  const abs = resolve(p)
+  const abs = resolveWorkspaceRelative(p, workspaceRoot)
   if (!existsSync(abs)) return { error: `${label} not found at ${abs}` }
   const ext = extname(abs).toLowerCase()
   if (!['.png', '.jpg', '.jpeg', '.webp'].includes(ext)) {
     return { error: `${label} extension must be .png, .jpg, .jpeg, or .webp (got "${ext}")` }
   }
-  const roots = allowedImageRoots()
+  const roots = allowedImageRoots(workspaceRoot)
   if (!roots.some((root) => isWithin(abs, root))) {
     return {
       error: `${label} must be inside the workspace or userData/artifacts (got ${abs})`
@@ -140,16 +162,19 @@ export async function executeImageGenerate(args: ImageGenerateArgs): Promise<str
 
 // ───────────────────────────── image_edit ─────────────────────────────
 
-export async function executeImageEdit(args: ImageEditArgs): Promise<string> {
+export async function executeImageEdit(
+  args: ImageEditArgs,
+  workspaceRoot: string
+): Promise<string> {
   const prompt = typeof args?.prompt === 'string' ? args.prompt : ''
   if (!prompt.trim()) return 'Error: prompt is required and must be a non-empty string.'
 
-  const imgCheck = validateExistingImagePath(args?.image_path, 'image_path')
+  const imgCheck = validateExistingImagePath(args?.image_path, 'image_path', workspaceRoot)
   if (typeof imgCheck !== 'string') return `Error: ${imgCheck.error}`
 
   let maskAbs: string | undefined
   if (args?.mask_path !== undefined && args.mask_path !== '') {
-    const maskCheck = validateExistingImagePath(args.mask_path, 'mask_path')
+    const maskCheck = validateExistingImagePath(args.mask_path, 'mask_path', workspaceRoot)
     if (typeof maskCheck !== 'string') return `Error: ${maskCheck.error}`
     maskAbs = maskCheck
   }
@@ -174,8 +199,11 @@ export async function executeImageEdit(args: ImageEditArgs): Promise<string> {
 
 // ─────────────────────────── image_variation ──────────────────────────
 
-export async function executeImageVariation(args: ImageVariationArgs): Promise<string> {
-  const imgCheck = validateExistingImagePath(args?.image_path, 'image_path')
+export async function executeImageVariation(
+  args: ImageVariationArgs,
+  workspaceRoot: string
+): Promise<string> {
+  const imgCheck = validateExistingImagePath(args?.image_path, 'image_path', workspaceRoot)
   if (typeof imgCheck !== 'string') return `Error: ${imgCheck.error}`
 
   const requestedN = typeof args?.n === 'number' ? Math.floor(args.n) : 1

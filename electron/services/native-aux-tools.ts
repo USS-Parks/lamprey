@@ -6,6 +6,7 @@ import { randomUUID } from 'crypto'
 
 import { permissionsService } from './permissions-store'
 import { ptyGetBuffer, ptyListSessions, PTY_READ_CAP } from './pty-manager'
+import { resolveWorkspaceRelative } from './path-utils'
 import type { ToolExecutionContext } from './tool-registry'
 import type { ToolRisk } from './tool-registry'
 
@@ -48,13 +49,15 @@ function isInsideRoot(root: string, target: string): boolean {
 
 export function executeViewImage(args: ViewImageArgs, workspaceRoot: string): string {
   if (!args || typeof args.path !== 'string' || args.path.trim() === '') {
-    return 'view_image error: "path" is required and must be a non-empty string.'
+    throw new Error('view_image: "path" is required and must be a non-empty string.')
   }
 
-  const absolute = isAbsolute(args.path) ? resolve(args.path) : resolve(workspaceRoot, args.path)
+  const absolute = resolveWorkspaceRelative(args.path, workspaceRoot)
   const ext = extname(absolute).toLowerCase()
   if (!ALLOWED_IMAGE_EXTS.has(ext)) {
-    return `view_image error: extension "${ext || '(none)'}" is not a supported image format. Allowed: ${Array.from(ALLOWED_IMAGE_EXTS).join(', ')}.`
+    throw new Error(
+      `view_image: extension "${ext || '(none)'}" is not a supported image format. Allowed: ${Array.from(ALLOWED_IMAGE_EXTS).join(', ')}.`
+    )
   }
 
   const workspaceAbs = resolve(workspaceRoot)
@@ -62,20 +65,24 @@ export function executeViewImage(args: ViewImageArgs, workspaceRoot: string): st
   const inWorkspace = isInsideRoot(workspaceAbs, absolute)
   const inArtifacts = artifactsDir ? isInsideRoot(artifactsDir, absolute) : false
   if (!inWorkspace && !inArtifacts) {
-    return `view_image error: path "${absolute}" is outside the workspace and the userData artifacts directory.`
+    throw new Error(
+      `view_image: path "${absolute}" is outside the workspace and the userData artifacts directory.`
+    )
   }
 
   let stat
   try {
     stat = statSync(absolute)
   } catch (err: any) {
-    return `view_image error: cannot stat "${absolute}": ${err?.message ?? 'unknown error'}.`
+    throw new Error(`view_image: cannot stat "${absolute}": ${err?.message ?? 'unknown error'}.`)
   }
   if (!stat.isFile()) {
-    return `view_image error: "${absolute}" is not a regular file.`
+    throw new Error(`view_image: "${absolute}" is not a regular file.`)
   }
   if (stat.size > MAX_IMAGE_BYTES) {
-    return `view_image error: file is ${stat.size} bytes (>${MAX_IMAGE_BYTES}). Refusing to register oversized image.`
+    throw new Error(
+      `view_image: file is ${stat.size} bytes (>${MAX_IMAGE_BYTES}). Refusing to register oversized image.`
+    )
   }
 
   const mime =
@@ -208,10 +215,12 @@ export async function executeRequestPermissions(
   ctx: ToolExecutionContext
 ): Promise<string> {
   if (!args || typeof args.scope !== 'string' || !(args.scope in SCOPE_RISKS)) {
-    return `request_permissions error: scope must be one of ${Object.keys(SCOPE_RISKS).join(', ')}.`
+    throw new Error(
+      `request_permissions: scope must be one of ${Object.keys(SCOPE_RISKS).join(', ')}.`
+    )
   }
   if (typeof args.reason !== 'string' || args.reason.trim() === '') {
-    return 'request_permissions error: "reason" is required and must be a non-empty string.'
+    throw new Error('request_permissions: "reason" is required and must be a non-empty string.')
   }
 
   const risks = SCOPE_RISKS[args.scope]

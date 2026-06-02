@@ -1,10 +1,13 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 
-// The store imports `electron`'s BrowserWindow. We never reach askUser() in
-// these tests (every case is covered by a sticky policy), but the import
-// itself runs at module-load time and would crash without a stub.
+// The store imports `electron`'s BrowserWindow at module-load time. We never
+// reach askUser() in these tests (every case is covered by a sticky policy),
+// but the import itself would crash without a stub. The policy persistence
+// layer is exercised through its in-memory fallback because app.getPath is
+// unreachable here — see __resetPolicyStore + __forceMemoryFallback below.
 vi.mock('electron', () => ({
-  BrowserWindow: { getAllWindows: () => [] }
+  BrowserWindow: { getAllWindows: () => [] },
+  app: { getPath: () => { throw new Error('app not ready in test env') } }
 }))
 
 import {
@@ -13,20 +16,17 @@ import {
   shouldGateOnRisks,
   type ToolApprovalRequest
 } from './permissions-store'
+import {
+  __forceMemoryFallback,
+  __resetPolicyStore
+} from './permission-policies-store'
 
 beforeEach(() => {
-  // Reset every policy bucket so tests don't bleed into one another. The
-  // public API is the only way to mutate state, so iterate over the known
-  // tool ids / risks we touch and clear them.
-  permissionsService.setGlobalPolicy('shell_command', null)
-  permissionsService.setGlobalPolicy('web_search', null)
-  permissionsService.clearConversationPolicies('conv-A')
-  permissionsService.clearConversationPolicies('conv-B')
-  permissionsService.setRiskPolicy('network', 'always', null)
-  permissionsService.setRiskPolicy('destructive', 'always', null)
-  permissionsService.setRiskPolicy('secret', 'always', null)
-  permissionsService.setRiskPolicy('network', 'conversation', null, 'conv-A')
-  permissionsService.setRiskPolicy('network', 'conversation', null, 'conv-B')
+  // Wipe the in-memory fallback so each test starts clean and force the
+  // fallback path explicitly (rather than relying on the first getDb() to
+  // throw and flip the switch).
+  __resetPolicyStore()
+  __forceMemoryFallback()
 })
 
 function makeReq(
@@ -127,12 +127,12 @@ describe('permissionsService — per-risk policies', () => {
     expect(decision).toBe('deny')
   })
 
-  it('conversation-scoped risk policy beats global', () => {
+  it('global risk deny beats conversation allow', () => {
     permissionsService.setRiskPolicy('network', 'always', 'deny')
     permissionsService.setRiskPolicy('network', 'conversation', 'allow', 'conv-A')
     expect(permissionsService.getRiskPolicy('network', 'conv-A')).toEqual({
-      scope: 'conversation',
-      decision: 'allow'
+      scope: 'always',
+      decision: 'deny'
     })
     expect(permissionsService.getRiskPolicy('network', 'conv-B')).toEqual({
       scope: 'always',

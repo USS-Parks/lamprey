@@ -1,12 +1,15 @@
 import { randomUUID } from 'crypto'
 
-// In-memory per-conversation plan + goal state.
+// Per-conversation plan + goal state for the `update_plan`, `get_goal`,
+// `create_goal`, and `update_goal` native tools.
 //
-// The `update_plan`, `get_goal`, `create_goal`, and `update_goal` native
-// tools read/write through this module. State is keyed by conversation id
-// and lives in-process only — Lamprey restarts wipe it. Persistence is a
-// deferred follow-up; the current `{ planSteps, goals }` shape per
-// conversation would migrate cleanly to two small tables when that lands.
+// KNOWN GAP — provisional in-memory only. State lives in process maps and
+// resets on Lamprey restart; nothing is persisted to disk yet, no settings
+// UI surfaces or clears it, and there is no cross-device sync. The
+// `{ planSteps, goals }` shape per conversation maps cleanly onto two
+// small SQLite tables when persistence lands — same migration path as
+// permissions-store. Documented alongside the permissions-store gap in
+// PLANNING/CODEX_TOOLSET_PARITY_PROGRESS.md.
 //
 // Conversation id is optional everywhere: missing/undefined ids map to a
 // shared GLOBAL_KEY bucket so a tool run without a conversation context
@@ -41,6 +44,18 @@ interface ConversationState {
 
 const state = new Map<string, ConversationState>()
 
+// Strictly-monotonic timestamp source for createdAt / updatedAt. Date.now()
+// can return the same value across back-to-back calls — on Windows the
+// system clock resolution is ~15 ms and even setTimeout(0) often does not
+// advance it within the same tick. We need the timestamps to be a faithful
+// total order so listGoals() can sort by "most recently updated" deterministically.
+let __monoCursor = 0
+function monoNow(): number {
+  const t = Date.now()
+  __monoCursor = t > __monoCursor ? t : __monoCursor + 1
+  return __monoCursor
+}
+
 function getState(conversationId: string | undefined): ConversationState {
   const key = conversationId ?? GLOBAL_KEY
   let s = state.get(key)
@@ -54,7 +69,11 @@ function getState(conversationId: string | undefined): ConversationState {
 // ───────────────────── Plan steps ─────────────────────
 
 export interface UpdatePlanInput {
-  steps: Array<{ id?: string; text: string; status?: PlanStepStatus }>
+  // text is optional at the type level because the executor's update path
+  // accepts a status-only patch and preserves the prior text. The model-
+  // facing JSON schema (native-dev-tool-pack.ts) still requires text for
+  // append calls; this only relaxes the TS shape for in-process callers.
+  steps: Array<{ id?: string; text?: string; status?: PlanStepStatus }>
   replace?: boolean
 }
 
@@ -124,6 +143,13 @@ function planSnapshot(
   }
 }
 
+/** Public read of the current plan for `conversationId`. Returns an empty
+ * snapshot when nothing has been recorded yet so renderer code doesn't have
+ * to branch on "no plan vs empty plan". */
+export function getPlanSnapshot(conversationId: string | undefined): PlanSnapshot {
+  return planSnapshot(conversationId, getState(conversationId))
+}
+
 // ───────────────────── Goals ─────────────────────
 
 export interface CreateGoalInput {
@@ -145,7 +171,7 @@ export function createGoal(
   input: CreateGoalInput
 ): Goal {
   const s = getState(conversationId)
-  const now = Date.now()
+  const now = monoNow()
   const goal: Goal = {
     id: randomUUID(),
     title: String(input.title ?? '').trim(),
@@ -171,7 +197,7 @@ export function updateGoal(
   if (input.description !== undefined) goal.description = input.description
   if (input.dueDate !== undefined) goal.dueDate = input.dueDate
   if (input.status !== undefined) goal.status = input.status
-  goal.updatedAt = Date.now()
+  goal.updatedAt = monoNow()
   s.goals.set(goal.id, goal)
   return goal
 }
@@ -192,4 +218,5 @@ export function listGoals(conversationId: string | undefined): Goal[] {
 /** Test-only: reset all per-conversation state. */
 export function __resetPlanGoalStore(): void {
   state.clear()
+  __monoCursor = 0
 }

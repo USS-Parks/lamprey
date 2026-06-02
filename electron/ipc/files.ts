@@ -3,6 +3,11 @@ import { spawn } from 'child_process'
 import * as path from 'path'
 import * as fs from 'fs/promises'
 import { processFiles } from '../services/file-handler'
+import {
+  clearActiveWorkspace,
+  getActiveWorkspace,
+  setActiveWorkspace
+} from '../services/workspace-state'
 
 const SKIP_DIRS = new Set([
   'node_modules', '.git', 'dist', 'build', 'out', '.next', '.cache',
@@ -131,7 +136,11 @@ export function registerFilesHandlers(): void {
 
   ipcMain.handle('files:getWorkdir', async () => {
     try {
-      const cwd = process.cwd()
+      // Resolve the active workspace from the persisted state, falling back
+      // to process.cwd() when nothing is set. This is the source of truth
+      // tool execution (workspace_context / shell_command / apply_patch)
+      // reads through ToolExecutionContext.workspacePath.
+      const cwd = getActiveWorkspace()
       return { success: true, data: { path: cwd, name: path.basename(cwd) } }
     } catch (err: any) {
       return { success: false, error: err?.message ?? 'Could not read working directory' }
@@ -149,6 +158,25 @@ export function registerFilesHandlers(): void {
       return { success: true, data: { path: chosen, name: path.basename(chosen) } }
     } catch (err: any) {
       return { success: false, error: err?.message ?? 'Folder picker failed' }
+    }
+  })
+
+  ipcMain.handle('files:setWorkdir', async (_event, candidate: string) => {
+    try {
+      const result = setActiveWorkspace(candidate)
+      return { success: true, data: { path: result.path, name: path.basename(result.path) } }
+    } catch (err: any) {
+      return { success: false, error: err?.message ?? 'Could not set working directory' }
+    }
+  })
+
+  ipcMain.handle('files:clearWorkdir', async () => {
+    try {
+      clearActiveWorkspace()
+      const cwd = getActiveWorkspace()
+      return { success: true, data: { path: cwd, name: path.basename(cwd) } }
+    } catch (err: any) {
+      return { success: false, error: err?.message ?? 'Could not clear working directory' }
     }
   })
 

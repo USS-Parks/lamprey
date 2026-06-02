@@ -25,8 +25,8 @@ toolRegistry.registerNative(
     requiresApproval: true,
     enabled: true
   },
-  async (args) => {
-    const workspaceRoot = process.cwd()
+  async (args, ctx) => {
+    const workspaceRoot = ctx.workspacePath ?? process.cwd()
     const { result } = await executeApplyPatch(
       args as unknown as ApplyPatchArgs,
       workspaceRoot

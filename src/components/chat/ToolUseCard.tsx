@@ -1,83 +1,251 @@
-﻿import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { ToolCallState } from '@/stores/chat-store'
+import type { ToolRisk } from '@/lib/types'
+import {
+  RISK_LABEL,
+  RISK_TONE,
+  formatElapsed,
+  previewResult,
+  summarizeArgs
+} from '@/lib/tool-card-helpers'
 
-const SERVER_ICONS: Record<string, string> = {
+// Provider letter for the leading badge. Three explicit entries match the
+// bundled MCP servers; everything else uses the first letter of the
+// serverId for native tools ('I' for 'internal', 'W' for 'workspace', etc.)
+// when the providerKind cue doesn't add value.
+const SERVER_LETTER: Record<string, string> = {
   gmail: 'M',
   drive: 'D',
   chrome: 'C',
+  internal: 'L'
 }
 
 interface ToolUseCardProps {
   toolCall: ToolCallState
 }
 
+function StatusIndicator({ status }: { status: ToolCallState['status'] }) {
+  switch (status) {
+    case 'pending':
+      return (
+        <span
+          className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-[var(--text-muted)] border-t-[var(--accent)]"
+          aria-label="pending"
+        />
+      )
+    case 'running':
+      return (
+        <span
+          className="inline-block h-3 w-3 animate-pulse rounded-full bg-[var(--accent)]"
+          aria-label="running"
+        />
+      )
+    case 'success':
+      return (
+        <span className="text-[var(--success)]" aria-label="success">
+          &#10003;
+        </span>
+      )
+    case 'error':
+      return (
+        <span className="text-[var(--error)]" aria-label="error">
+          &#10005;
+        </span>
+      )
+    case 'denied':
+      return (
+        <span className="text-[var(--text-muted)]" aria-label="denied">
+          ⊘
+        </span>
+      )
+    default:
+      return null
+  }
+}
+
+function RiskBadges({ risks }: { risks: ToolRisk[] | undefined }) {
+  if (!risks || risks.length === 0) return null
+  // Cap visible badges so a `['write','network','destructive']` tool doesn't
+  // push the elapsed/status icons off-screen on narrow widths. Order is
+  // preserved from the descriptor.
+  const visible = risks.slice(0, 3)
+  return (
+    <span className="flex flex-none items-center gap-1">
+      {visible.map((r) => (
+        <span
+          key={r}
+          title={RISK_LABEL[r]}
+          className={
+            'rounded-full border bg-transparent px-1.5 py-[1px] text-[10px] font-mono uppercase tracking-wider ' +
+            (RISK_TONE[r] ?? 'border-[var(--border)] text-[var(--text-muted)]')
+          }
+        >
+          {r}
+        </span>
+      ))}
+    </span>
+  )
+}
+
+function useLiveElapsed(startedAt: number | undefined, active: boolean): string | null {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    if (!active || !startedAt) return
+    const id = setInterval(() => setNow(Date.now()), 500)
+    return () => clearInterval(id)
+  }, [active, startedAt])
+  if (!startedAt) return null
+  return formatElapsed(now - startedAt)
+}
+
 export function ToolUseCard({ toolCall }: ToolUseCardProps) {
   const [expanded, setExpanded] = useState(false)
-  const { serverId, toolName, status, args, result, duration } = toolCall
+  const {
+    serverId,
+    toolName,
+    title,
+    risks,
+    status,
+    args,
+    result,
+    duration,
+    startedAt
+  } = toolCall
 
-  const icon = SERVER_ICONS[serverId] ?? serverId.charAt(0).toUpperCase()
+  const isError = status === 'error'
+  const isDenied = status === 'denied'
+  const isRunning = status === 'pending' || status === 'running'
 
-  const statusIndicator = (() => {
-    switch (status) {
-      case 'pending':
-        return <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-[var(--text-muted)] border-t-[var(--accent)]" />
-      case 'running':
-        return <span className="inline-block h-3 w-3 animate-pulse rounded-full bg-[var(--accent)]" />
-      case 'success':
-        return <span className="text-[var(--success)]">&#10003;</span>
-      case 'error':
-        return <span className="text-[var(--error)]">&#10005;</span>
-      default:
-        return null
+  // Plain-English label first. Fall back to the bare tool name if the
+  // descriptor didn't ship a title (unknown / stale entry).
+  const displayLabel = title && title.length > 0 ? title : toolName
+  const subLabel =
+    serverId && serverId !== 'internal' ? serverId : null
+
+  const letter =
+    SERVER_LETTER[serverId] ?? (toolName[0] ?? 'T').toUpperCase()
+
+  const liveElapsed = useLiveElapsed(startedAt, isRunning)
+  const elapsedLabel = isRunning
+    ? liveElapsed ?? '…'
+    : typeof duration === 'number'
+      ? formatElapsed(duration)
+      : null
+
+  const argsSummary = summarizeArgs(args)
+
+  const preview = previewResult(result, { lineCap: 4, charCap: 240 })
+
+  const borderClass = isError
+    ? 'border-[var(--error)]/40'
+    : isDenied
+      ? 'border-[var(--text-muted)]/40'
+      : 'border-[var(--border)]'
+
+  const argsJson = (() => {
+    try {
+      return JSON.stringify(args ?? {}, null, 2)
+    } catch {
+      return String(args ?? '')
     }
   })()
-
-  const summaryText = (() => {
-    const serverLabel = serverId.charAt(0).toUpperCase() + serverId.slice(1)
-    if (status === 'success' && duration != null) {
-      return `Used ${serverLabel}: ${toolName} (${duration}ms)`
-    }
-    if (status === 'error') {
-      return `Failed ${serverLabel}: ${toolName}`
-    }
-    if (status === 'running') {
-      return `Running ${serverLabel}: ${toolName}...`
-    }
-    return `Calling ${serverLabel}: ${toolName}...`
-  })()
-
-  const truncatedResult = result && result.length > 200 ? result.slice(0, 200) + '...' : result
 
   return (
-    <div className="my-2 mx-auto max-w-[80%]">
+    <div className="my-2 mx-auto w-full max-w-[80%]">
       <button
-        onClick={() => setExpanded(!expanded)}
-        className="flex w-full items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--bg-tertiary)] px-3 py-2 text-left transition-colors hover:bg-[var(--bg-secondary)]"
+        onClick={() => setExpanded((v) => !v)}
+        aria-expanded={expanded}
+        className={
+          'flex w-full items-start gap-2 rounded-lg border bg-[var(--bg-tertiary)] px-3 py-2 text-left transition-colors hover:bg-[var(--bg-secondary)] ' +
+          borderClass
+        }
       >
-        <span className="flex h-5 w-5 items-center justify-center rounded bg-[var(--accent-dim)] text-[12px] font-bold text-[var(--accent)]">
-          {icon}
+        <span className="mt-[2px] flex h-5 w-5 flex-none items-center justify-center rounded bg-[var(--accent-dim)] text-[12px] font-bold text-[var(--accent)]">
+          {letter}
         </span>
-        <span className="flex-1 text-xs text-[var(--text-secondary)]">{summaryText}</span>
-        {statusIndicator}
-        <span className="text-[12px] text-[var(--text-muted)]">{expanded ? '^' : 'v'}</span>
+
+        <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <span className="flex min-w-0 items-center gap-2">
+            <span className="truncate text-xs font-medium text-[var(--text-primary)]">
+              {displayLabel}
+            </span>
+            {subLabel && (
+              <span className="truncate text-[11px] font-mono text-[var(--text-muted)]">
+                · {subLabel}
+              </span>
+            )}
+          </span>
+          <span className="truncate text-[11px] font-mono text-[var(--text-muted)]">
+            {argsSummary}
+          </span>
+        </span>
+
+        <RiskBadges risks={risks} />
+
+        {elapsedLabel && (
+          <span className="flex-none text-[11px] font-mono text-[var(--text-muted)]">
+            {elapsedLabel}
+          </span>
+        )}
+
+        <span className="flex-none">
+          <StatusIndicator status={status} />
+        </span>
+
+        <span
+          className="flex-none text-[12px] text-[var(--text-muted)]"
+          aria-hidden
+        >
+          {expanded ? '▲' : '▼'}
+        </span>
       </button>
 
       {expanded && (
-        <div className="mt-1 rounded-b-lg border border-t-0 border-[var(--border)] bg-[var(--bg-primary)] px-3 py-2">
-          <div className="mb-1 text-[12px] font-medium uppercase tracking-wider text-[var(--text-muted)]">
+        <div
+          className={
+            'mt-1 rounded-b-lg border border-t-0 bg-[var(--bg-primary)] px-3 py-2 ' +
+            borderClass
+          }
+        >
+          <div className="mb-1 text-[11px] font-medium uppercase tracking-wider text-[var(--text-muted)]">
             Arguments
           </div>
-          <pre className="mb-2 overflow-x-auto text-[13px] font-mono text-[var(--text-secondary)]">
-            {JSON.stringify(args, null, 2)}
+          <pre className="mb-3 max-h-64 overflow-auto whitespace-pre-wrap break-words text-[12px] font-mono text-[var(--text-secondary)]">
+            {argsJson}
           </pre>
-          {truncatedResult && (
+
+          {(result || isError || isDenied) && (
             <>
-              <div className="mb-1 text-[12px] font-medium uppercase tracking-wider text-[var(--text-muted)]">
-                Result
+              <div className="mb-1 flex items-center gap-2 text-[11px] font-medium uppercase tracking-wider">
+                <span className="text-[var(--text-muted)]">Result</span>
+                {isError && (
+                  <span className="rounded-full border border-[var(--error)]/40 px-1.5 py-[1px] text-[10px] text-[var(--error)]">
+                    error
+                  </span>
+                )}
+                {isDenied && (
+                  <span className="rounded-full border border-[var(--text-muted)]/40 px-1.5 py-[1px] text-[10px] text-[var(--text-muted)]">
+                    denied
+                  </span>
+                )}
               </div>
-              <pre className="overflow-x-auto text-[13px] font-mono text-[var(--text-secondary)]">
-                {truncatedResult}
+              <pre
+                className={
+                  'max-h-64 overflow-auto whitespace-pre-wrap break-words text-[12px] font-mono ' +
+                  (isError
+                    ? 'text-[var(--error)]'
+                    : isDenied
+                      ? 'text-[var(--text-muted)] italic'
+                      : 'text-[var(--text-secondary)]')
+                }
+              >
+                {result || (isDenied ? 'Denied by user.' : '')}
               </pre>
+              {preview.truncated && (
+                <div className="mt-1 text-[10px] font-mono uppercase tracking-wider text-[var(--text-muted)]">
+                  showing full result (collapsed preview was truncated)
+                </div>
+              )}
             </>
           )}
         </div>

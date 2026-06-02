@@ -514,14 +514,18 @@ export async function verifyCatalog(): Promise<CatalogVerificationReport> {
 
 export async function chatOnce(
   messages: ChatCompletionMessageParam[],
-  modelId: string
+  modelId: string,
+  signal?: AbortSignal
 ): Promise<string> {
   const desc = resolveModel(modelId)
   const client = getClientForProvider(desc.provider)
-  const response = await client.chat.completions.create({
-    model: desc.apiModelId,
-    messages
-  })
+  const response = await client.chat.completions.create(
+    {
+      model: desc.apiModelId,
+      messages
+    },
+    signal ? { signal } : undefined
+  )
   return response.choices[0]?.message?.content || ''
 }
 

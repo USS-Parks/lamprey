@@ -1,5 +1,6 @@
 import { spawn } from 'child_process'
 import { resolve, relative, isAbsolute } from 'path'
+import { resolveWorkspaceRelative } from './path-utils'
 
 // Native shell_command tool. One-shot command execution with cwd / timeout /
 // env merge, captured stdout / stderr with caps, platform-appropriate shell
@@ -51,7 +52,7 @@ export function resolveCwdWithinWorkspace(
   const root = resolve(workspaceRoot)
   if (!candidate || candidate.trim() === '') return root
 
-  const target = isAbsolute(candidate) ? resolve(candidate) : resolve(root, candidate)
+  const target = resolveWorkspaceRelative(candidate, root)
   const rel = relative(root, target)
 
   // relative('') = '' means same dir; '..something' or absolute (different

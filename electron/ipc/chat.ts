@@ -1,4 +1,4 @@
-import { ipcMain, BrowserWindow, app } from 'electron'
+import { ipcMain, app } from 'electron'
 import { randomUUID } from 'crypto'
 import { readFileSync, existsSync } from 'fs'
 import { join } from 'path'
@@ -11,7 +11,22 @@ import { fireHooks } from '../services/hooks-runner'
 import { mcpManager } from '../services/mcp-manager'
 import { listSkills, getSkillContent } from '../services/skill-loader'
 import { toolRegistry } from '../services/tool-registry'
+import {
+  partitionToolCallWindows,
+  type ProviderToolCall
+} from '../services/tool-call-windowing'
 import { permissionsService, shouldGateOnRisks } from '../services/permissions-store'
+import { inferPhaseFromDescriptor, type AgentRunPhase } from '../services/agent-run-phase'
+import { getActiveWorkspace } from '../services/workspace-state'
+import { classifyToolResult } from '../services/tool-result-status'
+import { dispatchNativeTool } from '../services/native-dispatch'
+import { emitChatEvent } from '../services/chat-events'
+import {
+  composeFinalResponse,
+  shouldComposeFinalResponse,
+  summarizeRun
+} from '../services/final-response-composer'
+import { getPlanSnapshot } from '../services/plan-goal-store'
 import type { ChatCompletionMessageParam, ChatCompletionTool } from 'openai/resources/chat/completions'
 
 interface ModelParams {
@@ -53,13 +68,8 @@ const activeAbortControllers = new Map<string, AbortController>()
 
 const MAX_TOOL_ROUNDS = 10
 
-function getMainWindow(): BrowserWindow | null {
-  const windows = BrowserWindow.getAllWindows()
-  return windows[0] || null
-}
-
-function send(channel: string, data: unknown): void {
-  getMainWindow()?.webContents.send(channel, data)
+function emitPhase(conversationId: string, phase: AgentRunPhase): void {
+  emitChatEvent('chat:phase', { conversationId, phase })
 }
 
 export function registerChatHandlers(): void {
@@ -81,6 +91,8 @@ export function registerChatHandlers(): void {
         model
       })
 
+      emitPhase(conversationId, 'understanding')
+
       fireHooks('promptSubmit', { conversationId, promptBody: content })
 
       const allMessages = convStore.getMessages(conversationId)
@@ -100,7 +112,8 @@ export function registerChatHandlers(): void {
       }
 
       const { params: modelParams, systemPromptOverride } = loadModelConfig(model)
-      const agentsMd = readAgentsMd()
+      const activeWorkspace = getActiveWorkspace()
+      const agentsMd = readAgentsMd(activeWorkspace)
       const systemPrompt = buildSystemPrompt(
         skillContents,
         memoryBlock,
@@ -168,11 +181,17 @@ export function registerChatHandlers(): void {
       // because the user explicitly does not want concurrent multi-model output.
       void requestedAgentMode
 
+      // Workspace pinned at the start of the round so the in-flight tool
+      // loop sees one consistent cwd even if the user retargets the folder
+      // chip mid-stream.
+      const workspacePath = activeWorkspace
+
       await runChatRound(
         conversationId,
         model,
         apiMessages,
         tools.length > 0 ? tools : undefined,
+        workspacePath,
         abortController.signal,
         0,
         modelParams
@@ -182,7 +201,8 @@ export function registerChatHandlers(): void {
       return { success: true, data: { conversationId } }
     } catch (err: any) {
       activeAbortControllers.delete(conversationId)
-      send('chat:error', { conversationId, error: err.message })
+      emitPhase(conversationId, 'error')
+      emitChatEvent('chat:error', { conversationId, error: err.message })
       return { success: false, error: err.message }
     }
   })
@@ -226,12 +246,14 @@ async function runChatRound(
   model: string,
   messages: ChatCompletionMessageParam[],
   tools: ChatCompletionTool[] | undefined,
+  workspacePath: string,
   signal: AbortSignal,
   round: number,
   params?: ModelParams
 ): Promise<void> {
   if (round >= MAX_TOOL_ROUNDS) {
-    send('chat:error', {
+    emitPhase(conversationId, 'error')
+    emitChatEvent('chat:error', {
       conversationId,
       error: 'Maximum tool call rounds reached'
     })
@@ -248,18 +270,45 @@ async function runChatRound(
       effectiveTools,
       {
         onChunk: (chunk) => {
-          send('chat:chunk', { conversationId, content: chunk })
+          emitChatEvent('chat:chunk', { conversationId, content: chunk })
         },
         onDone: async (fullContent, toolCalls) => {
           if (!toolCalls || toolCalls.length === 0) {
+            let finalContent = fullContent
+            let draft: string | undefined
+            if (shouldComposeFinalResponse(round)) {
+              emitPhase(conversationId, 'summarizing')
+              try {
+                const summary = summarizeRun(
+                  messages as any,
+                  getPlanSnapshot(conversationId),
+                  toolRegistry.getCallsForConversation(conversationId, 50),
+                  fullContent
+                )
+                const composed = await composeFinalResponse({
+                  summary,
+                  model,
+                  signal,
+                  runner: chatOnce
+                })
+                if (composed) {
+                  finalContent = composed
+                  draft = fullContent
+                }
+              } catch (err) {
+                console.warn('[chat] final response composer failed:', err)
+              }
+            }
             const assistantMsg = convStore.saveMessage({
               id: randomUUID(),
               conversationId,
               role: 'assistant',
-              content: fullContent,
-              model
+              content: finalContent,
+              model,
+              draft
             })
-            send('chat:done', { conversationId, message: assistantMsg })
+            emitPhase(conversationId, 'done')
+            emitChatEvent('chat:done', { conversationId, message: assistantMsg })
             fireHooks('agentStop', { conversationId })
             resolve()
             return
@@ -286,132 +335,61 @@ async function runChatRound(
             tool_calls: persistedToolCalls
           } as any)
 
-          for (const tc of toolCalls) {
-            const toolName = tc.function.name
-            let args: Record<string, unknown> = {}
-            try {
-              args = JSON.parse(tc.function.arguments)
-            } catch {
-              args = {}
-            }
-
-            send('chat:tool-call', {
-              callId: tc.id,
-              serverId: toolName.includes('__') ? toolName.split('__')[0] : 'internal',
-              toolName: toolName.includes('__') ? toolName.split('__').slice(1).join('__') : toolName,
-              args
-            })
-
-            let result: string
-            const startTime = Date.now()
-
-            // Audit-buffer entry — tool-calls-store persists this to SQLite.
-            toolRegistry.recordCallStart({
-              id: tc.id,
-              toolId: toolName,
-              name: toolName,
-              conversationId,
-              args,
-              startedAt: startTime,
-              status: 'running'
-            })
-
-            // Single generic approval gate. Two triggers route through the
-            // permissionsService:
-            //   1. descriptor.requiresApproval — hard gate set by the tool.
-            //   2. descriptor.risks intersects GATING_RISKS — soft gate so
-            //      every network / destructive / secret tool prompts at least
-            //      once. The user can pick "Always" in the modal, or grant a
-            //      risk-scope via request_permissions, to silence subsequent
-            //      prompts for that risk in this conversation or globally.
-            //   Pure 'read'/'write' (memory_add, update_plan, view_image,
-            //   web_find, time_lookup) do NOT trigger this gate.
-            const descriptor = toolRegistry.getById(toolName)
-            const needsApproval =
-              !!descriptor &&
-              (descriptor.requiresApproval || shouldGateOnRisks(descriptor.risks))
-            const approvalDecision: 'allow' | 'deny' = needsApproval && descriptor
-              ? await permissionsService.requestApproval({
-                  callId: tc.id,
-                  toolId: descriptor.id,
-                  name: descriptor.name,
-                  serverId: descriptor.providerId,
-                  providerKind: descriptor.providerKind,
-                  risks: descriptor.risks,
-                  args,
-                  conversationId
-                })
-              : 'allow'
-
-            if (approvalDecision === 'deny') {
-              result = 'Action denied by user.'
-            } else if (toolName === 'memory_add' && typeof args.content === 'string') {
-              const entry = memStore.addMemory(args.content, conversationId)
-              send('memory:added', entry)
-              result = 'Saved to memory.'
-            } else if (toolRegistry.hasHandler(toolName)) {
-              // Native tools with handlers (shell_command + future apply_patch,
-              // view_image, etc) dispatch through the registry.
-              try {
-                result = await toolRegistry.executeNative(toolName, args, { conversationId })
-              } catch (err: any) {
-                result = `Error: ${err.message}`
-              }
-            } else if (toolName.includes('__')) {
-              const [serverId, ...nameParts] = toolName.split('__')
-              const mcpToolName = nameParts.join('__')
-              try {
-                const mcpResult = await mcpManager.callTool(serverId, mcpToolName, args)
-                result = typeof mcpResult === 'string' ? mcpResult : JSON.stringify(mcpResult)
-              } catch (err: any) {
-                result = `Error: ${err.message}`
+          // Group the model's tool_calls into execution windows: contiguous
+          // spans of parallelizable calls run via Promise.all; non-parallel
+          // calls run one at a time. The final tool-role messages are pushed
+          // in tool_call array order regardless of completion order so the
+          // next API round sees a consistent sequence.
+          const resolved: ResolvedToolCall[] = new Array(toolCalls.length)
+          const windows = partitionToolCallWindows(toolCalls, (id) =>
+            toolRegistry.getById(id)
+          )
+          for (const win of windows) {
+            if (win.kind === 'parallel') {
+              const settled = await Promise.all(
+                win.indices.map((idx) =>
+                  resolveSingleToolCall(toolCalls[idx], conversationId, model, workspacePath, signal)
+                )
+              )
+              for (let i = 0; i < win.indices.length; i++) {
+                resolved[win.indices[i]] = settled[i]
               }
             } else {
-              result = `Unknown tool: ${toolName}`
+              resolved[win.index] = await resolveSingleToolCall(
+                toolCalls[win.index],
+                conversationId,
+                model,
+                workspacePath,
+                signal
+              )
             }
+          }
 
-            const duration = Date.now() - startTime
-            const finishedAt = startTime + duration
-            let auditStatus: 'done' | 'error' | 'denied'
-            if (result === 'Action denied by user.') {
-              auditStatus = 'denied'
-            } else if (result.startsWith('Error:') || result.startsWith('Unknown tool:')) {
-              auditStatus = 'error'
-            } else {
-              auditStatus = 'done'
-            }
-            toolRegistry.recordCallEnd(tc.id, {
-              status: auditStatus,
-              result: auditStatus === 'error' ? undefined : result,
-              error: auditStatus === 'error' ? result : undefined,
-              finishedAt
-            })
-            send('chat:tool-call-result', { callId: tc.id, result, duration })
-
+          for (const r of resolved) {
             convStore.saveMessage({
               id: randomUUID(),
               conversationId,
               role: 'tool',
-              content: result,
-              toolCallId: tc.id
+              content: r.result,
+              toolCallId: r.callId
             })
-
             messages.push({
               role: 'tool',
-              content: result,
-              tool_call_id: tc.id
+              content: r.result,
+              tool_call_id: r.callId
             } as any)
           }
 
           try {
-            await runChatRound(conversationId, model, messages, tools, signal, round + 1, params)
+            await runChatRound(conversationId, model, messages, tools, workspacePath, signal, round + 1, params)
             resolve()
           } catch (err) {
             reject(err)
           }
         },
         onError: (error) => {
-          send('chat:error', { conversationId, error })
+          emitPhase(conversationId, 'error')
+          emitChatEvent('chat:error', { conversationId, error })
           reject(new Error(error))
         }
       },
@@ -421,3 +399,134 @@ async function runChatRound(
   })
 }
 
+interface ResolvedToolCall {
+  callId: string
+  result: string
+}
+
+async function resolveSingleToolCall(
+  tc: ProviderToolCall,
+  conversationId: string,
+  model: string,
+  workspacePath: string,
+  signal: AbortSignal
+): Promise<ResolvedToolCall> {
+  const toolName = tc.function.name
+  let args: Record<string, unknown> = {}
+  try {
+    args = JSON.parse(tc.function.arguments)
+  } catch {
+    args = {}
+  }
+
+  const startTime = Date.now()
+
+  const earlyDescriptor = toolRegistry.getById(toolName)
+  emitChatEvent('chat:tool-call', {
+    callId: tc.id,
+    conversationId,
+    serverId: toolName.includes('__') ? toolName.split('__')[0] : 'internal',
+    toolName: toolName.includes('__') ? toolName.split('__').slice(1).join('__') : toolName,
+    title: earlyDescriptor?.title ?? toolName,
+    risks: earlyDescriptor?.risks ?? [],
+    providerKind: earlyDescriptor?.providerKind ?? 'native',
+    startedAt: startTime,
+    args
+  })
+
+  toolRegistry.recordCallStart({
+    id: tc.id,
+    toolId: toolName,
+    name: toolName,
+    conversationId,
+    args,
+    startedAt: startTime,
+    status: 'running'
+  })
+
+  let result: string
+  let explicitStatus: 'done' | 'error' | 'denied' | undefined
+
+  const descriptor = toolRegistry.getById(toolName)
+  if (descriptor) {
+    emitPhase(conversationId, inferPhaseFromDescriptor(descriptor))
+  }
+  const needsApproval =
+    !!descriptor && (descriptor.requiresApproval || shouldGateOnRisks(descriptor.risks))
+  const approvalOutcome =
+    needsApproval && descriptor
+      ? await permissionsService.requestApprovalDetailed({
+          callId: tc.id,
+          toolId: descriptor.id,
+          name: descriptor.name,
+          serverId: descriptor.providerId,
+          providerKind: descriptor.providerKind,
+          risks: descriptor.risks,
+          args,
+          conversationId
+        })
+      : { decision: 'allow' as const, source: 'none' }
+  const approvalDecision = approvalOutcome.decision
+  const approvalSource = approvalOutcome.source
+
+  if (approvalDecision === 'deny') {
+    result = 'Action denied by user.'
+    explicitStatus = 'denied'
+  } else if (toolName === 'memory_add' && typeof args.content === 'string') {
+    const entry = memStore.addMemory(args.content, conversationId)
+    emitChatEvent('memory:added', entry)
+    result = 'Saved to memory.'
+  } else if (toolRegistry.hasHandler(toolName)) {
+    const dispatched = await dispatchNativeTool(() =>
+      toolRegistry.executeNative(toolName, args, {
+        conversationId,
+        workspacePath,
+        model,
+        signal,
+        callId: tc.id
+      })
+    )
+    result = dispatched.result
+    explicitStatus = dispatched.status
+    if (toolName === 'update_plan' && dispatched.status === 'done') {
+      try {
+        const snapshot = JSON.parse(result)
+        emitChatEvent('plan:updated', { conversationId, snapshot })
+      } catch {
+        // Snapshot shape drifted — renderer refetches on the next
+        // conversation switch.
+      }
+    }
+  } else if (toolName.includes('__')) {
+    const [serverId, ...nameParts] = toolName.split('__')
+    const mcpToolName = nameParts.join('__')
+    try {
+      const mcpResult = await mcpManager.callTool(serverId, mcpToolName, args)
+      result = typeof mcpResult === 'string' ? mcpResult : JSON.stringify(mcpResult)
+    } catch (err: any) {
+      result = `Error: ${err.message}`
+    }
+  } else {
+    result = `Unknown tool: ${toolName}`
+  }
+
+  const duration = Date.now() - startTime
+  const finishedAt = startTime + duration
+  const auditStatus = explicitStatus ?? classifyToolResult(result)
+  toolRegistry.recordCallEnd(tc.id, {
+    status: auditStatus,
+    result: auditStatus === 'error' ? undefined : result,
+    error: auditStatus === 'error' ? result : undefined,
+    finishedAt,
+    approvalSource
+  })
+  emitChatEvent('chat:tool-call-result', {
+    callId: tc.id,
+    conversationId,
+    result,
+    duration,
+    status: auditStatus === 'done' ? 'success' : auditStatus
+  })
+
+  return { callId: tc.id, result }
+}

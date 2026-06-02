@@ -44,7 +44,8 @@ toolRegistry.registerNative(
     },
     risks: ['network', 'read'],
     requiresApproval: false,
-    enabled: true
+    enabled: true,
+    parallelizable: true
   },
   async (args) => executeWebSearch(args as unknown as WebSearchArgs)
 )
@@ -72,7 +73,8 @@ toolRegistry.registerNative(
     },
     risks: ['network', 'read'],
     requiresApproval: false,
-    enabled: true
+    enabled: true,
+    parallelizable: true
   },
   async (args) => executeWebOpen(args as unknown as WebOpenArgs)
 )
@@ -100,7 +102,8 @@ toolRegistry.registerNative(
     },
     risks: ['read'],
     requiresApproval: false,
-    enabled: true
+    enabled: true,
+    parallelizable: true
   },
   async (args) => executeWebFind(args as unknown as WebFindArgs)
 )
@@ -127,7 +130,8 @@ toolRegistry.registerNative(
     },
     risks: ['network', 'read'],
     requiresApproval: false,
-    enabled: true
+    enabled: true,
+    parallelizable: true
   },
   async (args) => executeImageSearch(args as unknown as ImageSearchArgs)
 )
@@ -152,7 +156,8 @@ toolRegistry.registerNative(
     },
     risks: ['read'],
     requiresApproval: false,
-    enabled: true
+    enabled: true,
+    parallelizable: true
   },
   async (args) => executeTimeLookup(args as unknown as TimeLookupArgs)
 )

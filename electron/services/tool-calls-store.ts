@@ -20,6 +20,8 @@ interface ToolCallRow {
   started_at: number
   finished_at: number | null
   duration_ms: number | null
+  approval_source: string | null
+  parent_call_id: string | null
 }
 
 function toToolCall(row: ToolCallRow): LampreyToolCall {
@@ -40,7 +42,9 @@ function toToolCall(row: ToolCallRow): LampreyToolCall {
     status: row.status,
     result: row.result_preview ?? undefined,
     error: row.error ?? undefined,
-    durationMs: row.duration_ms ?? undefined
+    durationMs: row.duration_ms ?? undefined,
+    approvalSource: row.approval_source ?? undefined,
+    parentCallId: row.parent_call_id ?? undefined
   }
 }
 
@@ -55,8 +59,9 @@ export function insertToolCall(call: LampreyToolCall): void {
   db.prepare(
     `INSERT INTO tool_calls
        (id, tool_id, name, conversation_id, args_json, status,
-        result_preview, error, started_at, finished_at, duration_ms)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        result_preview, error, started_at, finished_at, duration_ms,
+        approval_source, parent_call_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(id) DO UPDATE SET
        tool_id = excluded.tool_id,
        name = excluded.name,
@@ -67,7 +72,9 @@ export function insertToolCall(call: LampreyToolCall): void {
        error = excluded.error,
        started_at = excluded.started_at,
        finished_at = excluded.finished_at,
-       duration_ms = excluded.duration_ms`
+       duration_ms = excluded.duration_ms,
+       approval_source = COALESCE(excluded.approval_source, tool_calls.approval_source),
+       parent_call_id = COALESCE(excluded.parent_call_id, tool_calls.parent_call_id)`
   ).run(
     call.id,
     call.toolId,
@@ -79,7 +86,9 @@ export function insertToolCall(call: LampreyToolCall): void {
     call.error ?? null,
     call.startedAt,
     call.finishedAt ?? null,
-    call.durationMs ?? null
+    call.durationMs ?? null,
+    call.approvalSource ?? null,
+    call.parentCallId ?? null
   )
 }
 
@@ -105,6 +114,8 @@ export function updateToolCall(
     error?: string
     finishedAt?: number
     durationMs?: number
+    approvalSource?: string
+    parentCallId?: string
   }
 ): void {
   const db = getDb()
@@ -139,6 +150,14 @@ export function updateToolCall(
   if (patch.durationMs !== undefined) {
     sets.push('duration_ms = ?')
     params.push(patch.durationMs)
+  }
+  if (patch.approvalSource !== undefined) {
+    sets.push('approval_source = ?')
+    params.push(patch.approvalSource)
+  }
+  if (patch.parentCallId !== undefined) {
+    sets.push('parent_call_id = ?')
+    params.push(patch.parentCallId)
   }
 
   params.push(id)

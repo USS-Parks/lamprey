@@ -34,7 +34,8 @@ toolRegistry.registerNative(
     },
     risks: ['network', 'read'],
     requiresApproval: false,
-    enabled: true
+    enabled: true,
+    parallelizable: true
   },
   async (args) => executeFinanceQuote(args as unknown as FinanceQuoteArgs)
 )
@@ -65,7 +66,8 @@ toolRegistry.registerNative(
     },
     risks: ['network', 'read'],
     requiresApproval: false,
-    enabled: true
+    enabled: true,
+    parallelizable: true
   },
   async (args) => executeWeatherLookup(args as unknown as WeatherLookupArgs)
 )
@@ -97,7 +99,8 @@ toolRegistry.registerNative(
     },
     risks: ['network', 'read'],
     requiresApproval: false,
-    enabled: true
+    enabled: true,
+    parallelizable: true
   },
   async (args) => executeSportsLookup(args as unknown as SportsLookupArgs)
 )

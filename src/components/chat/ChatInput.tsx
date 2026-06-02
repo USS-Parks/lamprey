@@ -400,7 +400,16 @@ function ContextChipRow({ onAddFile }: ContextChipRowProps) {
     if (!window.api?.files?.pickWorkdir) return
     try {
       const res = await window.api.files.pickWorkdir()
-      if (res.success && res.data) setWorkdir(res.data)
+      if (!(res.success && res.data)) return
+      // pickWorkdir only returns the chosen path; persisting it through
+      // setWorkdir is what makes tool execution honor the user's choice.
+      // The chip-local state mirrors the persisted value either way.
+      const persisted = await window.api.files.setWorkdir?.(res.data.path)
+      if (persisted && persisted.success && persisted.data) {
+        setWorkdir(persisted.data)
+      } else {
+        setWorkdir(res.data)
+      }
     } catch {
       /* ignore */
     }
@@ -437,8 +446,15 @@ function ContextChipRow({ onAddFile }: ContextChipRowProps) {
       label: 'Use current process folder',
       description: 'Reset to the folder Lamprey was launched from',
       onSelect: () => {
-        window.api?.files
-          ?.getWorkdir?.()
+        // Reset: clearWorkdir drops the persisted override, getWorkdir then
+        // returns process.cwd() as the fallback.
+        const api = window.api?.files
+        if (!api) return
+        const clear = api.clearWorkdir
+          ? api.clearWorkdir()
+          : Promise.resolve({ success: true })
+        Promise.resolve(clear)
+          .then(() => api.getWorkdir())
           .then((res: { success: boolean; data?: { path: string; name: string } }) => {
             if (res.success && res.data) setWorkdir(res.data)
           })

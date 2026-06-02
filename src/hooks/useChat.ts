@@ -1,7 +1,8 @@
 import { useEffect } from 'react'
 import { useChatStore } from '@/stores/chat-store'
 import { useAgentStore } from '@/stores/agent-store'
-import type { AgentStatusEvent } from '@/lib/types'
+import { usePlanStore } from '@/stores/plan-store'
+import type { AgentRunPhase, AgentStatusEvent, PlanSnapshot } from '@/lib/types'
 
 export function useChat(): void {
   useEffect(() => {
@@ -77,6 +78,20 @@ export function useChat(): void {
       useChatStore.getState().updateToolCall(e as any)
     })
 
+    const onPhase = (window.api.chat as { onPhase?: (cb: (e: { conversationId: string; phase: string }) => void) => void }).onPhase
+    if (onPhase) {
+      onPhase((e) => {
+        if (!matchesActive(e)) return
+        const phase = e.phase as AgentRunPhase
+        // Terminal phases retire the pill; transient phases drive it.
+        if (phase === 'done' || phase === 'error') {
+          useChatStore.getState().setRunPhase(null)
+        } else {
+          useChatStore.getState().setRunPhase(phase)
+        }
+      })
+    }
+
     const onAgentStatus = window.api.chat.onAgentStatus
     if (onAgentStatus) {
       onAgentStatus((e: unknown) => {
@@ -84,9 +99,22 @@ export function useChat(): void {
       })
     }
 
+    // Plan checklist live updates. The `plan:updated` event is broadcast
+    // from chat.ts after every successful update_plan tool call; we drop
+    // events for other conversations the same way matchesActive does for
+    // chat events, then hand off to the plan store.
+    const planNs = (window.api as { plan?: { onUpdated?: (cb: (e: { conversationId: string; snapshot: unknown }) => void) => () => void } }).plan
+    const planUnsub = planNs?.onUpdated
+      ? planNs.onUpdated((e) => {
+          if (!matchesActive(e)) return
+          usePlanStore.getState().applyUpdate(e.snapshot as PlanSnapshot)
+        })
+      : undefined
+
     return () => {
       if (rafHandle !== null) cancelAnimationFrame(rafHandle)
       window.api?.chat.offAll()
+      planUnsub?.()
     }
   }, [])
 }

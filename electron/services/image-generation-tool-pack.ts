@@ -93,7 +93,8 @@ toolRegistry.registerNative(
     requiresApproval: false,
     enabled: true
   },
-  async (args) => executeImageEdit(args as unknown as ImageEditArgs)
+  async (args, ctx) =>
+    executeImageEdit(args as unknown as ImageEditArgs, ctx.workspacePath ?? process.cwd())
 )
 
 toolRegistry.registerNative(
@@ -129,5 +130,9 @@ toolRegistry.registerNative(
     requiresApproval: false,
     enabled: true
   },
-  async (args) => executeImageVariation(args as unknown as ImageVariationArgs)
+  async (args, ctx) =>
+    executeImageVariation(
+      args as unknown as ImageVariationArgs,
+      ctx.workspacePath ?? process.cwd()
+    )
 )
