@@ -27,7 +27,7 @@ _None yet — populate as prompts land._
 | 2 | Documentation refresh | DOC-1/2/3/5/6, SEC-4 | Done |
 | 3 | CI: run smokes on PRs | CI-1 | Done |
 | 4 | Streaming & connection bugs | BUG-1, BUG-2 | Done |
-| 5 | Test foundation (jsdom + stores/services) | TEST-1, TEST-2 | Pending |
+| 5 | Test foundation (jsdom + stores/services) | TEST-1, TEST-2 | Done |
 | 6 | Renderer privilege hardening | SEC-1, SEC-7 | Pending |
 | 7 | Main-process correctness | BUG-3, BUG-5, QUAL-2, QUAL-3 | Pending |
 | 8 | Renderer + IPC-contract correctness | BUG-4, BUG-6 | Pending |
@@ -45,6 +45,21 @@ _None yet — populate as prompts land._
 - `npm run typecheck` — **no-op** (DOC-4; fixed in Prompt 1).
 
 ## Prompt entries
+
+## Prompt 5 — Test foundation — Done (2026-06-02)
+
+Closes TEST-1, TEST-2. Renderer test environment + high-risk coverage. Unblocks Prompts 8 and 11.
+
+### Files
+- `vitest.config.ts` — react plugin, `@`→`src` alias, setupFiles, v8 coverage block (no threshold yet); `vitest.setup.ts`, `src/jest-dom.d.ts` *(new)*; `.gitignore` +`coverage/`; `package.json` test devDeps.
+- `src/components/test-foundation.test.tsx`, `src/stores/{agent,settings,chat}-store.test.ts`, `electron/services/keychain.test.ts` *(all new)*.
+
+### Verification
+- `npm run typecheck` — pass. `npm run lint` — 0 errors. `npm test` — 376 tests / 32 files (was 346 / 27; +30). `npx vitest run --coverage` — v8 report produced. Build + both smokes — PASS.
+
+### Acceptance
+- ✅ `src/**/*.test.tsx`/jsdom tests run (foundation proof passes); `electron/**` stay node.
+- ✅ chat-store / agent-store / settings-store and keychain round-trip are covered.
 
 ## Prompt 4 — Streaming & connection bugs — Done (2026-06-02)
 

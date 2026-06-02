@@ -1,5 +1,23 @@
 # Lamprey Harness Dev Log
 
+## Audit remediation Prompt 5 — Test foundation (2026-06-02)
+
+Stands up the renderer test environment and covers the highest-risk untested code (TEST-1, TEST-2). Unblocks the renderer tests in Prompts 8 and 11.
+
+### Infrastructure
+- Added devDeps: `jsdom`, `@testing-library/react`, `@testing-library/dom`, `@testing-library/jest-dom`, `@vitest/coverage-v8`.
+- `vitest.config.ts` — added the `@vitejs/plugin-react` plugin (JSX/TSX transform), the `@` → `src` alias (mirrors tsconfig.web paths), `setupFiles`, and a `coverage` block (v8 provider, baseline collection, **no failing threshold yet** — Prompt 12 adds the CI gate). Default env stays `node`; renderer tests opt into jsdom per-file with a `// @vitest-environment jsdom` docblock so the `electron/**` suite stays fast.
+- `vitest.setup.ts` *(new)* registers the jest-dom matchers; `src/jest-dom.d.ts` *(new)* makes them known to the web tsconfig. `coverage/` added to `.gitignore`.
+
+### Tests (5 new files, +30 tests)
+- `src/components/test-foundation.test.tsx` — proves the full pipeline: jsdom + JSX transform + `@testing-library/react` (render + renderHook + act) + jest-dom matchers + `@/` alias + zustand reactivity.
+- `src/stores/agent-store.test.ts` — mode/role/hydrate + `recordStatus` (append vs update, output preservation, distinct roles) + clearRun.
+- `src/stores/settings-store.test.ts` (jsdom) — `updateSettings` merge + IPC persist; `loadSettings` merge-onto-defaults.
+- `src/stores/chat-store.test.ts` (jsdom) — streaming state (chunk/finish/error), tool-call state incl. the "respect backend terminal status" behavior, attachments, run-phase.
+- `electron/services/keychain.test.ts` — encrypted round-trip (ciphertext, not plaintext), the `plain:` fallback when safeStorage is unavailable, and the encrypted-then-unavailable → null path (in-memory fs + reversible safeStorage stand-in).
+
+**Verification.** `npm run typecheck` — pass. `npm run lint` — 0 errors. `npm test` — **376 tests / 32 files** (was 346 / 27; +30). `npx vitest run --coverage` — produces a v8 report. `npm run build` + `smoke:bundle` + `smoke:renderer` — PASS.
+
 ## Audit remediation Prompt 4 — Streaming & connection bugs (2026-06-02)
 
 Fixes the two **High** findings, BUG-1 and BUG-2, with regression tests.
