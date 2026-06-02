@@ -59,7 +59,7 @@ export function ToolUseCard({ toolCall }: ToolUseCardProps) {
         </span>
         <span className="flex-1 text-xs text-[var(--text-secondary)]">{summaryText}</span>
         {statusIndicator}
-        <span className="text-[12px] text-[var(--text-muted)]">{expanded ? 'â–²' : 'â–¼'}</span>
+        <span className="text-[12px] text-[var(--text-muted)]">{expanded ? '^' : 'v'}</span>
       </button>
 
       {expanded && (

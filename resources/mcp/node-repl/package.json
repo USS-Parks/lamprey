@@ -1,0 +1,14 @@
+{
+  "name": "lamprey-node-repl-mcp",
+  "version": "1.0.0",
+  "description": "Bundled MCP server exposing a persistent Node.js VM REPL (js / js_reset / js_add_node_module_dir) for Lamprey Harness.",
+  "private": true,
+  "type": "module",
+  "main": "server.js",
+  "bin": {
+    "lamprey-node-repl": "server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

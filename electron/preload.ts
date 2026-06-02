@@ -159,6 +159,37 @@ const api = {
       ipcRenderer.on('mcp:confirmationRequired', (_, e) => cb(e))
   },
 
+  tools: {
+    list: () => ipcRenderer.invoke('tools:list'),
+    get: (id: string) => ipcRenderer.invoke('tools:get', id),
+    getRecentCalls: (limit?: number) => ipcRenderer.invoke('tools:getRecentCalls', limit),
+    getCallsForConversation: (conversationId: string, limit?: number) =>
+      ipcRenderer.invoke('tools:getCallsForConversation', conversationId, limit),
+    /**
+     * Subscribe to approval requests. Returns an unsubscribe function so
+     * effect cleanup (hot reload, dialog remount) can detach the listener
+     * and avoid duplicate modal handling.
+     */
+    onApprovalRequired: (cb: (e: unknown) => void): (() => void) => {
+      const handler = (_: unknown, e: unknown): void => cb(e)
+      ipcRenderer.on('tools:approvalRequired', handler)
+      return () => ipcRenderer.removeListener('tools:approvalRequired', handler)
+    },
+    respondToApproval: (response: {
+      callId: string
+      decision: 'allow' | 'deny'
+      scope: 'once' | 'conversation' | 'always'
+    }) => ipcRenderer.invoke('tools:respondToApproval', response)
+  },
+
+  permissions: {
+    listGlobalPolicies: () => ipcRenderer.invoke('permissions:listGlobalPolicies'),
+    setGlobalPolicy: (toolId: string, decision: 'allow' | 'deny' | null) =>
+      ipcRenderer.invoke('permissions:setGlobalPolicy', toolId, decision),
+    clearConversationPolicies: (conversationId: string) =>
+      ipcRenderer.invoke('permissions:clearConversationPolicies', conversationId)
+  },
+
   files: {
     process: (paths: string[]) => ipcRenderer.invoke('files:process', paths),
     openPicker: () => ipcRenderer.invoke('files:openPicker'),
@@ -365,6 +396,28 @@ const api = {
         ipcRenderer.removeListener('window:maximizedChanged', handler)
       }
     }
+  },
+
+  webTools: {
+    setProvider: (provider: string, opts: { apiKey?: string; endpoint?: string }) =>
+      ipcRenderer.invoke('webTools:setProvider', provider, opts),
+    getProvider: () => ipcRenderer.invoke('webTools:getProvider'),
+    testAdapter: () => ipcRenderer.invoke('webTools:testAdapter'),
+    deleteKey: (provider: string) => ipcRenderer.invoke('webTools:deleteKey', provider)
+  },
+
+  currentInfo: {
+    setProvider: (kind: string, provider: string, opts: { apiKey?: string }) =>
+      ipcRenderer.invoke('currentInfo:setProvider', kind, provider, opts),
+    getProvider: (kind?: string) => ipcRenderer.invoke('currentInfo:getProvider', kind),
+    test: (kind: string) => ipcRenderer.invoke('currentInfo:test', kind)
+  },
+
+  imageGen: {
+    setProvider: (provider: string, opts: { apiKey?: string; model?: string }) =>
+      ipcRenderer.invoke('imageGen:setProvider', provider, opts),
+    getProvider: () => ipcRenderer.invoke('imageGen:getProvider'),
+    test: () => ipcRenderer.invoke('imageGen:test')
   },
 
   app: {

@@ -7,6 +7,9 @@ import { ApiKeySettings } from './ApiKeySettings'
 import { AgentSettings } from './AgentSettings'
 import { HooksSettings } from './HooksSettings'
 import { AutomationsSettings } from './AutomationsSettings'
+import { WebToolsSettings } from './WebToolsSettings'
+import { CurrentInfoSettings } from './CurrentInfoSettings'
+import { ImageGenSettings } from './ImageGenSettings'
 import { useUiStore } from '@/stores/ui-store'
 
 interface SettingsDialogProps {
@@ -20,6 +23,9 @@ const TABS = [
   { id: 'api', label: 'API Keys' },
   { id: 'appearance', label: 'Appearance' },
   { id: 'mcp', label: 'MCP Servers' },
+  { id: 'webTools', label: 'Web Tools' },
+  { id: 'currentInfo', label: 'Current Info' },
+  { id: 'imageGen', label: 'Image Gen' },
   { id: 'hooks', label: 'Hooks' },
   { id: 'automations', label: 'Automations' }
 ] as const
@@ -32,7 +38,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
 
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/60">
-      <div className="flex h-[480px] w-[600px] overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)] shadow-2xl">
+      <div className="flex h-[560px] w-[720px] overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)] shadow-2xl">
         {/* Sidebar tabs */}
         <div className="flex w-40 flex-col border-r border-[var(--border)] bg-[var(--bg-primary)] py-2">
           {TABS.map((tab) => (
@@ -71,6 +77,9 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
             {activeTab === 'api' && <ApiKeySettings />}
             {activeTab === 'appearance' && <AppearanceSettings />}
             {activeTab === 'mcp' && <McpSettings />}
+            {activeTab === 'webTools' && <WebToolsSettings />}
+            {activeTab === 'currentInfo' && <CurrentInfoSettings />}
+            {activeTab === 'imageGen' && <ImageGenSettings />}
             {activeTab === 'hooks' && <HooksSettings />}
             {activeTab === 'automations' && <AutomationsSettings />}
           </div>

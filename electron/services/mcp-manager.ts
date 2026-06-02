@@ -19,6 +19,10 @@ export interface McpServerConfig {
   url?: string
   command?: string
   args?: string[]
+  // Optional extra env vars merged on top of `process.env` when launching a
+  // stdio server. Used by the bundled Node REPL default server to set
+  // ELECTRON_RUN_AS_NODE=1; ignored for SSE transports.
+  env?: Record<string, string>
   auth: 'google-oauth' | 'none'
   enabled: boolean
 }
@@ -132,6 +136,94 @@ class McpManager {
       })
     }
     return result
+  }
+
+  /**
+   * Append a server config if no entry with the same id already exists,
+   * persist the updated list, register the in-memory state, and (if
+   * enabled) start connecting. No-op when an id collision is found, so
+   * user edits in mcp-servers.json take precedence over the default. Returns
+   * true when the server was newly added.
+   */
+  async addServerIfMissing(config: McpServerConfig): Promise<boolean> {
+    if (this.servers.has(config.id)) return false
+
+    // Persist alongside the user's existing configs so the entry survives
+    // restarts and shows up in the settings UI like any other server.
+    const existing = loadConfigs()
+    if (!existing.some((c) => c.id === config.id)) {
+      saveConfigs([...existing, config])
+    }
+
+    this.servers.set(config.id, {
+      config,
+      status: 'disconnected',
+      client: null,
+      transport: null,
+      tools: [],
+      restartCount: 0
+    })
+
+    if (config.enabled) {
+      this.connectServer(config.id).catch((err) => {
+        console.error(`[mcp] Failed to connect default server ${config.id}:`, err?.message)
+      })
+    }
+
+    return true
+  }
+
+  /**
+   * Self-healing variant for bundled default servers. Owns specific fields
+   * (`command`, `args`, `env`) and refreshes them when stale — e.g. when
+   * `process.execPath` differs because the user upgraded Electron, or when
+   * the bundled server.js moved between dev and packaged paths. Preserves
+   * the user's `enabled` flag and `name` so toggling the default off keeps
+   * sticking across restarts.
+   *
+   * Returns 'added' when no entry existed, 'updated' when managed fields
+   * changed, 'unchanged' when the existing entry already matched.
+   */
+  async upsertManagedDefault(
+    desired: McpServerConfig
+  ): Promise<'added' | 'updated' | 'unchanged'> {
+    if (!this.servers.has(desired.id)) {
+      await this.addServerIfMissing(desired)
+      return 'added'
+    }
+
+    const existing = this.servers.get(desired.id)!.config
+    const sameCommand = existing.command === desired.command
+    const sameArgs = JSON.stringify(existing.args ?? []) === JSON.stringify(desired.args ?? [])
+    const sameEnv = JSON.stringify(existing.env ?? {}) === JSON.stringify(desired.env ?? {})
+    if (sameCommand && sameArgs && sameEnv) return 'unchanged'
+
+    // Build the refreshed config: managed fields from desired, user fields
+    // from existing.
+    const refreshed: McpServerConfig = {
+      ...existing,
+      command: desired.command,
+      args: desired.args,
+      env: desired.env
+    }
+
+    const configs = loadConfigs().map((c) => (c.id === desired.id ? refreshed : c))
+    saveConfigs(configs)
+    const state = this.servers.get(desired.id)!
+    state.config = refreshed
+    state.restartCount = 0
+
+    if (refreshed.enabled) {
+      // Drop any in-flight stale connection so the next read uses the new
+      // command/args.
+      void this.cleanupServer(state).then(() => {
+        this.connectServer(desired.id).catch((err) => {
+          console.error(`[mcp] Reconnect after default refresh failed for ${desired.id}:`, err?.message)
+        })
+      })
+    }
+
+    return 'updated'
   }
 
   async connect(id: string): Promise<void> {
@@ -303,10 +395,14 @@ class McpManager {
   }
 
   private async connectStdio(state: ServerState): Promise<void> {
+    const mergedEnv = {
+      ...(process.env as Record<string, string>),
+      ...(state.config.env ?? {})
+    }
     const transport = new StdioClientTransport({
       command: state.config.command!,
       args: state.config.args,
-      env: { ...process.env } as Record<string, string>,
+      env: mergedEnv,
       stderr: 'pipe'
     })
 

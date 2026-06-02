@@ -31,6 +31,10 @@ extraResources:
     to: icon.ico
   - from: resources/splash.png
     to: splash.png
+  # Bundled MCP servers (Node REPL today). mcp-defaults.ts resolves
+  # process.resourcesPath/mcp/<server>/server.js at runtime in production.
+  - from: resources/mcp
+    to: mcp
 
 mac:
   category: public.app-category.developer-tools

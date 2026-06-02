@@ -215,6 +215,82 @@ export interface ToolCallResultEvent {
   duration: number
 }
 
+// Unified tool registry. Descriptors are produced by tool-registry.ts from
+// three sources — native Lamprey tools, connected MCP servers, and (not yet
+// wired) installed plugins. The descriptor is the renderer-visible surface;
+// the chat layer converts the same descriptors into OpenAI-compatible
+// function tools.
+export type ToolProviderKind = 'native' | 'mcp' | 'plugin'
+
+export type ToolRisk = 'read' | 'write' | 'network' | 'destructive' | 'secret'
+
+export interface LampreyToolDescriptor {
+  id: string
+  name: string
+  title: string
+  description: string
+  providerKind: ToolProviderKind
+  providerId: string
+  inputSchema: unknown
+  risks: ToolRisk[]
+  requiresApproval: boolean
+  enabled: boolean
+}
+
+export type LampreyToolCallStatus =
+  | 'pending'
+  | 'approved'
+  | 'denied'
+  | 'running'
+  | 'done'
+  | 'error'
+
+export interface LampreyToolCall {
+  id: string
+  toolId: string
+  name: string
+  conversationId?: string
+  args: Record<string, unknown>
+  startedAt: number
+  finishedAt?: number
+  status: LampreyToolCallStatus
+  result?: string
+  error?: string
+  durationMs?: number
+}
+
+// Permission and approval types. Risk metadata already lives on tool
+// descriptors; this layer turns it into a runtime gate. Policies are scoped:
+// "once" (this call only), "conversation" (sticky for this thread until app
+// restart), "always" (sticky globally until app restart). The renderer never
+// persists policy itself — it just reflects the user's choice back via
+// tools:respondToApproval.
+
+export type ApprovalScope = 'once' | 'conversation' | 'always'
+export type ApprovalDecision = 'allow' | 'deny'
+
+export interface ToolApprovalRequest {
+  callId: string
+  toolId: string
+  name: string
+  serverId: string
+  providerKind: ToolProviderKind
+  risks: ToolRisk[]
+  args: Record<string, unknown>
+  conversationId?: string
+}
+
+export interface ToolApprovalResponse {
+  callId: string
+  decision: ApprovalDecision
+  scope: ApprovalScope
+}
+
+export interface ToolPolicyEntry {
+  toolId: string
+  decision: ApprovalDecision
+}
+
 export interface McpStatusEvent {
   serverId: string
   status: McpServerConfig['status']

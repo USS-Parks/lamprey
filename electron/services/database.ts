@@ -89,6 +89,26 @@ function initSchema(db: Database.Database): void {
 
     CREATE INDEX IF NOT EXISTS idx_projects_archived_activity
       ON projects(archived, last_activity_at DESC);
+
+    CREATE TABLE IF NOT EXISTS tool_calls (
+      id TEXT PRIMARY KEY,
+      tool_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      conversation_id TEXT,
+      args_json TEXT NOT NULL,
+      status TEXT NOT NULL CHECK(status IN ('pending','approved','denied','running','done','error')),
+      result_preview TEXT,
+      error TEXT,
+      started_at INTEGER NOT NULL,
+      finished_at INTEGER,
+      duration_ms INTEGER
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_tool_calls_recent
+      ON tool_calls(started_at DESC);
+
+    CREATE INDEX IF NOT EXISTS idx_tool_calls_conversation
+      ON tool_calls(conversation_id, started_at DESC);
   `)
 
   // Migrations for older DBs that predate kind/worktree_path/project_id columns.

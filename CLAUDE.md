@@ -42,7 +42,7 @@ npx electron-vite build
 - `window.api` guards needed in renderer code — app must not crash outside Electron (browser dev mode)
 - `skill-loader.ts` is fully implemented (Prompt 13) with chokidar hot reload, gray-matter frontmatter parsing, and dev/prod path resolution (production bootstraps `userData/skills/` from `resources/skills/`)
 - `mcp-manager.ts` is fully implemented (Prompt 10) with SSE + stdio transports, Google OAuth token refresh, and auto-restart
-- `mcp:approveToolCall` handler lives in `chat.ts` (not `mcp.ts`) because it resolves confirmation promises
+- Tool approval lives in `electron/services/permissions-store.ts` + `electron/ipc/permissions.ts` (Phase 4). The legacy `mcp:approveToolCall` IPC is a thin shim over `permissionsService.respondLegacy`; the modern channel is `tools:approvalRequired` / `tools:respondToApproval`. Approval is gated by descriptor risk metadata on `electron/services/tool-registry.ts`, not by hard-coded server lists
 - Branding: display name "Lamprey", desktop icon = green 3D lamprey (`ASSETS/Lamprey Desktop Icon-1.png`), splash screen = `ASSETS/Lamprey New Startup Splash.png` (3s duration)
 - `WebContentsView` (Electron 35) replaces deprecated `BrowserView` — uses DIP coordinates (no scaleFactor multiplication needed). Electron is pinned to ^35.7.5 because better-sqlite3 12.10 doesn't yet support V8 13 (Electron 36+). Bump when better-sqlite3 ships V8 13 compat.
 - React 19 has no UMD builds — JSX artifacts use a custom `react-shim.js` for createElement/createRoot

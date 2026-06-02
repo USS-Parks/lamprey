@@ -9,7 +9,7 @@ import { QuickOpenPalette } from '@/components/tools/QuickOpenPalette'
 import { WorktreeManagerModal } from '@/components/worktree/WorktreeManagerModal'
 import { ApiKeyModal } from '@/components/settings/ApiKeyModal'
 import { SettingsDialog } from '@/components/settings/SettingsDialog'
-import { ConfirmationModal } from '@/components/mcp/ConfirmationModal'
+import { ToolApprovalModal } from '@/components/tools/ToolApprovalModal'
 import { MemoryModal } from '@/components/memory/MemoryModal'
 import { ToastContainer } from '@/components/ui/Toast'
 import { FloatingEnvironmentCard } from '@/components/workspace/FloatingEnvironmentCard'
@@ -31,14 +31,14 @@ import { SecurityBanner } from '@/components/ui/SecurityBanner'
 import { useThemedIcon } from '@/lib/themed-icon'
 import artifactsPlaceholderLight from '@assets/Lamprey Code Window Icon.png'
 import artifactsPlaceholderDark from '@assets/Lamprey Code Window Icon Dark View.png'
-import type { McpConfirmationEvent } from '@/lib/types'
+import type { ToolApprovalRequest } from '@/lib/types'
 
 function App(): React.ReactElement {
   const [needsApiKey, setNeedsApiKey] = useState<boolean | null>(null)
   const [artifactOpen, setArtifactOpen] = useState(false)
   const [artifactType, setArtifactType] = useState<string | null>(null)
   const [artifactSource, setArtifactSource] = useState<string | null>(null)
-  const [confirmationEvent, setConfirmationEvent] = useState<McpConfirmationEvent | null>(null)
+  const [approvalRequest, setApprovalRequest] = useState<ToolApprovalRequest | null>(null)
   const loadConversations = useChatStore((s) => s.loadConversations)
   const loadModels = useModelStore((s) => s.loadModels)
   const loadSettings = useSettingsStore((s) => s.loadSettings)
@@ -130,9 +130,10 @@ function App(): React.ReactElement {
 
   useEffect(() => {
     if (!window.api) return
-    window.api.mcp.onConfirmationRequired((e: unknown) => {
-      setConfirmationEvent(e as McpConfirmationEvent)
+    const unsubscribe = window.api.tools.onApprovalRequired((e: unknown) => {
+      setApprovalRequest(e as ToolApprovalRequest)
     })
+    return unsubscribe
   }, [])
 
   useEffect(() => {
@@ -192,10 +193,10 @@ function App(): React.ReactElement {
 
       <MemoryModal />
 
-      {confirmationEvent && (
-        <ConfirmationModal
-          event={confirmationEvent}
-          onDismiss={() => setConfirmationEvent(null)}
+      {approvalRequest && (
+        <ToolApprovalModal
+          request={approvalRequest}
+          onResolved={() => setApprovalRequest(null)}
         />
       )}
 

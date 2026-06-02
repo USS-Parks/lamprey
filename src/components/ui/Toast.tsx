@@ -8,9 +8,9 @@ const accentByType: Record<ToastType, string> = {
 }
 
 const iconByType: Record<ToastType, string> = {
-  success: 'âœ“',
+  success: 'OK',
   warning: '!',
-  error: 'âœ•',
+  error: 'X',
   info: 'i'
 }
 

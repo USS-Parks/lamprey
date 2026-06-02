@@ -116,7 +116,7 @@ function isHttpish(url: string): boolean {
   return /^https?:\/\//i.test(url) || url.startsWith('about:') || url.startsWith('file:')
 }
 
-function coerceUrl(input: string): string {
+export function coerceUrl(input: string): string {
   const trimmed = input.trim()
   if (!trimmed) return 'about:blank'
   if (isHttpish(trimmed)) return trimmed
@@ -253,6 +253,30 @@ export function listTabs(): Array<{ id: string; title: string; url: string; load
 
 export function getActiveTabId(): string | null {
   return activeTabId
+}
+
+// Model-callable browser tools need direct access to a tab's WebContentsView
+// (to drive executeJavaScript, findInPage, capturePage, etc.). These helpers
+// are intentionally narrow: they return the live tab record (including the
+// view) but never expose the internal `tabs` Map.
+
+export interface BrowserTabHandle {
+  id: string
+  view: WebContentsView
+  title: string
+  url: string
+  loading: boolean
+}
+
+export function getTab(id: string): BrowserTabHandle | null {
+  const t = tabs.get(id)
+  if (!t) return null
+  return { id: t.id, view: t.view, title: t.title, url: t.url, loading: t.loading }
+}
+
+export function getActiveTab(): BrowserTabHandle | null {
+  if (!activeTabId) return null
+  return getTab(activeTabId)
 }
 
 export function destroyAll(): void {

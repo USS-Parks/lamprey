@@ -12,9 +12,26 @@ interface PtySession {
   proc: ChildProcessWithoutNullStreams
   win: BrowserWindow
   cwd: string
+  buffer: string
+  lastActivity: number
 }
 
 const sessions = new Map<string, PtySession>()
+
+// Rolling buffer cap. The model receives ~50 KB; we keep 200 KB so the
+// user can also scroll back without exhausting memory if many sessions
+// are open.
+const PTY_BUFFER_CAP = 200_000
+// The read_thread_terminal native tool returns at most this many bytes
+// (tail end of the buffer) to the model.
+export const PTY_READ_CAP = 50_000
+
+function appendToBuffer(session: PtySession, chunk: string): void {
+  if (!chunk) return
+  const next = session.buffer + chunk
+  session.buffer = next.length > PTY_BUFFER_CAP ? next.slice(next.length - PTY_BUFFER_CAP) : next
+  session.lastActivity = Date.now()
+}
 
 export type ShellKind = 'powershell' | 'cmd' | 'git-bash' | 'wsl'
 
@@ -88,7 +105,7 @@ export function ptySpawn(
     windowsHide: true
   }) as ChildProcessWithoutNullStreams
 
-  const session: PtySession = { id, proc, win, cwd }
+  const session: PtySession = { id, proc, win, cwd, buffer: '', lastActivity: Date.now() }
   sessions.set(id, session)
 
   const send = (channel: string, payload: unknown) => {
@@ -100,10 +117,14 @@ export function ptySpawn(
   }
 
   proc.stdout.on('data', (buf: Buffer) => {
-    send('terminal:data', { id, chunk: buf.toString('utf8') })
+    const chunk = buf.toString('utf8')
+    appendToBuffer(session, chunk)
+    send('terminal:data', { id, chunk })
   })
   proc.stderr.on('data', (buf: Buffer) => {
-    send('terminal:data', { id, chunk: buf.toString('utf8') })
+    const chunk = buf.toString('utf8')
+    appendToBuffer(session, chunk)
+    send('terminal:data', { id, chunk })
   })
   proc.on('exit', (code, signal) => {
     sessions.delete(id)
@@ -149,4 +170,27 @@ export function ptyKillAll(): void {
   for (const id of Array.from(sessions.keys())) {
     ptyKill(id)
   }
+}
+
+/**
+ * Return the rolling stdout/stderr buffer for a session, or null if none.
+ * Used by the read_thread_terminal native tool to surface recent output
+ * to the model. Returned text is the raw captured bytes (already capped at
+ * PTY_BUFFER_CAP); callers should slice the tail before showing.
+ */
+export function ptyGetBuffer(id: string): string | null {
+  const s = sessions.get(id)
+  if (!s) return null
+  return s.buffer
+}
+
+/**
+ * Return all currently active PTY session ids, most-recently-active first.
+ * Used by read_thread_terminal so the model can call it without knowing
+ * a specific id (the most-recent session is picked by default).
+ */
+export function ptyListSessions(): string[] {
+  return Array.from(sessions.values())
+    .sort((a, b) => b.lastActivity - a.lastActivity)
+    .map((s) => s.id)
 }

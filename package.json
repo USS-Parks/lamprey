@@ -19,6 +19,8 @@
     "preview": "electron-vite preview",
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --ext .ts,.tsx",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "build:win": "electron-vite build && electron-builder --win --publish never",
     "build:mac": "electron-vite build && electron-builder --mac --publish never",
     "build:linux": "electron-vite build && electron-builder --linux --publish never",

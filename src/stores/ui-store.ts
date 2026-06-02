@@ -111,6 +111,9 @@ export type SettingsTabId =
   | 'api'
   | 'appearance'
   | 'mcp'
+  | 'webTools'
+  | 'currentInfo'
+  | 'imageGen'
   | 'hooks'
   | 'automations'
 

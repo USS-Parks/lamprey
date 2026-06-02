@@ -10,6 +10,8 @@ import { readAgentsMd } from '../services/agents-md-loader'
 import { fireHooks } from '../services/hooks-runner'
 import { mcpManager } from '../services/mcp-manager'
 import { listSkills, getSkillContent } from '../services/skill-loader'
+import { toolRegistry } from '../services/tool-registry'
+import { permissionsService, shouldGateOnRisks } from '../services/permissions-store'
 import type { ChatCompletionMessageParam, ChatCompletionTool } from 'openai/resources/chat/completions'
 
 interface ModelParams {
@@ -45,22 +47,9 @@ function loadModelConfig(model: string): { params: ModelParams; systemPromptOver
 }
 
 const activeAbortControllers = new Map<string, AbortController>()
-const pendingConfirmations = new Map<string, (approved: boolean) => void>()
 
-const MEMORY_ADD_TOOL: ChatCompletionTool = {
-  type: 'function',
-  function: {
-    name: 'memory_add',
-    description: 'Save a fact about the user to persistent memory.',
-    parameters: {
-      type: 'object',
-      properties: {
-        content: { type: 'string', description: 'The fact to remember' }
-      },
-      required: ['content']
-    }
-  }
-}
+// Tool definitions (memory_add + MCP tools) come from toolRegistry.
+// Approval gating is owned by permissionsService — both live in services/.
 
 const MAX_TOOL_ROUNDS = 10
 
@@ -120,23 +109,10 @@ export function registerChatHandlers(): void {
         model
       )
 
-      // Build MCP tools list
-      const mcpTools: ChatCompletionTool[] = []
-      const serverTools = mcpManager.getAllTools()
-      for (const st of serverTools) {
-        for (const tool of st.tools) {
-          mcpTools.push({
-            type: 'function',
-            function: {
-              name: `${st.serverId}__${tool.name}`,
-              description: tool.description || '',
-              parameters: (tool.inputSchema as any) || { type: 'object', properties: {} }
-            }
-          })
-        }
-      }
-
-      const tools: ChatCompletionTool[] = [MEMORY_ADD_TOOL, ...mcpTools]
+      // Tools come from the unified registry — natives (memory_add today) plus
+      // all currently-connected MCP server tools, with stable descriptors and
+      // OpenAI-compatible function schemas.
+      const tools: ChatCompletionTool[] = toolRegistry.getOpenAITools()
 
       // Rebuild the chat history for the API. Tool replies are only valid if
       // the directly preceding assistant message has a matching entry in
@@ -240,14 +216,9 @@ export function registerChatHandlers(): void {
     }
   })
 
-  ipcMain.handle('mcp:approveToolCall', async (_event, callId, approved) => {
-    const resolve = pendingConfirmations.get(callId)
-    if (resolve) {
-      resolve(approved)
-      pendingConfirmations.delete(callId)
-    }
-    return { success: true, data: null }
-  })
+  // mcp:approveToolCall used to live here because chat.ts owned the pending
+  // confirmation promises. It now lives in electron/ipc/permissions.ts and
+  // routes through permissionsService.
 }
 
 async function runChatRound(
@@ -334,56 +305,87 @@ async function runChatRound(
             let result: string
             const startTime = Date.now()
 
-            if (toolName === 'memory_add' && typeof args.content === 'string') {
+            // Audit-buffer entry — tool-calls-store persists this to SQLite.
+            toolRegistry.recordCallStart({
+              id: tc.id,
+              toolId: toolName,
+              name: toolName,
+              conversationId,
+              args,
+              startedAt: startTime,
+              status: 'running'
+            })
+
+            // Single generic approval gate. Two triggers route through the
+            // permissionsService:
+            //   1. descriptor.requiresApproval — hard gate set by the tool.
+            //   2. descriptor.risks intersects GATING_RISKS — soft gate so
+            //      every network / destructive / secret tool prompts at least
+            //      once. The user can pick "Always" in the modal, or grant a
+            //      risk-scope via request_permissions, to silence subsequent
+            //      prompts for that risk in this conversation or globally.
+            //   Pure 'read'/'write' (memory_add, update_plan, view_image,
+            //   web_find, time_lookup) do NOT trigger this gate.
+            const descriptor = toolRegistry.getById(toolName)
+            const needsApproval =
+              !!descriptor &&
+              (descriptor.requiresApproval || shouldGateOnRisks(descriptor.risks))
+            const approvalDecision: 'allow' | 'deny' = needsApproval && descriptor
+              ? await permissionsService.requestApproval({
+                  callId: tc.id,
+                  toolId: descriptor.id,
+                  name: descriptor.name,
+                  serverId: descriptor.providerId,
+                  providerKind: descriptor.providerKind,
+                  risks: descriptor.risks,
+                  args,
+                  conversationId
+                })
+              : 'allow'
+
+            if (approvalDecision === 'deny') {
+              result = 'Action denied by user.'
+            } else if (toolName === 'memory_add' && typeof args.content === 'string') {
               const entry = memStore.addMemory(args.content, conversationId)
               send('memory:added', entry)
               result = 'Saved to memory.'
+            } else if (toolRegistry.hasHandler(toolName)) {
+              // Native tools with handlers (shell_command + future apply_patch,
+              // view_image, etc) dispatch through the registry.
+              try {
+                result = await toolRegistry.executeNative(toolName, args, { conversationId })
+              } catch (err: any) {
+                result = `Error: ${err.message}`
+              }
             } else if (toolName.includes('__')) {
               const [serverId, ...nameParts] = toolName.split('__')
               const mcpToolName = nameParts.join('__')
-
-              const chromeDestructive = ['click', 'fill', 'submit', 'type', 'press', 'select_option']
-              if (serverId === 'chrome' && chromeDestructive.includes(mcpToolName)) {
-                send('mcp:confirmationRequired', {
-                  callId: tc.id,
-                  serverId,
-                  toolName: mcpToolName,
-                  args
-                })
-
-                const approved = await new Promise<boolean>((res) => {
-                  pendingConfirmations.set(tc.id, res)
-                  setTimeout(() => {
-                    if (pendingConfirmations.has(tc.id)) {
-                      pendingConfirmations.delete(tc.id)
-                      res(false)
-                    }
-                  }, 30000)
-                })
-
-                if (!approved) {
-                  result = 'Action denied by user.'
-                } else {
-                  try {
-                    const mcpResult = await mcpManager.callTool(serverId, mcpToolName, args)
-                    result = typeof mcpResult === 'string' ? mcpResult : JSON.stringify(mcpResult)
-                  } catch (err: any) {
-                    result = `Error: ${err.message}`
-                  }
-                }
-              } else {
-                try {
-                  const mcpResult = await mcpManager.callTool(serverId, mcpToolName, args)
-                  result = typeof mcpResult === 'string' ? mcpResult : JSON.stringify(mcpResult)
-                } catch (err: any) {
-                  result = `Error: ${err.message}`
-                }
+              try {
+                const mcpResult = await mcpManager.callTool(serverId, mcpToolName, args)
+                result = typeof mcpResult === 'string' ? mcpResult : JSON.stringify(mcpResult)
+              } catch (err: any) {
+                result = `Error: ${err.message}`
               }
             } else {
               result = `Unknown tool: ${toolName}`
             }
 
             const duration = Date.now() - startTime
+            const finishedAt = startTime + duration
+            let auditStatus: 'done' | 'error' | 'denied'
+            if (result === 'Action denied by user.') {
+              auditStatus = 'denied'
+            } else if (result.startsWith('Error:') || result.startsWith('Unknown tool:')) {
+              auditStatus = 'error'
+            } else {
+              auditStatus = 'done'
+            }
+            toolRegistry.recordCallEnd(tc.id, {
+              status: auditStatus,
+              result: auditStatus === 'error' ? undefined : result,
+              error: auditStatus === 'error' ? result : undefined,
+              finishedAt
+            })
             send('chat:tool-call-result', { callId: tc.id, result, duration })
 
             convStore.saveMessage({
