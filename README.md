@@ -216,13 +216,28 @@ Built and shipped (v0.1.24):
 - ✅ Narrow-viewport drawer for the right panel
 - ✅ Codex-style left sidebar: first-class Projects, nested sessions, "Show more", back/forward, Plugins + Automations rows
 
+Codex toolset parity sprint (v0.1.26):
+
+- ✅ Codex Agent contract + live run-phase state (gathering → working → verifying → summarizing)
+- ✅ Plan checklist UI driven by the `update_plan` tool
+- ✅ Native gated tools: `shell_command`, `apply_patch`, `workspace_context`, `verify_workspace`, `frontend_qa`, plan/goal/image-view/dependencies
+- ✅ Tool-call audit log with per-call approval source (Settings → Tools → Recent)
+- ✅ Persistent permission policies — sticky allow/deny per tool/risk, SQLite-backed, survives restart (Settings → Permissions)
+- ✅ Browser-automation tools + web tools (finance / weather / sports / search adapters)
+- ✅ Image-generation provider + Node REPL MCP server + MCP resources / tool search
+- ✅ Parallel tool reads and single-model sub-agents via `multi_agent_run` (compact run card)
+- ✅ Deterministic final-response composer after tool rounds
+- ✅ Seven bundled Codex workflow skills (`codex-plan`, `codex-context`, `codex-debug`, `codex-review`, `codex-verify`, `codex-frontend-qa`, `codex-fan-out`)
+- ✅ End-to-end agentic coding mode (input pill + auto-loaded skills)
+
 Next up:
 
 - Reasoning-level selector on the model switcher
 - Wire `preToolUse` / `postToolUse` hooks into the MCP path
 - Real PTY (node-pty) terminal — pending a path-without-spaces or a switchable native build
 - Browser: open-in-system-Chrome toggle, cookie isolation per tab
-- Mac + Linux distributables in CI
+- Persist plan + goal state to disk (currently in-memory per session)
+- macOS distributable in CI (Windows + Linux already build in CI)
 
 ---
 

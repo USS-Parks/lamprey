@@ -59,10 +59,64 @@ Revised prompt roster (changes in bold):
 | 9 | Verification Loop (was 8) | Done |
 | 10 | Frontend Browser QA (was 9) | Done |
 | 11 | **Parallel Tool Reads And Single-Model Sub-Agents** (was 10; renamed + widened — see spec below) | Done |
-| 12 | Final Response Composer (was 11) | Mostly done |
-| 13 | Core Codex Skills (was 12) | Mostly done |
-| 14 | End-to-End Agentic Coding Mode (was 13) | Pending |
-| 15 | Regression Pass (was 14) | Pending |
+| 12 | Final Response Composer (was 11) | Done |
+| 13 | Core Codex Skills (was 12) | Done |
+| 14 | End-to-End Agentic Coding Mode (was 13) | Done |
+| 15 | Regression Pass (was 14) | Done |
+
+## Sprint complete — Regression Pass (Prompt 15, 2026-06-02)
+
+Final QA sweep for the Codex parity sprint. No new features landed this turn —
+purely verification + documentation, per the Prompt 15 spec. All prior prompts
+(1–14) are now `Done`; prompts 12 and 13 moved from "Mostly done" to `Done`
+because their only outstanding gap was a Windows-only Vitest start failure
+(`spawn EPERM` on esbuild), which does not occur on the Linux toolchain — those
+suites now execute and pass.
+
+**Automated regression (all green on the Linux toolchain):**
+
+- `npx tsc --noEmit -p tsconfig.node.json` — PASS.
+- `npx tsc --noEmit -p tsconfig.web.json` — PASS.
+- `npx vitest run` — **307 tests across 23 files, all passing** (target was
+  ≥ 295 / ≥ 21). Includes the previously-blocked `skill-loader.test.ts` and
+  `final-response-composer.test.ts`.
+- `npx electron-vite build` — PASS (`out/main/index.js` produced).
+- `npm run smoke:bundle` — PASS (`out/main/index.js` loaded under stub-electron
+  in ~0.2s).
+- `npm run lint` — 0 errors (200 intentional `no-explicit-any` warnings); now
+  enforced by the new `.github/workflows/lint.yml` on every PR + push.
+
+**Not executable in this environment (carry to release runner):**
+
+- **Manual 16-step smoke checklist** — requires a GUI Electron session and is not
+  runnable headless. Must be ticked through by a human on a packaged build before
+  the release is declared shipped.
+- **`npm run build:win`** — Windows installer; not buildable on the Linux CI
+  container. `build-windows` / `build-linux` jobs in `build.yml` cover this on
+  their respective runners.
+- **Native-module ABI spot-launch** — confirming `electron-rebuild` left
+  `better-sqlite3` runnable in the installed build is a manual, per-platform step.
+
+**Known-gap inventory (deferred to next sprint — no silent gaps):**
+
+- **Plan + goal state is in-memory only** — `plan-goal-store.ts` keeps per-conversation
+  `planSteps`/`goals` in process maps; a restart wipes them. Maps cleanly onto two
+  small SQLite tables (same migration path as the resolved permissions-store gap).
+- **`npm test` is not yet wired into CI** — the suite is a local + release gate
+  and runs clean, but no workflow executes it. Adding a test job (it needs the
+  Electron binary, so not `--ignore-scripts`) is the first carry-forward.
+- **Renderer-side bundle smoke** — `smoke:bundle` covers only the main bundle; the
+  renderer bundle has no equivalent headless load check.
+- **`askUser` permission path** is not unit-tested — it needs a BrowserWindow
+  round-trip (Electron host).
+- **`requiresApproval: false` review** — image generation and any plugin-driven
+  file writes should be re-audited next sprint to confirm none bypass gating that
+  ought to be gated.
+
+**Acceptance:** automated regression green locally; docs updated (`README.md`
+roadmap, `CONTRIBUTING.md` gate list, `DEVLOG.md` entry, this roster + entry);
+known gaps recorded above with explicit deferral. Manual smoke + Windows installer
+build remain owner-run on the release runner.
 
 ### Prompt 7 spec (carry forward to implementation turn)
 

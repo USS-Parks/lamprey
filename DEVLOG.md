@@ -1,5 +1,17 @@
 # Lamprey Harness Dev Log
 
+## Codex-parity Prompt 15 — Regression Pass (2026-06-02)
+
+Final QA sweep that closes the Codex toolset parity sprint. No new features — verification + documentation only, per the Prompt 15 spec. Full write-up in the `## Sprint complete — Regression Pass` block of `PLANNING/CODEX_TOOLSET_PARITY_PROGRESS.md`.
+
+**Automated regression (all green on the Linux toolchain).** `npx tsc --noEmit -p tsconfig.node.json` and `-p tsconfig.web.json` both pass. `npx vitest run` — **307 tests / 23 files, all passing** (target ≥ 295 / ≥ 21), including the two suites that were previously "Mostly done" only because Vitest couldn't start on Windows (`spawn EPERM` on esbuild): `skill-loader.test.ts` and `final-response-composer.test.ts` now execute and pass, so prompts 12 and 13 move to `Done`. `npx electron-vite build` succeeds and `npm run smoke:bundle` PASSes (main bundle loads under stub-electron in ~0.2s). `npm run lint` reports 0 errors and is now enforced in CI via `.github/workflows/lint.yml`.
+
+**Roster.** Prompts 1–15 are all `Done`. Prompt 14 (agentic coding mode, commit `4d9e2bf`, v0.1.26) was already in the tree; the roster table simply hadn't been flipped.
+
+**Docs.** `README.md` roadmap gains a "Codex toolset parity sprint (v0.1.26)" shipped block and a tightened "Next up" (Linux now builds in CI; macOS still pending). `CONTRIBUTING.md` pre-PR gate list now includes `npm test` and states the real CI coverage. This DEVLOG entry + the PROGRESS "Sprint complete" entry record the verification numbers.
+
+**Not runnable headless (owner/release-runner tasks).** The 16-step manual GUI smoke checklist, `npm run build:win` (Windows installer), and the native-module ABI spot-launch of an installed build. **Carry-forward gaps** (recorded in PROGRESS, deferred with no silent gaps): plan/goal state is still in-memory; `npm test` is not yet wired into CI; renderer-bundle smoke and the `askUser` permission path remain untested; `requiresApproval: false` tools want a re-audit.
+
 ## Codex-parity Prompt 14 — End-to-End Agentic Coding Mode (2026-06-02)
 
 Wired the single user-facing toggle that turns the harness into an end-to-end agentic coding loop: coding contract role + auto-activated codex skills + composer gate. Off by default; existing chats unchanged.
