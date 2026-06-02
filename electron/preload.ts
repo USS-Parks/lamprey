@@ -210,6 +210,10 @@ const api = {
 
   plan: {
     get: (conversationId: string) => ipcRenderer.invoke('plan:get', conversationId),
+    listAllState: () => ipcRenderer.invoke('plan:listAllState'),
+    clearConversationState: (conversationId: string) =>
+      ipcRenderer.invoke('plan:clearConversationState', conversationId),
+    clearAllState: () => ipcRenderer.invoke('plan:clearAllState'),
     onUpdated: (cb: (e: { conversationId: string; snapshot: unknown }) => void): (() => void) => {
       const handler = (_: unknown, e: { conversationId: string; snapshot: unknown }) => cb(e)
       ipcRenderer.on('plan:updated', handler)

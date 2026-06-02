@@ -261,6 +261,25 @@ export interface PlanUpdatedEvent {
   snapshot: PlanSnapshot
 }
 
+export type GoalStatus = 'open' | 'in_progress' | 'done' | 'abandoned'
+
+export interface Goal {
+  id: string
+  title: string
+  description?: string
+  dueDate?: string
+  status: GoalStatus
+  createdAt: number
+  updatedAt: number
+}
+
+// One conversation's persisted plan + goal state, for the inspect/clear panel.
+export interface ConversationPlanGoalState {
+  conversationId: string
+  planSteps: PlanStep[]
+  goals: Goal[]
+}
+
 export interface ToolCallEvent {
   callId: string
   // Required so the renderer's per-conversation filter (useChat

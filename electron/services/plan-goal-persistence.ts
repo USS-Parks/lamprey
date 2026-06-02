@@ -32,6 +32,13 @@ interface ConvBucket {
   goals: Goal[]
 }
 
+/** One conversation's full plan + goal state, for the inspect/clear settings UI. */
+export interface ConversationPlanGoalState {
+  conversationId: string
+  planSteps: PlanStep[]
+  goals: Goal[]
+}
+
 // In-memory fallback, keyed by conversation key (the '__global__' sentinel for
 // the shared bucket). Only used once persistence is known to be unavailable.
 const memoryFallback = new Map<string, ConvBucket>()
@@ -163,6 +170,35 @@ export function upsertGoal(key: string, goal: Goal): void {
   const idx = bucket.goals.findIndex((g) => g.id === goal.id)
   if (idx >= 0) bucket.goals[idx] = { ...goal }
   else bucket.goals.push({ ...goal })
+}
+
+/** Every conversation that has any plan or goal state, with that state loaded. */
+export function listAllPlanGoalState(): ConversationPlanGoalState[] {
+  if (!useFallback) {
+    try {
+      const keys = getDb()
+        .prepare(
+          `SELECT conversation_id FROM plan_steps
+           UNION
+           SELECT conversation_id FROM goals`
+        )
+        .all() as Array<{ conversation_id: string }>
+      return keys.map((r) => ({
+        conversationId: r.conversation_id,
+        planSteps: loadPlanSteps(r.conversation_id),
+        goals: loadGoals(r.conversation_id)
+      }))
+    } catch (err: any) {
+      activateFallback(err?.message ?? 'unknown')
+    }
+  }
+  return [...memoryFallback.entries()]
+    .filter(([, b]) => b.planSteps.length > 0 || b.goals.length > 0)
+    .map(([key, b]) => ({
+      conversationId: key,
+      planSteps: b.planSteps.map((s) => ({ ...s })),
+      goals: b.goals.map((g) => ({ ...g }))
+    }))
 }
 
 /** Remove all plan + goal state for one conversation. */

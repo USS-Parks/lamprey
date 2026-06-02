@@ -12,6 +12,7 @@ import { WebToolsSettings } from './WebToolsSettings'
 import { CurrentInfoSettings } from './CurrentInfoSettings'
 import { ImageGenSettings } from './ImageGenSettings'
 import { PermissionsSettings } from './PermissionsSettings'
+import { PlanGoalSettings } from './PlanGoalSettings'
 import { useUiStore } from '@/stores/ui-store'
 
 interface SettingsDialogProps {
@@ -30,6 +31,7 @@ const TABS = [
   { id: 'currentInfo', label: 'Current Info' },
   { id: 'imageGen', label: 'Image Gen' },
   { id: 'permissions', label: 'Permissions' },
+  { id: 'planGoal', label: 'Plans & Goals' },
   { id: 'hooks', label: 'Hooks' },
   { id: 'automations', label: 'Automations' }
 ] as const
@@ -86,6 +88,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
             {activeTab === 'currentInfo' && <CurrentInfoSettings />}
             {activeTab === 'imageGen' && <ImageGenSettings />}
             {activeTab === 'permissions' && <PermissionsSettings />}
+            {activeTab === 'planGoal' && <PlanGoalSettings />}
             {activeTab === 'hooks' && <HooksSettings />}
             {activeTab === 'automations' && <AutomationsSettings />}
           </div>

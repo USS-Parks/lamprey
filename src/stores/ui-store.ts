@@ -116,6 +116,7 @@ export type SettingsTabId =
   | 'currentInfo'
   | 'imageGen'
   | 'permissions'
+  | 'planGoal'
   | 'hooks'
   | 'automations'
 

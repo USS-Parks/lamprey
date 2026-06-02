@@ -12,7 +12,7 @@ Factual changelog for the work described in [CODEX_TOOLSET_PARITY_PLAN.md](CODEX
 
 These bite across sessions; track and resolve when work resumes.
 
-- **Plan + goal state persistence — RESOLVED (2026-06-02).** `plan-goal-store.ts` now writes through to two SQLite tables (`plan_steps`, `goals`) via `plan-goal-persistence.ts`, hydrating per conversation on first access and surviving restarts. The store keeps a per-session cache in front; the persistence layer falls back to memory if the DB is unavailable (same contract as permissions-store). `deleteConversation` clears the conversation's rows. Remaining sub-gaps: no settings UI to inspect/clear state (a `clearAllState()` / `clearConversationState()` API exists for when one lands), and no cross-device sync.
+- **Plan + goal state persistence — RESOLVED (2026-06-02).** `plan-goal-store.ts` now writes through to two SQLite tables (`plan_steps`, `goals`) via `plan-goal-persistence.ts`, hydrating per conversation on first access and surviving restarts. The store keeps a per-session cache in front; the persistence layer falls back to memory if the DB is unavailable (same contract as permissions-store). `deleteConversation` clears the conversation's rows. A **Plans & Goals** settings panel now lists per-conversation state and clears it per-conversation or all (`plan:listAllState` / `plan:clearConversationState` / `plan:clearAllState`; clearing emits `plan:updated` so an open checklist refreshes). Remaining sub-gap: no cross-device sync.
 - **Provider settings panels were initially orphaned.** `WebToolsSettings`, `CurrentInfoSettings`, `ImageGenSettings` are now imported and rendered from `SettingsDialog.tsx`. Verified in code; visual smoke not yet recorded.
 - **Node REPL packaging path** depends on an `electron-builder` `extraResources` entry copying `resources/mcp` into the packaged app. The dev path is reached via `__dirname/../../resources/mcp/node-repl/server.js`; the production path is `process.resourcesPath/mcp/node-repl/server.js`. A static check that the resource file exists and the builder mapping is present landed in `electron/services/mcp-defaults.test.ts`. End-to-end smoke from a packaged build is still recommended before any release.
 - **Apply-patch executor parser/executor tests are in tree** at `electron/services/apply-patch-tool.test.ts` and pass locally (`npx vitest run`).
@@ -102,8 +102,9 @@ suites now execute and pass.
 - **Plan + goal state persistence** — *resolved in follow-up:* `plan-goal-store.ts`
   now writes through to the `plan_steps` + `goals` SQLite tables via
   `plan-goal-persistence.ts` (per-conversation hydrate on first access, memory
-  fallback when the DB is unavailable, cleared on conversation delete). Remaining:
-  no inspect/clear settings UI, no cross-device sync.
+  fallback when the DB is unavailable, cleared on conversation delete). A
+  **Plans & Goals** settings panel now inspects and clears the stored state
+  (per-conversation or all). Remaining: no cross-device sync.
 - **`npm test` is not yet wired into CI** — *resolved in follow-up:* a `test` job
   in `.github/workflows/ci.yml` now runs the full Vitest suite on every PR + push
   (installs deps `--ignore-scripts` and fetches just the Electron binary, since

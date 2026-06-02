@@ -1,5 +1,15 @@
 # Lamprey Harness Dev Log
 
+## Plans & Goals settings panel — inspect / clear persisted state (2026-06-02)
+
+Final deferred item from the parity sprint: a settings UI over the plan + goal persistence that landed earlier. Modeled on `PermissionsSettings` (the inspect/clear side of a write-through store).
+
+**Backend.** `plan-goal-persistence.ts` gains `listAllPlanGoalState()` (distinct conversation ids across `plan_steps` ∪ `goals`, each loaded; memory-fallback aware), re-exported from `plan-goal-store.ts` as `getAllPlanGoalState()` (reads through persistence, which is authoritative since writes are write-through). `electron/ipc/plan.ts` adds `plan:listAllState`, `plan:clearConversationState`, and `plan:clearAllState`; the clear handlers emit `plan:updated` (via `emitChatEvent`) for affected conversations so an open `PlanChecklist` refreshes to empty. preload exposes the three on `window.api.plan`.
+
+**Frontend.** New `PlanGoalSettings.tsx` lists each conversation with stored state — plan steps (status dot + label) and goals (status, optional due date) — with per-conversation Clear and a global Clear all (both confirm first), plus a summary line and an empty state. Registered as the **Plans & Goals** tab in `SettingsDialog` and `SettingsTabId`. Added renderer mirror types `Goal` / `GoalStatus` / `ConversationPlanGoalState` to `src/lib/types.ts`.
+
+**Verification.** `tsc` (node + web) pass; ESLint 0 errors; Vitest **340 tests / 25 files** (+3 `listAllPlanGoalState` tests); `electron-vite build` + `smoke:bundle` + `smoke:renderer` all PASS. With this, every deferred item from the Codex parity regression pass is closed; the only remaining plan/goal item is cross-device sync (out of scope).
+
 ## Tool-gating audit (selfApproves fix) + renderer bundle smoke (2026-06-02)
 
 Closes the last two regression-pass carry-forwards.

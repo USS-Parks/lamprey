@@ -219,7 +219,7 @@ Built and shipped (v0.1.24):
 Codex toolset parity sprint (v0.1.26):
 
 - ✅ Codex Agent contract + live run-phase state (gathering → working → verifying → summarizing)
-- ✅ Plan checklist UI driven by the `update_plan` tool
+- ✅ Plan checklist UI driven by the `update_plan` tool; plan + goal state persists to SQLite, with a Plans & Goals settings panel to inspect/clear it
 - ✅ Native gated tools: `shell_command`, `apply_patch`, `workspace_context`, `verify_workspace`, `frontend_qa`, plan/goal/image-view/dependencies
 - ✅ Tool-call audit log with per-call approval source (Settings → Tools → Recent)
 - ✅ Persistent permission policies — sticky allow/deny per tool/risk, SQLite-backed, survives restart (Settings → Permissions)
@@ -236,7 +236,7 @@ Next up:
 - Wire `preToolUse` / `postToolUse` hooks into the MCP path
 - Real PTY (node-pty) terminal — pending a path-without-spaces or a switchable native build
 - Browser: open-in-system-Chrome toggle, cookie isolation per tab
-- Persist plan + goal state to disk (currently in-memory per session)
+- Cross-device sync for plan + goal state (persisted locally today)
 - macOS distributable in CI (Windows + Linux already build in CI)
 
 ---

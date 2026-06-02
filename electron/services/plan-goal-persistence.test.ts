@@ -16,6 +16,7 @@ import {
   __resetPlanGoalPersistence,
   clearAllPlanGoalState,
   clearConversation,
+  listAllPlanGoalState,
   loadGoals,
   loadPlanSteps,
   savePlanSteps,
@@ -112,5 +113,39 @@ describe('clearing', () => {
     clearAllPlanGoalState()
     expect(loadPlanSteps(A)).toHaveLength(0)
     expect(loadGoals(B)).toHaveLength(0)
+  })
+})
+
+describe('listAllPlanGoalState', () => {
+  it('returns one entry per conversation with state, plan + goals loaded', () => {
+    savePlanSteps(A, [step('1', 'a'), step('2', 'b')])
+    upsertGoal(A, goal('g1'))
+    upsertGoal(B, goal('g2'))
+
+    const all = listAllPlanGoalState()
+    const byId = Object.fromEntries(all.map((s) => [s.conversationId, s]))
+    expect(Object.keys(byId).sort()).toEqual([A, B])
+    expect(byId[A].planSteps).toHaveLength(2)
+    expect(byId[A].goals).toHaveLength(1)
+    expect(byId[B].planSteps).toHaveLength(0)
+    expect(byId[B].goals).toHaveLength(1)
+  })
+
+  it('omits conversations with no state and reflects clears', () => {
+    savePlanSteps(A, [step('1', 'a')])
+    upsertGoal(B, goal('g1'))
+    expect(listAllPlanGoalState()).toHaveLength(2)
+
+    clearConversation(A)
+    const remaining = listAllPlanGoalState()
+    expect(remaining).toHaveLength(1)
+    expect(remaining[0].conversationId).toBe(B)
+  })
+
+  it('is empty after clearAllPlanGoalState', () => {
+    savePlanSteps(A, [step('1', 'a')])
+    upsertGoal(B, goal('g1'))
+    clearAllPlanGoalState()
+    expect(listAllPlanGoalState()).toEqual([])
   })
 })

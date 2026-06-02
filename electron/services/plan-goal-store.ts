@@ -2,11 +2,13 @@ import { randomUUID } from 'crypto'
 import {
   clearAllPlanGoalState,
   clearConversation as persistClearConversation,
+  listAllPlanGoalState,
   loadGoals,
   loadPlanSteps,
   savePlanSteps,
   upsertGoal,
-  __resetPlanGoalPersistence
+  __resetPlanGoalPersistence,
+  type ConversationPlanGoalState
 } from './plan-goal-persistence'
 
 // Per-conversation plan + goal state for the `update_plan`, `get_goal`,
@@ -234,6 +236,13 @@ export function getGoal(
 export function listGoals(conversationId: string | undefined): Goal[] {
   const s = getState(conversationId)
   return Array.from(s.goals.values()).sort((a, b) => b.updatedAt - a.updatedAt)
+}
+
+/** Every conversation with plan or goal state, for the inspect/clear UI.
+ * Reads through persistence (the authoritative store — writes are write-through),
+ * so it reflects conversations not loaded into the session cache. */
+export function getAllPlanGoalState(): ConversationPlanGoalState[] {
+  return listAllPlanGoalState()
 }
 
 /** Drop all plan + goal state for one conversation, in cache and on disk.
