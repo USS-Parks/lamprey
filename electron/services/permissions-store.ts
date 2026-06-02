@@ -1,21 +1,29 @@
 import { BrowserWindow } from 'electron'
 import type { ToolRisk } from './tool-registry'
+import {
+  clearPoliciesForConversation,
+  deletePolicy,
+  listPolicies,
+  resolveDecision as resolvePersistedDecision,
+  upsertPolicy,
+  type PolicyDecision
+} from './permission-policies-store'
+import { getActiveWorkspace } from './workspace-state'
 
 // Permission and approval service. Driven by descriptor risk metadata; works
 // for any tool the registry flags as requiresApproval (and additionally any
 // tool with one of the GATING_RISKS below).
 //
-// Three policy scopes:
-//   - 'once'         — answer this single call, do not persist.
-//   - 'conversation' — sticky for (toolId, conversationId) until app restart.
-//   - 'always'       — sticky for toolId globally until app restart.
+// Decision sources, in resolution order:
+//   1. Persisted policies (permission-policies-store) — conversation/workspace
+//      /global scope at tool or risk subject, deny precedence within a level.
+//   2. The user, via the approval modal — answer can persist as a policy when
+//      the user picks "This conversation" / "This workspace" / "Always".
 //
-// KNOWN GAP: persistence to disk is not implemented. The in-memory caches
-// reset on every app launch. Sticky 'always' decisions therefore do not
-// survive a restart yet.
+// "Just this once" answers do not persist; they answer the single call.
 
-export type ApprovalScope = 'once' | 'conversation' | 'always'
-export type ApprovalDecision = 'allow' | 'deny'
+export type ApprovalScope = 'once' | 'conversation' | 'workspace' | 'always'
+export type ApprovalDecision = PolicyDecision
 
 export interface ToolApprovalRequest {
   callId: string
@@ -32,6 +40,17 @@ export interface ToolApprovalResponse {
   callId: string
   decision: ApprovalDecision
   scope: ApprovalScope
+}
+
+/**
+ * Outcome of resolving a tool-call approval. `source` tells the audit layer
+ * how the decision was reached — `'policy:<id>'` references a persisted policy
+ * row, `'modal'` is a user answer through the approval dialog, and
+ * `'auto-deny-timeout'` is the 30s safety bail when the user never answers.
+ */
+export interface ApprovalOutcome {
+  decision: ApprovalDecision
+  source: string
 }
 
 const APPROVAL_TIMEOUT_MS = 30_000
@@ -51,58 +70,51 @@ export function shouldGateOnRisks(risks: ToolRisk[]): boolean {
 }
 
 class PermissionsService {
-  private globalPolicies = new Map<string, ApprovalDecision>()
-  private conversationPolicies = new Map<string, Map<string, ApprovalDecision>>()
-  // Per-RISK policies (separate from per-tool). Set by request_permissions
-  // when the user approves a scope; consulted by requestApproval so granting
-  // "network" unlocks every tool that carries the network risk, not just one.
-  private globalRiskPolicies = new Map<ToolRisk, ApprovalDecision>()
-  private conversationRiskPolicies = new Map<string, Map<ToolRisk, ApprovalDecision>>()
   private pending = new Map<string, (response: ToolApprovalResponse) => void>()
 
   /**
-   * Resolve approval for a tool call. Returns synchronously when a sticky
-   * policy applies; otherwise dispatches an approval request to the UI and
-   * waits for the user, or auto-denies after APPROVAL_TIMEOUT_MS.
+   * Resolve approval for a tool call. Consults persisted policies first; if
+   * none match, dispatches a request to the UI and persists the answer
+   * according to the user's chosen scope. Auto-denies after
+   * APPROVAL_TIMEOUT_MS — the user has 30 s to answer.
    *
-   * Policy precedence:
-   *   1. Per-tool global → per-tool conversation (existing).
-   *   2. Per-risk policies — deny wins, then allow if EVERY gating risk
-   *      requested is covered by an allow policy.
-   *   3. Ask the user.
-   *
-   * No active window → default 'deny' for safety (headless test runs, app
-   * shutdown mid-request, etc.).
+   * Returns the decision only. Use {@link requestApprovalDetailed} when the
+   * caller wants the audit `source` string alongside the decision.
    */
   async requestApproval(req: ToolApprovalRequest): Promise<ApprovalDecision> {
-    const stickyGlobal = this.globalPolicies.get(req.toolId)
-    if (stickyGlobal) return stickyGlobal
+    const outcome = await this.requestApprovalDetailed(req)
+    return outcome.decision
+  }
 
-    if (req.conversationId) {
-      const convMap = this.conversationPolicies.get(req.conversationId)
-      const stickyConv = convMap?.get(req.toolId)
-      if (stickyConv) return stickyConv
+  async requestApprovalDetailed(req: ToolApprovalRequest): Promise<ApprovalOutcome> {
+    const workspacePath = (() => {
+      try {
+        return getActiveWorkspace()
+      } catch {
+        return undefined
+      }
+    })()
+    const persisted = resolvePersistedDecision({
+      toolId: req.toolId,
+      risks: req.risks,
+      conversationId: req.conversationId,
+      workspacePath
+    })
+    if (persisted) {
+      return { decision: persisted.decision, source: `policy:${persisted.policyId}` }
     }
 
-    // Per-risk policy check. Conversation policies win over global on a tie.
-    const gatingRisks = req.risks.filter((r) => GATING_RISKS.has(r))
-    if (gatingRisks.length > 0) {
-      const convRiskMap = req.conversationId
-        ? this.conversationRiskPolicies.get(req.conversationId)
-        : undefined
-      const riskDecision = (r: ToolRisk): ApprovalDecision | undefined =>
-        convRiskMap?.get(r) ?? this.globalRiskPolicies.get(r)
-      if (gatingRisks.some((r) => riskDecision(r) === 'deny')) return 'deny'
-      if (gatingRisks.every((r) => riskDecision(r) === 'allow')) return 'allow'
-    }
-
-    return await this.askUser(req)
+    const userOutcome = await this.askUser(req, workspacePath)
+    return userOutcome
   }
 
   /**
-   * Set a sticky policy for a single risk category. Used by request_permissions
-   * after the user grants a scope, and by the future Permissions settings page.
-   * Pass `null` to clear.
+   * Set a sticky policy for a single risk category. Used by
+   * request_permissions after the user grants a scope. Writes through to the
+   * persisted policies table so the grant survives a restart.
+   *
+   * Passing `null` removes the existing policy for that risk at the given
+   * scope.
    */
   setRiskPolicy(
     risk: ToolRisk,
@@ -110,59 +122,82 @@ class PermissionsService {
     decision: ApprovalDecision | null,
     conversationId?: string
   ): void {
-    if (scope === 'always') {
-      if (decision === null) this.globalRiskPolicies.delete(risk)
-      else this.globalRiskPolicies.set(risk, decision)
-      return
-    }
-    if (!conversationId) return
-    let convMap = this.conversationRiskPolicies.get(conversationId)
+    const policyScope = scope === 'always' ? 'global' : 'conversation'
     if (decision === null) {
-      convMap?.delete(risk)
+      const matches = listPolicies().filter(
+        (p) =>
+          p.scope === policyScope &&
+          p.subjectKind === 'risk' &&
+          p.subject === risk &&
+          (policyScope === 'global' ? true : p.conversationId === conversationId)
+      )
+      for (const m of matches) deletePolicy(m.id)
       return
     }
-    if (!convMap) {
-      convMap = new Map()
-      this.conversationRiskPolicies.set(conversationId, convMap)
-    }
-    convMap.set(risk, decision)
+    if (policyScope === 'conversation' && !conversationId) return
+    upsertPolicy({
+      scope: policyScope,
+      subjectKind: 'risk',
+      subject: risk,
+      decision,
+      conversationId: policyScope === 'conversation' ? conversationId : undefined
+    })
   }
 
+  /**
+   * Read-back for a single risk's current decision. Returns the matched policy
+   * folded into the legacy "scope" shape so existing callers (settings UI,
+   * native tools) don't need to know about the wider policy model.
+   */
   getRiskPolicy(
     risk: ToolRisk,
     conversationId?: string
   ): { scope: 'conversation' | 'always'; decision: ApprovalDecision } | null {
-    if (conversationId) {
-      const conv = this.conversationRiskPolicies.get(conversationId)?.get(risk)
-      if (conv) return { scope: 'conversation', decision: conv }
-    }
-    const glob = this.globalRiskPolicies.get(risk)
-    if (glob) return { scope: 'always', decision: glob }
+    const all = listPolicies()
+    const conv = conversationId
+      ? all.find(
+          (p) =>
+            p.scope === 'conversation' &&
+            p.subjectKind === 'risk' &&
+            p.subject === risk &&
+            p.conversationId === conversationId
+        )
+      : undefined
+    const glob = all.find(
+      (p) => p.scope === 'global' && p.subjectKind === 'risk' && p.subject === risk
+    )
+    if (conv?.decision === 'deny') return { scope: 'conversation', decision: 'deny' }
+    if (glob?.decision === 'deny') return { scope: 'always', decision: 'deny' }
+    if (conv) return { scope: 'conversation', decision: conv.decision }
+    if (glob) return { scope: 'always', decision: glob.decision }
     return null
   }
 
-  private async askUser(req: ToolApprovalRequest): Promise<ApprovalDecision> {
+  private async askUser(
+    req: ToolApprovalRequest,
+    workspacePath: string | undefined
+  ): Promise<ApprovalOutcome> {
     const mainWindow = BrowserWindow.getAllWindows()[0]
-    if (!mainWindow) return 'deny'
+    // No active window → default deny (headless test runs, app shutdown
+    // mid-request). Source labeled distinctly so the audit row reads
+    // 'no-window' rather than 'modal' for a non-event.
+    if (!mainWindow) return { decision: 'deny', source: 'no-window' }
 
-    return new Promise<ApprovalDecision>((resolve) => {
+    return new Promise<ApprovalOutcome>((resolve) => {
       const timer = setTimeout(() => {
         if (this.pending.has(req.callId)) {
           this.pending.delete(req.callId)
-          resolve('deny')
+          resolve({ decision: 'deny', source: 'auto-deny-timeout' })
         }
       }, APPROVAL_TIMEOUT_MS)
 
       this.pending.set(req.callId, (response) => {
         clearTimeout(timer)
-        if (response.scope === 'conversation' && req.conversationId) {
-          const map = this.conversationPolicies.get(req.conversationId) ?? new Map()
-          map.set(req.toolId, response.decision)
-          this.conversationPolicies.set(req.conversationId, map)
-        } else if (response.scope === 'always') {
-          this.globalPolicies.set(req.toolId, response.decision)
-        }
-        resolve(response.decision)
+        const persistedId = this.persistAnswer(response, req, workspacePath)
+        resolve({
+          decision: response.decision,
+          source: persistedId ? `policy:${persistedId}` : 'modal'
+        })
       })
 
       mainWindow.webContents.send('tools:approvalRequired', req)
@@ -180,6 +215,40 @@ class PermissionsService {
         args: req.args
       })
     })
+  }
+
+  /**
+   * Persist the user's answer when their chosen scope is anything other than
+   * 'once'. Returns the persisted policy id so the audit row can reference
+   * it as the decision source for the next run that hits the same policy.
+   */
+  private persistAnswer(
+    response: ToolApprovalResponse,
+    req: ToolApprovalRequest,
+    workspacePath: string | undefined
+  ): string | null {
+    if (response.scope === 'once') return null
+    if (response.scope === 'conversation' && !req.conversationId) return null
+    if (response.scope === 'workspace' && !workspacePath) return null
+    try {
+      const policy = upsertPolicy({
+        scope:
+          response.scope === 'always'
+            ? 'global'
+            : response.scope === 'workspace'
+            ? 'workspace'
+            : 'conversation',
+        subjectKind: 'tool',
+        subject: req.toolId,
+        decision: response.decision,
+        conversationId: response.scope === 'conversation' ? req.conversationId : undefined,
+        workspacePath: response.scope === 'workspace' ? workspacePath : undefined
+      })
+      return policy.id
+    } catch (err) {
+      console.error('[permissions-store] failed to persist policy:', err)
+      return null
+    }
   }
 
   /** Renderer response to a pending approval request. */
@@ -200,20 +269,36 @@ class PermissionsService {
     })
   }
 
+  /**
+   * Legacy per-tool global API — kept as a thin wrapper over the policy store
+   * so the existing IPC channels (permissions:listGlobalPolicies /
+   * :setGlobalPolicy / :clearConversationPolicies) continue to work while the
+   * UI migrates to the wider policy CRUD surface.
+   */
   listGlobalPolicies(): Array<{ toolId: string; decision: ApprovalDecision }> {
-    return Array.from(this.globalPolicies, ([toolId, decision]) => ({
-      toolId,
-      decision
-    }))
+    return listPolicies()
+      .filter((p) => p.scope === 'global' && p.subjectKind === 'tool')
+      .map((p) => ({ toolId: p.subject, decision: p.decision }))
   }
 
   setGlobalPolicy(toolId: string, decision: ApprovalDecision | null): void {
-    if (decision === null) this.globalPolicies.delete(toolId)
-    else this.globalPolicies.set(toolId, decision)
+    if (decision === null) {
+      const matches = listPolicies().filter(
+        (p) => p.scope === 'global' && p.subjectKind === 'tool' && p.subject === toolId
+      )
+      for (const m of matches) deletePolicy(m.id)
+      return
+    }
+    upsertPolicy({
+      scope: 'global',
+      subjectKind: 'tool',
+      subject: toolId,
+      decision
+    })
   }
 
   clearConversationPolicies(conversationId: string): void {
-    this.conversationPolicies.delete(conversationId)
+    clearPoliciesForConversation(conversationId)
   }
 
   /** Cancel a pending request — used when a chat round is aborted. */

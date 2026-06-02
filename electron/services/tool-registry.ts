@@ -12,6 +12,7 @@ import {
   formatShellResultForModel,
   type ShellArgs
 } from './shell-tool'
+import type { AuditStatus } from './tool-result-status'
 
 // Types are duplicated between main and renderer the same way mcp-manager.ts
 // keeps its own McpTool/McpServerConfig — the two tsconfig roots can't reach
@@ -55,16 +56,39 @@ export interface LampreyToolCall {
   result?: string
   error?: string
   durationMs?: number
+  /** Provenance of the approval gate: 'modal' | 'policy:<id>' | 'none'. */
+  approvalSource?: string
 }
 
 export interface ToolExecutionContext {
   conversationId?: string
+  /** Active workspace root for this call. Workspace-relative native tools
+   *  (shell_command, apply_patch, workspace_context, view_image, image
+   *  generation) anchor cwd to this path. Falls back to process.cwd()
+   *  inside each handler when absent. */
+  workspacePath?: string
 }
+
+/**
+ * Native tool handler return shape. A handler may return either:
+ *   - a plain string — the model-facing result. Status is inferred by the
+ *     legacy classifier (typed errors get caught by chat.ts as 'error').
+ *   - a `{ result, status }` envelope — the handler explicitly tags the
+ *     outcome. Preferred for any handler where success/failure is not
+ *     trivially decidable from the string body (shell exit codes, partial
+ *     successes, user-denied operations the handler bubbles back).
+ *
+ * Validation failures should be thrown — chat.ts wraps the message in an
+ * "Error:" prefix and records the call as 'error'.
+ */
+export type NativeToolHandlerResult =
+  | string
+  | { result: string; status: AuditStatus }
 
 export type NativeToolHandler = (
   args: Record<string, unknown>,
   ctx: ToolExecutionContext
-) => Promise<string>
+) => Promise<NativeToolHandlerResult>
 
 // The unified tool registry has three sources: native Lamprey tools (added
 // in code at startup), MCP server tools (live from mcpManager.getAllTools()),
@@ -106,7 +130,7 @@ class ToolRegistry {
     toolId: string,
     args: Record<string, unknown>,
     ctx: ToolExecutionContext
-  ): Promise<string> {
+  ): Promise<NativeToolHandlerResult> {
     const handler = this.nativeHandlers.get(toolId)
     if (!handler) throw new Error(`No handler registered for native tool: ${toolId}`)
     return await handler(args, ctx)
@@ -190,6 +214,7 @@ class ToolRegistry {
       result?: string
       error?: string
       finishedAt?: number
+      approvalSource?: string
     }
   ): void {
     const finishedAt = patch.finishedAt ?? Date.now()
@@ -203,7 +228,8 @@ class ToolRegistry {
         result: patch.result,
         error: patch.error,
         finishedAt,
-        durationMs
+        durationMs,
+        approvalSource: patch.approvalSource
       })
     } catch (err) {
       console.error('[tool-registry] recordCallEnd persist failed:', err)
@@ -293,17 +319,19 @@ toolRegistry.registerNative(
     requiresApproval: true,
     enabled: true
   },
-  async (args) => {
-    const workspaceRoot = process.cwd()
-    const result = await executeShellCommand(args as unknown as ShellArgs, workspaceRoot)
-    return formatShellResultForModel(result)
+  async (args, ctx) => {
+    const workspaceRoot = ctx.workspacePath ?? process.cwd()
+    const r = await executeShellCommand(args as unknown as ShellArgs, workspaceRoot)
+    const result = formatShellResultForModel(r)
+    // A spawn-time failure (no exit code) and any non-zero exit are
+    // failures even though the body still renders normally — return the
+    // explicit status so the audit log and the UI badge match reality.
+    const failed = r.error !== undefined || (r.exitCode !== null && r.exitCode !== 0) || r.timedOut
+    return { result, status: failed ? 'error' : 'done' }
   }
 )
 
-import './apply-patch-tool-pack'
-import './native-dev-tool-pack'
-import './browser-tool-pack'
-import './web-tool-pack'
-import './current-info-tool-pack'
-import './image-generation-tool-pack'
-import './node-repl-default-server'
+// Tool packs are loaded by electron/services/tool-packs.ts (imported from
+// electron/ipc/index.ts), not from this file. Side-effect imports at the
+// bottom of a module are not safe — bundlers can hoist them above
+// `new ToolRegistry()` and trip a TDZ ReferenceError at startup.

@@ -102,7 +102,7 @@ export function ToolApprovalModal({ request, onResolved }: ToolApprovalModalProp
 
         <div className="mb-4 flex items-center justify-between gap-2 text-xs">
           <label className="flex items-center gap-1.5 text-[var(--text-muted)]">
-            <span>Allow scope:</span>
+            <span>Decision scope:</span>
             <select
               value={scope}
               onChange={(e) => setScope(e.target.value as ApprovalScope)}
@@ -113,7 +113,8 @@ export function ToolApprovalModal({ request, onResolved }: ToolApprovalModalProp
               <option value="conversation" disabled={!request.conversationId}>
                 This conversation
               </option>
-              <option value="always">Always (until restart)</option>
+              <option value="workspace">This workspace</option>
+              <option value="always">Always (every workspace)</option>
             </select>
           </label>
           <span className="text-[var(--text-muted)]">Auto-deny in {countdown}s</span>

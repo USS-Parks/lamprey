@@ -20,6 +20,8 @@ const api = {
     onToolCall: (cb: (e: unknown) => void) => ipcRenderer.on('chat:tool-call', (_, e) => cb(e)),
     onToolCallResult: (cb: (e: unknown) => void) =>
       ipcRenderer.on('chat:tool-call-result', (_, e) => cb(e)),
+    onPhase: (cb: (e: { conversationId: string; phase: string }) => void) =>
+      ipcRenderer.on('chat:phase', (_, e) => cb(e)),
     onAgentStatus: (cb: (e: unknown) => void) =>
       ipcRenderer.on('agent:status', (_, e) => cb(e)),
     offAll: () => {
@@ -29,6 +31,7 @@ const api = {
         'chat:error',
         'chat:tool-call',
         'chat:tool-call-result',
+        'chat:phase',
         'agent:status'
       ].forEach((ch) => ipcRenderer.removeAllListeners(ch))
     },
@@ -178,7 +181,7 @@ const api = {
     respondToApproval: (response: {
       callId: string
       decision: 'allow' | 'deny'
-      scope: 'once' | 'conversation' | 'always'
+      scope: 'once' | 'conversation' | 'workspace' | 'always'
     }) => ipcRenderer.invoke('tools:respondToApproval', response)
   },
 
@@ -187,7 +190,31 @@ const api = {
     setGlobalPolicy: (toolId: string, decision: 'allow' | 'deny' | null) =>
       ipcRenderer.invoke('permissions:setGlobalPolicy', toolId, decision),
     clearConversationPolicies: (conversationId: string) =>
-      ipcRenderer.invoke('permissions:clearConversationPolicies', conversationId)
+      ipcRenderer.invoke('permissions:clearConversationPolicies', conversationId),
+    // Wider policy CRUD — Settings UI uses these to inspect/edit any scope.
+    listPolicies: () => ipcRenderer.invoke('permissions:listPolicies'),
+    addPolicy: (input: {
+      scope: 'conversation' | 'workspace' | 'global'
+      subjectKind: 'tool' | 'risk'
+      subject: string
+      decision: 'allow' | 'deny'
+      conversationId?: string
+      workspacePath?: string
+    }) => ipcRenderer.invoke('permissions:addPolicy', input),
+    deletePolicy: (id: string) => ipcRenderer.invoke('permissions:deletePolicy', id),
+    clearScope: (scope: 'conversation' | 'workspace' | 'global') =>
+      ipcRenderer.invoke('permissions:clearScope', scope),
+    clearConversation: (conversationId: string) =>
+      ipcRenderer.invoke('permissions:clearConversation', conversationId)
+  },
+
+  plan: {
+    get: (conversationId: string) => ipcRenderer.invoke('plan:get', conversationId),
+    onUpdated: (cb: (e: { conversationId: string; snapshot: unknown }) => void): (() => void) => {
+      const handler = (_: unknown, e: { conversationId: string; snapshot: unknown }) => cb(e)
+      ipcRenderer.on('plan:updated', handler)
+      return () => ipcRenderer.removeListener('plan:updated', handler)
+    }
   },
 
   files: {
@@ -195,6 +222,8 @@ const api = {
     openPicker: () => ipcRenderer.invoke('files:openPicker'),
     getWorkdir: () => ipcRenderer.invoke('files:getWorkdir'),
     pickWorkdir: () => ipcRenderer.invoke('files:pickWorkdir'),
+    setWorkdir: (path: string) => ipcRenderer.invoke('files:setWorkdir', path),
+    clearWorkdir: () => ipcRenderer.invoke('files:clearWorkdir'),
     openInVSCode: (args?: { targetPath?: string }) =>
       ipcRenderer.invoke('files:openInVSCode', args),
     openInExplorer: (args?: { targetPath?: string }) =>

@@ -6,6 +6,8 @@ import { AttachmentPreview } from './AttachmentPreview'
 import { FileDropZone } from './FileDropZone'
 import { WelcomeScreen } from './WelcomeScreen'
 import { TokenTicker } from './TokenTicker'
+import { AgentRunBanner } from './AgentRunBanner'
+import { PlanChecklist } from './PlanChecklist'
 
 // Shared chat column: max-width cap + internal padding. Messages and the
 // input pill both use this so they sit in the same centered column no
@@ -52,6 +54,8 @@ export function ChatView() {
 
       <div className="flex justify-center border-t border-[var(--border)] bg-[var(--bg-primary)] pt-3 pb-4">
         <div className={CHAT_COLUMN_CLASS}>
+          <PlanChecklist />
+          <AgentRunBanner />
           <TokenTicker />
           <AttachmentPreview />
           <ChatInput

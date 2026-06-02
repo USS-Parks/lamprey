@@ -1,14 +1,18 @@
 import { create } from 'zustand'
 import type {
+  AgentRunPhase,
   Conversation,
   Message,
   ProcessedFile,
   ToolCallEvent,
-  ToolCallResultEvent
+  ToolCallResultEvent,
+  ToolProviderKind,
+  ToolRisk
 } from '@/lib/types'
 import { useSettingsStore } from '@/stores/settings-store'
 import { useModelStore } from '@/stores/model-store'
 import { useAgentStore } from '@/stores/agent-store'
+import { usePlanStore } from '@/stores/plan-store'
 import { toast } from '@/stores/toast-store'
 import { useNavHistoryStore } from '@/stores/nav-history-store'
 
@@ -17,9 +21,16 @@ export interface ToolCallState {
   serverId: string
   toolName: string
   args: Record<string, unknown>
-  status: 'pending' | 'running' | 'success' | 'error'
+  status: 'pending' | 'running' | 'success' | 'error' | 'denied'
   result?: string
   duration?: number
+  // Descriptor metadata mirrored from the chat:tool-call event so the
+  // card renders plain-English label, risk badges, and a live elapsed
+  // timer without an extra registry round-trip.
+  title?: string
+  risks?: ToolRisk[]
+  providerKind?: ToolProviderKind
+  startedAt?: number
 }
 
 interface ChatState {
@@ -33,6 +44,10 @@ interface ChatState {
   toolCalls: ToolCallState[]
   pendingAttachments: ProcessedFile[]
   attachmentsProcessing: boolean
+  // Codex-style run-phase pill source. Null when no run is active; set by the
+  // chat:phase IPC stream from electron/ipc/chat.ts. Cleared on terminal
+  // phases (done/error) so the pill disappears when the model finishes.
+  runPhase: AgentRunPhase | null
 
   loadConversations: () => Promise<void>
   selectConversation: (id: string) => Promise<void>
@@ -47,6 +62,7 @@ interface ChatState {
   addToolCall: (event: ToolCallEvent) => void
   updateToolCall: (event: ToolCallResultEvent) => void
   clearToolCalls: () => void
+  setRunPhase: (phase: AgentRunPhase | null) => void
   addAttachments: (files: ProcessedFile[]) => void
   removeAttachment: (index: number) => void
   clearAttachments: () => void
@@ -86,6 +102,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   toolCalls: [],
   pendingAttachments: [],
   attachmentsProcessing: false,
+  runPhase: null,
 
   loadConversations: async () => {
     const result = await window.api.conversation.list()
@@ -97,7 +114,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   selectConversation: async (id: string) => {
     if (get().activeConversationId === id) return
     useNavHistoryStore.getState().push(id)
-    set({ activeConversationId: id, toolCalls: [] })
+    set({ activeConversationId: id, toolCalls: [], runPhase: null })
     const result = await window.api.conversation.getMessages(id)
     if (result.success) {
       set({ messages: result.data })
@@ -106,6 +123,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
     if (conv) {
       set({ activeModel: conv.model })
     }
+    // Load the plan for the new active conversation. Fire-and-forget — the
+    // plan checklist renders empty until the snapshot arrives, which is fine.
+    void usePlanStore.getState().loadForConversation(id)
   },
 
   createConversation: async () => {
@@ -118,8 +138,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
         conversations: [conv, ...state.conversations],
         activeConversationId: conv.id,
         messages: [],
-        toolCalls: []
+        toolCalls: [],
+        runPhase: null
       }))
+      // Fresh conversation starts with an empty plan; load to seed the store
+      // (also drops any stale snapshot from the previous active conversation).
+      void usePlanStore.getState().loadForConversation(conv.id)
       return conv.id
     }
     return ''
@@ -127,11 +151,24 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   deleteConversation: async (id: string) => {
     await window.api.conversation.delete(id)
+    const wasActive = get().activeConversationId === id
     set((state) => ({
       conversations: state.conversations.filter((c) => c.id !== id),
-      activeConversationId: state.activeConversationId === id ? null : state.activeConversationId,
-      messages: state.activeConversationId === id ? [] : state.messages
+      activeConversationId: wasActive ? null : state.activeConversationId,
+      messages: wasActive ? [] : state.messages,
+      // Drop in-flight chat-side state for the deleted conversation so the
+      // welcome screen (and any subsequent fresh conversation) starts clean
+      // — without this the previous tool cards / run-phase pill / plan
+      // checklist linger because ChatView mounts them unconditionally.
+      toolCalls: wasActive ? [] : state.toolCalls,
+      runPhase: wasActive ? null : state.runPhase
     }))
+    if (wasActive) {
+      // Plan store is its own zustand store; the state set above can't
+      // reach it. Same lifecycle — clear when the owning conversation
+      // disappears.
+      usePlanStore.getState().clear()
+    }
   },
 
   sendMessage: async (content: string, activeSkillIds: string[]) => {
@@ -175,6 +212,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       streamingContent: '',
       streamStartedAt: Date.now(),
       toolCalls: [],
+      runPhase: 'understanding',
       pendingAttachments: []
     }))
 
@@ -260,13 +298,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
       messages: [...state.messages, message],
       isStreaming: false,
       streamingContent: '',
-      streamStartedAt: null
+      streamStartedAt: null,
+      runPhase: null
     }))
     get().loadConversations()
   },
 
   streamError: (_error: string) => {
-    set({ isStreaming: false, streamingContent: '', streamStartedAt: null })
+    set({ isStreaming: false, streamingContent: '', streamStartedAt: null, runPhase: null })
   },
 
   addToolCall: (event: ToolCallEvent) => {
@@ -278,17 +317,25 @@ export const useChatStore = create<ChatState>((set, get) => ({
           serverId: event.serverId,
           toolName: event.toolName,
           args: event.args,
-          status: 'pending'
+          status: 'running',
+          title: event.title,
+          risks: event.risks,
+          providerKind: event.providerKind,
+          startedAt: event.startedAt
         }
       ]
     }))
   },
 
   updateToolCall: (event: ToolCallResultEvent) => {
+    // Respect the backend's terminal status — earlier versions hard-coded
+    // 'success' even for denied/error results, which made every red X look
+    // like a green check until the user expanded the card.
+    const finalStatus: ToolCallState['status'] = event.status ?? 'success'
     set((state) => ({
       toolCalls: state.toolCalls.map((tc) =>
         tc.callId === event.callId
-          ? { ...tc, status: 'success' as const, result: event.result, duration: event.duration }
+          ? { ...tc, status: finalStatus, result: event.result, duration: event.duration }
           : tc
       )
     }))
@@ -296,6 +343,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   clearToolCalls: () => {
     set({ toolCalls: [] })
+  },
+
+  setRunPhase: (phase: AgentRunPhase | null) => {
+    set({ runPhase: phase })
   },
 
   addAttachments: (files: ProcessedFile[]) => {

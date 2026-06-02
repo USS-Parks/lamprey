@@ -1,4 +1,4 @@
-import { ipcMain, BrowserWindow, app } from 'electron'
+import { ipcMain, app } from 'electron'
 import { randomUUID } from 'crypto'
 import { readFileSync, existsSync } from 'fs'
 import { join } from 'path'
@@ -12,6 +12,11 @@ import { mcpManager } from '../services/mcp-manager'
 import { listSkills, getSkillContent } from '../services/skill-loader'
 import { toolRegistry } from '../services/tool-registry'
 import { permissionsService, shouldGateOnRisks } from '../services/permissions-store'
+import { inferPhaseFromDescriptor, type AgentRunPhase } from '../services/agent-run-phase'
+import { getActiveWorkspace } from '../services/workspace-state'
+import { classifyToolResult } from '../services/tool-result-status'
+import { dispatchNativeTool } from '../services/native-dispatch'
+import { emitChatEvent } from '../services/chat-events'
 import type { ChatCompletionMessageParam, ChatCompletionTool } from 'openai/resources/chat/completions'
 
 interface ModelParams {
@@ -53,13 +58,8 @@ const activeAbortControllers = new Map<string, AbortController>()
 
 const MAX_TOOL_ROUNDS = 10
 
-function getMainWindow(): BrowserWindow | null {
-  const windows = BrowserWindow.getAllWindows()
-  return windows[0] || null
-}
-
-function send(channel: string, data: unknown): void {
-  getMainWindow()?.webContents.send(channel, data)
+function emitPhase(conversationId: string, phase: AgentRunPhase): void {
+  emitChatEvent('chat:phase', { conversationId, phase })
 }
 
 export function registerChatHandlers(): void {
@@ -81,6 +81,8 @@ export function registerChatHandlers(): void {
         model
       })
 
+      emitPhase(conversationId, 'understanding')
+
       fireHooks('promptSubmit', { conversationId, promptBody: content })
 
       const allMessages = convStore.getMessages(conversationId)
@@ -100,7 +102,8 @@ export function registerChatHandlers(): void {
       }
 
       const { params: modelParams, systemPromptOverride } = loadModelConfig(model)
-      const agentsMd = readAgentsMd()
+      const activeWorkspace = getActiveWorkspace()
+      const agentsMd = readAgentsMd(activeWorkspace)
       const systemPrompt = buildSystemPrompt(
         skillContents,
         memoryBlock,
@@ -168,11 +171,17 @@ export function registerChatHandlers(): void {
       // because the user explicitly does not want concurrent multi-model output.
       void requestedAgentMode
 
+      // Workspace pinned at the start of the round so the in-flight tool
+      // loop sees one consistent cwd even if the user retargets the folder
+      // chip mid-stream.
+      const workspacePath = activeWorkspace
+
       await runChatRound(
         conversationId,
         model,
         apiMessages,
         tools.length > 0 ? tools : undefined,
+        workspacePath,
         abortController.signal,
         0,
         modelParams
@@ -182,7 +191,8 @@ export function registerChatHandlers(): void {
       return { success: true, data: { conversationId } }
     } catch (err: any) {
       activeAbortControllers.delete(conversationId)
-      send('chat:error', { conversationId, error: err.message })
+      emitPhase(conversationId, 'error')
+      emitChatEvent('chat:error', { conversationId, error: err.message })
       return { success: false, error: err.message }
     }
   })
@@ -226,12 +236,14 @@ async function runChatRound(
   model: string,
   messages: ChatCompletionMessageParam[],
   tools: ChatCompletionTool[] | undefined,
+  workspacePath: string,
   signal: AbortSignal,
   round: number,
   params?: ModelParams
 ): Promise<void> {
   if (round >= MAX_TOOL_ROUNDS) {
-    send('chat:error', {
+    emitPhase(conversationId, 'error')
+    emitChatEvent('chat:error', {
       conversationId,
       error: 'Maximum tool call rounds reached'
     })
@@ -248,7 +260,7 @@ async function runChatRound(
       effectiveTools,
       {
         onChunk: (chunk) => {
-          send('chat:chunk', { conversationId, content: chunk })
+          emitChatEvent('chat:chunk', { conversationId, content: chunk })
         },
         onDone: async (fullContent, toolCalls) => {
           if (!toolCalls || toolCalls.length === 0) {
@@ -259,7 +271,8 @@ async function runChatRound(
               content: fullContent,
               model
             })
-            send('chat:done', { conversationId, message: assistantMsg })
+            emitPhase(conversationId, 'done')
+            emitChatEvent('chat:done', { conversationId, message: assistantMsg })
             fireHooks('agentStop', { conversationId })
             resolve()
             return
@@ -295,15 +308,30 @@ async function runChatRound(
               args = {}
             }
 
-            send('chat:tool-call', {
+            const startTime = Date.now()
+
+            // Resolve the descriptor early so the UI event carries the
+            // plain-English title + risk metadata. Falls back gracefully for
+            // tools that haven't registered a descriptor (shouldn't happen in
+            // normal flow but defensive).
+            const earlyDescriptor = toolRegistry.getById(toolName)
+            emitChatEvent('chat:tool-call', {
               callId: tc.id,
+              conversationId,
               serverId: toolName.includes('__') ? toolName.split('__')[0] : 'internal',
               toolName: toolName.includes('__') ? toolName.split('__').slice(1).join('__') : toolName,
+              title: earlyDescriptor?.title ?? toolName,
+              risks: earlyDescriptor?.risks ?? [],
+              providerKind: earlyDescriptor?.providerKind ?? 'native',
+              startedAt: startTime,
               args
             })
 
             let result: string
-            const startTime = Date.now()
+            // Set by native handlers that return a structured envelope —
+            // takes precedence over the heuristic classifier so handlers
+            // can signal outcomes the result text can't represent.
+            let explicitStatus: 'done' | 'error' | 'denied' | undefined
 
             // Audit-buffer entry — tool-calls-store persists this to SQLite.
             toolRegistry.recordCallStart({
@@ -327,11 +355,14 @@ async function runChatRound(
             //   Pure 'read'/'write' (memory_add, update_plan, view_image,
             //   web_find, time_lookup) do NOT trigger this gate.
             const descriptor = toolRegistry.getById(toolName)
+            if (descriptor) {
+              emitPhase(conversationId, inferPhaseFromDescriptor(descriptor))
+            }
             const needsApproval =
               !!descriptor &&
               (descriptor.requiresApproval || shouldGateOnRisks(descriptor.risks))
-            const approvalDecision: 'allow' | 'deny' = needsApproval && descriptor
-              ? await permissionsService.requestApproval({
+            const approvalOutcome = needsApproval && descriptor
+              ? await permissionsService.requestApprovalDetailed({
                   callId: tc.id,
                   toolId: descriptor.id,
                   name: descriptor.name,
@@ -341,21 +372,39 @@ async function runChatRound(
                   args,
                   conversationId
                 })
-              : 'allow'
+              : { decision: 'allow' as const, source: 'none' }
+            const approvalDecision = approvalOutcome.decision
+            const approvalSource = approvalOutcome.source
 
             if (approvalDecision === 'deny') {
               result = 'Action denied by user.'
+              explicitStatus = 'denied'
             } else if (toolName === 'memory_add' && typeof args.content === 'string') {
               const entry = memStore.addMemory(args.content, conversationId)
-              send('memory:added', entry)
+              emitChatEvent('memory:added', entry)
               result = 'Saved to memory.'
             } else if (toolRegistry.hasHandler(toolName)) {
-              // Native tools with handlers (shell_command + future apply_patch,
-              // view_image, etc) dispatch through the registry.
-              try {
-                result = await toolRegistry.executeNative(toolName, args, { conversationId })
-              } catch (err: any) {
-                result = `Error: ${err.message}`
+              const dispatched = await dispatchNativeTool(() =>
+                toolRegistry.executeNative(toolName, args, {
+                  conversationId,
+                  workspacePath
+                })
+              )
+              result = dispatched.result
+              explicitStatus = dispatched.status
+              // update_plan side effect: the result body is the JSON-encoded
+              // plan snapshot; broadcast it so the PlanChecklist refreshes
+              // without a polling round-trip. Only when the call actually
+              // succeeded — a failed update_plan never has a snapshot to
+              // forward.
+              if (toolName === 'update_plan' && dispatched.status === 'done') {
+                try {
+                  const snapshot = JSON.parse(result)
+                  emitChatEvent('plan:updated', { conversationId, snapshot })
+                } catch {
+                  // Snapshot shape drifted — renderer refetches on the next
+                  // conversation switch.
+                }
               }
             } else if (toolName.includes('__')) {
               const [serverId, ...nameParts] = toolName.split('__')
@@ -372,21 +421,27 @@ async function runChatRound(
 
             const duration = Date.now() - startTime
             const finishedAt = startTime + duration
-            let auditStatus: 'done' | 'error' | 'denied'
-            if (result === 'Action denied by user.') {
-              auditStatus = 'denied'
-            } else if (result.startsWith('Error:') || result.startsWith('Unknown tool:')) {
-              auditStatus = 'error'
-            } else {
-              auditStatus = 'done'
-            }
+            // Explicit status from a structured handler return wins; falls
+            // back to the legacy classifier for plain-string returns (mostly
+            // MCP tools and the still-unmigrated handler paths).
+            const auditStatus = explicitStatus ?? classifyToolResult(result)
             toolRegistry.recordCallEnd(tc.id, {
               status: auditStatus,
               result: auditStatus === 'error' ? undefined : result,
               error: auditStatus === 'error' ? result : undefined,
-              finishedAt
+              finishedAt,
+              approvalSource
             })
-            send('chat:tool-call-result', { callId: tc.id, result, duration })
+            emitChatEvent('chat:tool-call-result', {
+              callId: tc.id,
+              conversationId,
+              result,
+              duration,
+              // Maps audit status to the renderer enum: 'done' → 'success',
+              // 'error' / 'denied' pass through. The chat-store turns this into
+              // the badge + outline color on ToolUseCard.
+              status: auditStatus === 'done' ? 'success' : auditStatus
+            })
 
             convStore.saveMessage({
               id: randomUUID(),
@@ -404,14 +459,15 @@ async function runChatRound(
           }
 
           try {
-            await runChatRound(conversationId, model, messages, tools, signal, round + 1, params)
+            await runChatRound(conversationId, model, messages, tools, workspacePath, signal, round + 1, params)
             resolve()
           } catch (err) {
             reject(err)
           }
         },
         onError: (error) => {
-          send('chat:error', { conversationId, error })
+          emitPhase(conversationId, 'error')
+          emitChatEvent('chat:error', { conversationId, error })
           reject(new Error(error))
         }
       },

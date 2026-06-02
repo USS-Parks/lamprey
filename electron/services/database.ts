@@ -109,6 +109,27 @@ function initSchema(db: Database.Database): void {
 
     CREATE INDEX IF NOT EXISTS idx_tool_calls_conversation
       ON tool_calls(conversation_id, started_at DESC);
+
+    CREATE TABLE IF NOT EXISTS permission_policies (
+      id TEXT PRIMARY KEY,
+      scope TEXT NOT NULL CHECK(scope IN ('conversation','workspace','global')),
+      subject_kind TEXT NOT NULL CHECK(subject_kind IN ('tool','risk')),
+      subject TEXT NOT NULL,
+      decision TEXT NOT NULL CHECK(decision IN ('allow','deny')),
+      conversation_id TEXT,
+      workspace_path TEXT,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+
+    -- Resolution scans by scope + subject_kind + subject; the partial-conv and
+    -- partial-workspace lookups also need to match by the scoping id.
+    CREATE INDEX IF NOT EXISTS idx_permission_policies_scope
+      ON permission_policies(scope, subject_kind, subject);
+    CREATE INDEX IF NOT EXISTS idx_permission_policies_conv
+      ON permission_policies(conversation_id);
+    CREATE INDEX IF NOT EXISTS idx_permission_policies_workspace
+      ON permission_policies(workspace_path);
   `)
 
   // Migrations for older DBs that predate kind/worktree_path/project_id columns.
@@ -121,6 +142,11 @@ function initSchema(db: Database.Database): void {
   // and the API rejects the next turn with "Messages with role 'tool' must
   // be a response to a preceding message with 'tool_calls'".
   safeAddColumn(db, 'messages', 'tool_calls TEXT')
+
+  // Audit provenance for tool_calls. 'modal' = user answered the approval
+  // dialog; 'policy:<id>' = a persisted policy matched; 'none' = the call
+  // was not gated (no requiresApproval, no gating risks).
+  safeAddColumn(db, 'tool_calls', 'approval_source TEXT')
 
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_conversations_project

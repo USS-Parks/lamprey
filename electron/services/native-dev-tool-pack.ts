@@ -47,7 +47,8 @@ toolRegistry.registerNative(
     requiresApproval: false,
     enabled: true
   },
-  async (args) => executeViewImage(args as unknown as ViewImageArgs, process.cwd())
+  async (args, ctx) =>
+    executeViewImage(args as unknown as ViewImageArgs, ctx.workspacePath ?? process.cwd())
 )
 
 toolRegistry.registerNative(
@@ -290,7 +291,7 @@ toolRegistry.registerNative(
   async (args, ctx) => {
     const a = args as Record<string, unknown>
     if (typeof a.goal_id !== 'string' || a.goal_id.length === 0) {
-      return 'update_goal error: "goal_id" is required.'
+      throw new Error('update_goal: "goal_id" is required.')
     }
     const input: UpdateGoalInput = {
       goalId: a.goal_id,
@@ -299,11 +300,9 @@ toolRegistry.registerNative(
       dueDate: typeof a.due_date === 'string' ? a.due_date : undefined,
       status: typeof a.status === 'string' ? (a.status as UpdateGoalInput['status']) : undefined
     }
-    try {
-      const goal = updateGoal(ctx.conversationId, input)
-      return JSON.stringify(goal, null, 2)
-    } catch (err: any) {
-      return `update_goal error: ${err?.message ?? 'unknown error'}`
-    }
+    // updateGoal throws on unknown goal id; let it propagate so chat.ts
+    // marks the call as 'error' instead of pretending success.
+    const goal = updateGoal(ctx.conversationId, input)
+    return JSON.stringify(goal, null, 2)
   }
 )
