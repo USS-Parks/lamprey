@@ -195,6 +195,39 @@ function initSchema(db: Database.Database): void {
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_conversations_project
       ON conversations(project_id, updated_at DESC);
+
+    -- One row per project that has a GitHub repo association. We treat the
+    -- link as 1:1 (a project maps to a single GitHub repo) — multi-repo
+    -- projects can be modelled later by promoting this to a join table.
+    -- local_path is nullable: a repo can be associated before it's cloned.
+    CREATE TABLE IF NOT EXISTS project_github_repos (
+      project_id TEXT PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
+      repo_id INTEGER NOT NULL,
+      full_name TEXT NOT NULL,
+      owner TEXT NOT NULL,
+      name TEXT NOT NULL,
+      default_branch TEXT NOT NULL,
+      html_url TEXT NOT NULL,
+      clone_url TEXT NOT NULL,
+      local_path TEXT,
+      linked_at INTEGER NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_project_github_repos_full_name
+      ON project_github_repos(full_name);
+
+    -- Persisted PR links for a conversation, so the PR list can show which
+    -- PRs Lamprey opened from this thread. The PR itself lives on GitHub;
+    -- we just keep enough to deep-link back.
+    CREATE TABLE IF NOT EXISTS conversation_pull_requests (
+      conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+      pr_number INTEGER NOT NULL,
+      full_name TEXT NOT NULL,
+      html_url TEXT NOT NULL,
+      title TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      PRIMARY KEY (conversation_id, full_name, pr_number)
+    );
   `)
 }
 

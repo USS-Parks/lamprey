@@ -13,6 +13,7 @@ import { CurrentInfoSettings } from './CurrentInfoSettings'
 import { ImageGenSettings } from './ImageGenSettings'
 import { PermissionsSettings } from './PermissionsSettings'
 import { PlanGoalSettings } from './PlanGoalSettings'
+import { GitHubSettings } from './GitHubSettings'
 import { useUiStore } from '@/stores/ui-store'
 
 interface SettingsDialogProps {
@@ -25,6 +26,7 @@ const TABS = [
   { id: 'agents', label: 'Agents' },
   { id: 'agenticCoding', label: 'Coding Mode' },
   { id: 'api', label: 'API Keys' },
+  { id: 'github', label: 'GitHub' },
   { id: 'appearance', label: 'Appearance' },
   { id: 'mcp', label: 'MCP Servers' },
   { id: 'webTools', label: 'Web Tools' },
@@ -82,6 +84,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
             {activeTab === 'agents' && <AgentSettings />}
             {activeTab === 'agenticCoding' && <AgenticCodingSettings />}
             {activeTab === 'api' && <ApiKeySettings />}
+            {activeTab === 'github' && <GitHubSettings />}
             {activeTab === 'appearance' && <AppearanceSettings />}
             {activeTab === 'mcp' && <McpSettings />}
             {activeTab === 'webTools' && <WebToolsSettings />}

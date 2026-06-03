@@ -27,6 +27,7 @@ import { registerWebToolsHandlers } from './web-tools'
 import { registerCurrentInfoHandlers } from './current-info'
 import { registerImageToolsHandlers } from './image-tools'
 import { registerPlanHandlers } from './plan'
+import { registerGitHubHandlers } from './github'
 
 export function registerAllIpcHandlers(): void {
   registerChatHandlers()
@@ -53,4 +54,5 @@ export function registerAllIpcHandlers(): void {
   registerCurrentInfoHandlers()
   registerImageToolsHandlers()
   registerPlanHandlers()
+  registerGitHubHandlers()
 }

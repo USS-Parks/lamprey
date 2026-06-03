@@ -1,0 +1,237 @@
+import { describe, it, expect } from 'vitest'
+import {
+  buildCreatePullRequestPayload,
+  buildRequestHeaders,
+  friendlyAuthHint,
+  isValidBranchName,
+  isValidSlug,
+  parsePullRequest,
+  parseRepoList,
+  planPushBranch
+} from './github-service'
+
+describe('isValidSlug', () => {
+  it('accepts realistic owner/repo names', () => {
+    for (const v of ['octocat', 'Hello-World', 'lamprey.harness', 'a_b', 'X1']) {
+      expect(isValidSlug(v)).toBe(true)
+    }
+  })
+
+  it('rejects empty, leading dot, leading dash, and special chars', () => {
+    for (const v of ['', '.git', '-x', 'a b', 'a/b', 'a..b', 'a;b']) {
+      expect(isValidSlug(v)).toBe(false)
+    }
+  })
+
+  it('rejects non-strings', () => {
+    expect(isValidSlug(undefined)).toBe(false)
+    expect(isValidSlug(null)).toBe(false)
+    expect(isValidSlug(42)).toBe(false)
+    expect(isValidSlug({})).toBe(false)
+  })
+
+  it('caps slug length at 100', () => {
+    expect(isValidSlug('a'.repeat(100))).toBe(true)
+    expect(isValidSlug('a'.repeat(101))).toBe(false)
+  })
+})
+
+describe('isValidBranchName', () => {
+  it('matches the worktree validator posture: no leading -, no ".." sequence', () => {
+    expect(isValidBranchName('feat/x')).toBe(true)
+    expect(isValidBranchName('release/2024.06.02')).toBe(true)
+    expect(isValidBranchName('-x')).toBe(false)
+    expect(isValidBranchName('a..b')).toBe(false)
+    expect(isValidBranchName('a b')).toBe(false)
+  })
+})
+
+describe('buildRequestHeaders', () => {
+  it('sets Authorization, Accept, GitHub api version, and User-Agent', () => {
+    const h = buildRequestHeaders('TOKEN_VALUE')
+    expect(h['Authorization']).toBe('Bearer TOKEN_VALUE')
+    expect(h['Accept']).toBe('application/vnd.github+json')
+    expect(h['X-GitHub-Api-Version']).toBe('2022-11-28')
+    expect(h['User-Agent']).toBe('Lamprey-Harness')
+  })
+
+  it('honours an Accept override (for e.g. raw / diff payloads)', () => {
+    expect(buildRequestHeaders('t', 'application/vnd.github.v3.diff')['Accept']).toBe(
+      'application/vnd.github.v3.diff'
+    )
+  })
+
+  // We never want the bearer to land in any other header (e.g. cookies),
+  // and the assembled object must be plain — no prototype injection.
+  it('does not leak the token into any header other than Authorization', () => {
+    const h = buildRequestHeaders('SECRET-TOKEN')
+    for (const [k, v] of Object.entries(h)) {
+      if (k === 'Authorization') continue
+      expect(v.includes('SECRET-TOKEN')).toBe(false)
+    }
+  })
+})
+
+describe('parseRepoList', () => {
+  it('returns [] for non-array input', () => {
+    expect(parseRepoList(null)).toEqual([])
+    expect(parseRepoList({})).toEqual([])
+    expect(parseRepoList('foo')).toEqual([])
+  })
+
+  it('skips entries with no full_name', () => {
+    const repos = parseRepoList([{}, null, { id: 1, full_name: 'octocat/Hello-World', name: 'Hello-World', owner: { login: 'octocat' }, private: false, default_branch: 'main', html_url: 'h', clone_url: 'c', ssh_url: 's', description: null }])
+    expect(repos.length).toBe(1)
+    expect(repos[0].fullName).toBe('octocat/Hello-World')
+  })
+
+  it('derives owner from full_name when owner.login is missing', () => {
+    const repos = parseRepoList([
+      { id: 1, full_name: 'octocat/Hello-World', name: 'Hello-World', owner: {} as any, private: false, default_branch: 'main', html_url: 'h', clone_url: 'c', ssh_url: 's', description: null }
+    ])
+    expect(repos[0].owner).toBe('octocat')
+  })
+
+  it('defaults a missing default_branch to "main"', () => {
+    const repos = parseRepoList([
+      { id: 1, full_name: 'o/r', name: 'r', owner: { login: 'o' }, private: true, default_branch: '', html_url: 'h', clone_url: 'c', ssh_url: 's', description: null }
+    ])
+    expect(repos[0].defaultBranch).toBe('main')
+  })
+})
+
+describe('buildCreatePullRequestPayload', () => {
+  it('emits the canonical GitHub PR-creation shape', () => {
+    expect(
+      buildCreatePullRequestPayload({
+        owner: 'o',
+        repo: 'r',
+        title: 'Add foo',
+        body: 'Closes #1',
+        head: 'feat/foo',
+        base: 'main',
+        draft: true
+      })
+    ).toEqual({
+      title: 'Add foo',
+      body: 'Closes #1',
+      head: 'feat/foo',
+      base: 'main',
+      draft: true
+    })
+  })
+
+  it('coerces undefined body to "" and undefined draft to false', () => {
+    const out = buildCreatePullRequestPayload({
+      owner: 'o',
+      repo: 'r',
+      title: 't',
+      head: 'h',
+      base: 'b'
+    })
+    expect(out.body).toBe('')
+    expect(out.draft).toBe(false)
+  })
+
+  it('prefers headLabel over head when provided (fork PRs use "owner:branch")', () => {
+    const out = buildCreatePullRequestPayload({
+      owner: 'upstream',
+      repo: 'r',
+      title: 't',
+      head: 'feature',
+      headLabel: 'fork-owner:feature',
+      base: 'main'
+    })
+    expect(out.head).toBe('fork-owner:feature')
+  })
+})
+
+describe('parsePullRequest', () => {
+  const raw = {
+    number: 42,
+    title: 'A PR',
+    body: 'body',
+    state: 'open' as const,
+    draft: true,
+    merged: false,
+    merged_at: null,
+    html_url: 'https://github.com/o/r/pull/42',
+    user: { login: 'u', avatar_url: 'a' },
+    base: { ref: 'main', sha: 'base-sha', label: 'o:main' },
+    head: { ref: 'feat', sha: 'head-sha', label: 'u:feat' },
+    created_at: 'c',
+    updated_at: 'u'
+  }
+
+  it('camelCases and preserves draft + merged flags', () => {
+    const pr = parsePullRequest(raw)
+    expect(pr.number).toBe(42)
+    expect(pr.draft).toBe(true)
+    expect(pr.merged).toBe(false)
+    expect(pr.htmlUrl).toBe('https://github.com/o/r/pull/42')
+    expect(pr.user.login).toBe('u')
+    expect(pr.head.ref).toBe('feat')
+  })
+
+  it('infers merged=true when merged_at is set even if merged flag is missing', () => {
+    const pr = parsePullRequest({ ...raw, merged: undefined as any, merged_at: '2024-06-01T00:00:00Z' })
+    expect(pr.merged).toBe(true)
+  })
+})
+
+describe('planPushBranch', () => {
+  it('refuses invalid branch names regardless of mode', () => {
+    expect(planPushBranch({ hasToken: true, mode: 'oauth', branchValid: false })).toEqual({
+      kind: 'refuse',
+      reason: 'invalid branch name'
+    })
+  })
+
+  it('chooses token push when a token exists and mode is not none', () => {
+    expect(planPushBranch({ hasToken: true, mode: 'oauth', branchValid: true })).toMatchObject({
+      kind: 'token'
+    })
+    expect(planPushBranch({ hasToken: true, mode: 'gh-cli', branchValid: true })).toMatchObject({
+      kind: 'token'
+    })
+  })
+
+  it('falls back to plain git push when no token is available', () => {
+    expect(planPushBranch({ hasToken: false, mode: 'oauth', branchValid: true })).toMatchObject({
+      kind: 'plain'
+    })
+    expect(planPushBranch({ hasToken: false, mode: 'none', branchValid: true })).toMatchObject({
+      kind: 'plain'
+    })
+  })
+
+  it('falls back to plain push when mode is "none" even with a stale token marker', () => {
+    expect(planPushBranch({ hasToken: true, mode: 'none', branchValid: true })).toMatchObject({
+      kind: 'plain'
+    })
+  })
+})
+
+describe('friendlyAuthHint', () => {
+  it('returns a helpful message on auth failure when not connected', () => {
+    const hint = friendlyAuthHint(
+      'remote: Support for password authentication was removed.\nfatal: Authentication failed',
+      'none'
+    )
+    expect(hint).toMatch(/no GitHub credentials/i)
+  })
+
+  it('suggests reconnecting when auth fails with a stored mode', () => {
+    const hint = friendlyAuthHint('fatal: Authentication failed for https://github.com/...', 'oauth')
+    expect(hint).toMatch(/reconnect/i)
+  })
+
+  it('flags non-fast-forward as a rebase situation', () => {
+    const hint = friendlyAuthHint('rejected: non-fast-forward', 'oauth')
+    expect(hint).toMatch(/non-fast-forward/i)
+  })
+
+  it('returns undefined for unrelated stderr', () => {
+    expect(friendlyAuthHint('Everything up-to-date', 'oauth')).toBeUndefined()
+  })
+})

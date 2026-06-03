@@ -455,6 +455,66 @@ const api = {
     test: () => ipcRenderer.invoke('imageGen:test')
   },
 
+  github: {
+    status: () => ipcRenderer.invoke('github:status'),
+    saveOAuthClient: (args: { clientId: string; clientSecret: string }) =>
+      ipcRenderer.invoke('github:saveOAuthClient', args),
+    hasOAuthClient: () => ipcRenderer.invoke('github:hasOAuthClient'),
+    setMode: (mode: 'oauth' | 'github_app' | 'gh-cli' | 'none') =>
+      ipcRenderer.invoke('github:setMode', mode),
+    connect: () => ipcRenderer.invoke('github:connect'),
+    disconnect: () => ipcRenderer.invoke('github:disconnect'),
+    viewer: () => ipcRenderer.invoke('github:viewer'),
+    repositories: (args?: { page?: number; perPage?: number }) =>
+      ipcRenderer.invoke('github:repositories', args),
+    getRepository: (args: { owner: string; repo: string }) =>
+      ipcRenderer.invoke('github:getRepository', args),
+    pickCloneDir: () => ipcRenderer.invoke('github:pickCloneDir'),
+    clone: (args: { owner: string; repo: string; targetDir: string }) =>
+      ipcRenderer.invoke('github:clone', args),
+    getProjectRepo: (args: { projectId: string }) =>
+      ipcRenderer.invoke('github:getProjectRepo', args),
+    assignRepoToProject: (args: {
+      projectId: string
+      owner: string
+      repo: string
+      localPath?: string | null
+    }) => ipcRenderer.invoke('github:assignRepoToProject', args),
+    unlinkRepo: (args: { projectId: string }) =>
+      ipcRenderer.invoke('github:unlinkRepo', args),
+    compare: (args: { owner: string; repo: string; base: string; head: string }) =>
+      ipcRenderer.invoke('github:compare', args),
+    createPullRequest: (args: {
+      owner: string
+      repo: string
+      title: string
+      body?: string
+      head: string
+      base: string
+      draft?: boolean
+      headLabel?: string
+      conversationId?: string
+    }) => ipcRenderer.invoke('github:createPullRequest', args),
+    pullRequests: (args: {
+      owner: string
+      repo: string
+      state?: 'open' | 'closed' | 'all'
+      per_page?: number
+    }) => ipcRenderer.invoke('github:pullRequests', args),
+    getPullRequest: (args: { owner: string; repo: string; number: number }) =>
+      ipcRenderer.invoke('github:getPullRequest', args),
+    listConversationPullRequests: (args: { conversationId: string }) =>
+      ipcRenderer.invoke('github:listConversationPullRequests', args),
+    pushBranch: (args: {
+      cwd: string
+      branch: string
+      owner: string
+      repo: string
+      setUpstream?: boolean
+    }) => ipcRenderer.invoke('github:pushBranch', args),
+    openInBrowser: (url: string) => ipcRenderer.invoke('github:openInBrowser', url)
+  },
+
   app: {
     onError: (cb: (e: { message: string }) => void) =>
       ipcRenderer.on('app:error', (_, e) => cb(e)),
