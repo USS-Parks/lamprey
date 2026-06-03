@@ -1,5 +1,83 @@
 # Lamprey Harness Dev Log
 
+## Audit + remediation — comprehensive verification of spine + RAG (2026-06-03)
+
+Full-codebase audit after the RAG stack landed. Five parallel audit agents ran across six dimensions (RAG plumbing, event spine + IPC, validation + error handling, type lockstep + dead code, lint cleanliness, runtime smell), then a skeptic-mode adversarial verification of every fix. **0 lint errors, 0 TS errors, 819 / 824 tests pass (5 intentionally skipped: 2 DB-only contract placeholders + 2 network-only embedding model download + 1 cross-encoder rerank).** Up from the post-R14 baseline of 797 by +22 new validation tests (chat:send, settings sanitizer), 0 regressions.
+
+### Lint cleanup (8 errors → 0)
+
+All in the new RAG code from the R-prompt sprint:
+- `loaders/docx.ts` + `loaders/pdf.ts` — 5 `preserve-caught-error` violations: re-thrown errors now carry `{ cause: err }` so the upstream stack trace isn't lost.
+- `retrieve.ts:131` — `no-useless-assignment`: removed the redundant `= null` initializer; TS narrows correctly from the try/catch assignment.
+- `store.ts:367` — `no-empty-object-type`: `interface MemoryDocument extends RagDocument {}` replaced with `type MemoryDocument = RagDocument`.
+- `citation-parser.ts:25` — `prefer-const`: `let masked` → `const masked`; it was never reassigned.
+
+### High-severity fix — `chat-augmentation.ts` fake polish (HIGH)
+
+Three audit agents independently flagged the function as dead code: it computed `retrievalId`, `startedAt`, `lexHitsTotal`, `vecHitsTotal`, then `void`'d them all and returned `retrievalId: ''`. **Confirmed real fake polish.** Rewrote:
+- Returns a real `randomUUID()` `retrievalId` so the chat handler can stamp it onto the assistant message row AND call `persistRetrieval(retrievalId, ...)` with the same id.
+- `RagAugmentResult` interface now includes a `stats: { lexHitsTotal, vecHitsTotal, durationMs }` field carrying the numbers that were previously discarded.
+- All `void` statements removed.
+
+### Type drift fix — `EmbedderInfo.modelRef` (HIGH)
+
+Drift caught by the type-lockstep audit: electron-side `EmbedderInfo` had `modelRef: string` (the HuggingFace id passed to `pipeline()`); renderer-side mirror omitted it. Fixed by adding `modelRef: string` and the optional `description?: string` to the renderer interface, restoring lockstep.
+
+### Validation hardening — `chat:send` request guard (HIGH)
+
+Audit caught: `ipcMain.handle('chat:send', async (_event, request) => { const { content, model, ... } = request }` trusted the renderer-supplied object unconditionally. Refactor:
+- New `electron/ipc/chat-validation.ts` with pure `validateChatSendRequest(raw): {ok, value} | {ok, error}` that rejects null / non-object / array, requires non-empty string `content`, requires string `model`, allows `conversationId` as string-or-absent, filters `activeSkillIds` to strings only, narrows `agentMode` to `'single' | 'multi'` or undefined.
+- Extracted to its own file (rather than alongside the handler) because importing `./chat` pulls in skill-loader + electron-toolkit + providers — none initialize under headless vitest.
+- 13 pure tests in `chat-validation.test.ts` pin every reject path + the normalize-to-defaults success path.
+
+### Validation hardening — `settings:set` prototype-pollution defence (MEDIUM → upgraded after skeptic feedback)
+
+Initial fix: top-level POLLUTION_KEYS (`__proto__`, `constructor`, `prototype`) stripped before spread merge. **Skeptic agent caught**: nested `{modelConfig: {__proto__: evil}}` still slipped through. **Upgraded to recursive**:
+- `stripPollutionKeys(value, depth)` walks objects and arrays, dropping forbidden keys at every depth.
+- Depth cap of 16 prevents a hostile renderer from OOM-ing the sanitizer with a 10⁴-deep payload. Settings is shallow by design; 16 is generous headroom.
+- Non-object / array input → empty `{}` (no-op merge, no crash).
+- 8 tests in `settings-sanitizer.test.ts`: non-object input, null, top-level `__proto__`/`constructor`/`prototype` rejected, array input ignored, nested `__proto__` stripped, array-element `__proto__` stripped, deep recursion depth cap exercised.
+
+### Resource cap — ingest `MAX_INGEST_BYTES = 500 MB` (MEDIUM)
+
+`IngestManager.runOneFile` previously read user-supplied file paths or paste text with no size cap. Added the 500 MB ceiling, checked **before** `readFile`/`Buffer.from` runs, with a clear error message that distinguishes file-path overflow from paste overflow. The text loader's own 25 MB cap still gates the loader layer; this is the wider backstop that protects the embedder + chunker from OOM on a 1 GB misclick.
+
+### AbortSignal threading — embeddings.embed (MEDIUM)
+
+The ingest orchestrator had an `AbortController` but `embeddings.embed()` ignored it. Threaded `signal` through:
+- `EmbeddingsLike` interface in `ingest.ts` grew `signal?: AbortSignal`.
+- `EmbeddingsService.embed(texts, signal)` checks the signal between batches (terminating the in-flight worker_thread message is non-trivial, so the signal is advisory — the orchestrator's post-await `checkCancel` still wins).
+- Throws `'embed: aborted'` on observed cancellation.
+
+### Composer-failure event (MEDIUM)
+
+`runChatRound`'s composer try/catch warned to console but the timeline had no record. Added a `chat.error` event with `severity: 'warning'`, `source: 'composer'`, and a bounded error preview. Does NOT re-throw — the original streamed `fullContent` still goes to the user as the safe fallback. The timeline now shows that composer didn't land.
+
+### Defended-against false positives
+
+The audits also flagged things that aren't real bugs:
+- **`settings.json` read-modify-write race**: settings:set runs in one synchronous JS execution between the IPC entry and the `writeFileSync`. There's no `await` between read and write to allow interleave. Single-threaded JS is the actual contract here; documented but no code change.
+- **MCP OAuth log leak (`mcp.ts:161`)**: the connection-result strings carry server ids + provider error messages, not token values. The MCP client wraps tokens internally; "connection refused" / "auth failed" messages are safe to log.
+- **`augmentForChat` void statements**: real fake polish (fixed above), not a false positive.
+
+### Adversarial verification (skeptic pass)
+
+A second audit agent ran in skeptic mode against every fix, defaulting to "refuted" unless the fix demonstrably worked. Outcome: 6 / 7 fixes VERIFIED on first pass, 1 REFUTED (nested `__proto__` slipping past the top-level-only sanitizer). Refuted fix was strengthened to recursive + depth-capped, then re-verified by the new test cases. No remaining unaddressed findings.
+
+### What this audit could NOT verify
+
+Honest carry-forward:
+- **Real-DB FTS5 + sqlite-vec contracts**: vitest can't load the native binaries (better-sqlite3 is rebuilt against Electron's ABI; sqlite-vec ships precompiled per-platform). The R1 FTS-trigger contract is documented in `store.ts`'s `insertChunks` comment; runtime smoke is the user's "drop a real file, query it, see citations" path.
+- **Live embedding model download**: gated behind `LAMPREY_RUN_EMBED_NETWORK=1` in `embeddings/service.test.ts`. Default-skipped to avoid 33 MB of bandwidth per CI run.
+- **DOM-bound rendering tests**: vitest env is node-only (intentional, carry-forward from the audit-remediation Prompt 5 of an earlier sprint). The library / chat-attachment / citation-chip components are tested only at the pure-data layer (Zustand store actions, citation parser).
+- **Booting the actual Electron app**: requires display + ABI-matched native modules + GUI; outside the audit harness.
+
+### Verification
+
+`tsc --noEmit -p tsconfig.node.json` + `-p tsconfig.web.json` both clean. `npm run lint` — **0 errors** (488 pre-existing warnings, baseline). `npx vitest run` — **60 files / 819 passed + 5 skipped / 0 failed** (+22 over the post-R14 baseline of 797; 0 regressions across the 58 previously-green files).
+
+**Net deliverables:** 1 new validator file (`chat-validation.ts`), 2 new test files (`chat-validation.test.ts`, `settings-sanitizer.test.ts`), 8 lint-error fixes, 7 behavioral fixes across IPC validation + RAG plumbing + resource caps + observability + type lockstep.
+
 ## RAG R6 → R14 — Library UI, retrieval, rerank, multi-query, context, chat attachments, citations, settings, agent integration, E2E (2026-06-03)
 
 Nine prompts landed in one continuous march. The full stack is now in place: a renderer Library tab for managing collections, the hybrid-retrieval engine, optional rerank + multi-query rewrite, the `<retrieved_context>` block + citation protocol, per-conversation attachments, citation chips + source preview, the Settings → RAG panel, and an integration helper (`augmentForChat`) the chat handler can call to enrich a turn end-to-end. Build status: **58 test files / 797 passing / 5 skipped / 0 failed** (up from R5's 51/736; +61 new tests, 0 regressions).

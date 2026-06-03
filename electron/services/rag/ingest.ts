@@ -1,7 +1,15 @@
 import { EventEmitter } from 'events'
 import { randomUUID, createHash } from 'crypto'
 import { stat } from 'fs/promises'
-import { extname, basename } from 'path'
+import { extname } from 'path'
+
+// Hard cap on the source buffer for a single ingest file. Anything bigger is
+// almost always a misclick on a video / archive / dataset dump that should be
+// split into smaller files before ingest. The loader layer has its own
+// per-format caps (25 MB for text; PDF parser memory is unbounded by default,
+// which is why we cap at THIS layer before reading); this is the wider
+// backstop that protects the embedder + chunker from OOM.
+const MAX_INGEST_BYTES = 500 * 1024 * 1024
 import {
   countChunksForDocument,
   deleteChunksForDocument,
@@ -64,9 +72,15 @@ export interface IngestProgressEvent {
 }
 
 /** Minimum embeddings interface the orchestrator needs. Injecting this lets
- *  tests pass a deterministic stub instead of spawning a real worker. */
+ *  tests pass a deterministic stub instead of spawning a real worker.
+ *
+ *  The optional `signal` lets the orchestrator hand the worker an early
+ *  exit when the user cancels mid-embed. The real EmbeddingsService runs
+ *  the worker on its own thread (terminate-by-signal is non-trivial), so
+ *  in production the signal is advisory — the orchestrator's post-await
+ *  checkCancel still wins. Stubs that want to honor the signal can do so. */
 export interface EmbeddingsLike {
-  embed(texts: string[]): Promise<Float32Array[]>
+  embed(texts: string[], signal?: AbortSignal): Promise<Float32Array[]>
 }
 
 export interface IngestManagerDeps {
@@ -156,6 +170,11 @@ export class IngestManager extends EventEmitter {
         const stats = await stat(file.path)
         mtime = stats.mtimeMs
         bytes = stats.size
+        if (stats.size > MAX_INGEST_BYTES) {
+          throw new Error(
+            `file exceeds ingest cap (${stats.size} > ${MAX_INGEST_BYTES} bytes). Split into smaller files.`
+          )
+        }
         // Load through the dispatcher later; we still need the raw bytes
         // to hash. `loadDocument` reads the file again — for v1 that's
         // tolerable; the buffer is cached by the OS page cache anyway.
@@ -164,6 +183,12 @@ export class IngestManager extends EventEmitter {
         buffer = await readFile(file.path)
       } else if (typeof file.text === 'string') {
         sourceKind = file.sourceKind ?? 'paste'
+        const byteLen = Buffer.byteLength(file.text, 'utf-8')
+        if (byteLen > MAX_INGEST_BYTES) {
+          throw new Error(
+            `paste exceeds ingest cap (${byteLen} > ${MAX_INGEST_BYTES} bytes)`
+          )
+        }
         buffer = Buffer.from(file.text, 'utf-8')
         bytes = buffer.length
       } else {
@@ -345,7 +370,10 @@ export class IngestManager extends EventEmitter {
     })
     let vectors: Float32Array[]
     try {
-      vectors = await this.deps.embeddings.embed(chunks.map((c) => c.text))
+      vectors = await this.deps.embeddings.embed(
+        chunks.map((c) => c.text),
+        signal
+      )
     } catch (err) {
       this.failDoc(jobId, doc, displayName, startedAt, (err as Error)?.message ?? String(err))
       return

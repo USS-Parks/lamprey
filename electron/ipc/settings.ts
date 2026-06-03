@@ -71,10 +71,11 @@ export function registerSettingsHandlers(): void {
 
   ipcMain.handle('settings:set', async (_event, partial) => {
     try {
+      const safePartial = sanitizeSettingsPartial(partial)
       const current = readSettings()
-      const updated = { ...current, ...partial }
+      const updated = { ...current, ...safePartial }
       writeSettings(updated)
-      emitSettingsUpdated(current, updated, partial)
+      emitSettingsUpdated(current, updated, safePartial)
       return { success: true, data: null }
     } catch (err: any) {
       return { success: false, error: err.message }
@@ -222,6 +223,59 @@ export function registerSettingsHandlers(): void {
 // them explicitly so a future log reader knows the change is sensitive
 // without having to read the value (we never log the value either way).
 const SENSITIVE_SETTING_KEYS = new Set(['apiKey'])
+
+// Keys that `__proto__`-style prototype-pollution attacks would target. We
+// reject these unconditionally so a malicious or buggy renderer can't
+// inject inherited properties into the settings object.
+const POLLUTION_KEYS = new Set(['__proto__', 'constructor', 'prototype'])
+
+/**
+ * Sanitize a renderer-supplied settings partial. Drops non-object inputs,
+ * dangerous keys (prototype pollution), and own-property `Object.prototype`
+ * leak vectors. Returns an empty object for non-object input so the merge
+ * is a no-op rather than a crash.
+ *
+ * **Recursive**: a nested object like `{modelConfig: {__proto__: {...}}}` is
+ * also flattened — JSON.parse creates `__proto__` as an own property
+ * (which is harmless on its own), but any downstream code that later does
+ * `for (const k in obj) target[k] = obj[k]` would honor the special
+ * `__proto__` semantics and pollute the prototype chain. Recursive
+ * stripping closes that gap defensively, regardless of who reads the
+ * value later.
+ *
+ * The settings shape is open by design (modelConfig can hold per-model
+ * blocks the harness doesn't know about ahead of time), so we don't gate
+ * unknown keys here — that's the responsibility of the schema layer in
+ * `defaultSettings`. We only block dangerous keys.
+ */
+function sanitizeSettingsPartial(raw: unknown): Record<string, unknown> {
+  const cleaned = stripPollutionKeys(raw)
+  if (
+    !cleaned ||
+    typeof cleaned !== 'object' ||
+    Array.isArray(cleaned)
+  ) {
+    return {}
+  }
+  return cleaned as Record<string, unknown>
+}
+
+function stripPollutionKeys(value: unknown, depth = 0): unknown {
+  // Defensive recursion cap so a hostile renderer can't ship a 10⁴-deep
+  // object and OOM the sanitizer. Settings is shallow by design; 16 is
+  // more than enough headroom for modelConfig + nested theme objects.
+  if (depth > 16) return undefined
+  if (value === null || typeof value !== 'object') return value
+  if (Array.isArray(value)) {
+    return value.map((item) => stripPollutionKeys(item, depth + 1))
+  }
+  const out: Record<string, unknown> = {}
+  for (const k of Object.keys(value as Record<string, unknown>)) {
+    if (POLLUTION_KEYS.has(k)) continue
+    out[k] = stripPollutionKeys((value as Record<string, unknown>)[k], depth + 1)
+  }
+  return out
+}
 
 /**
  * Emit a `settings.updated` event recording ONLY the names of the keys that

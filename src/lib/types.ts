@@ -668,13 +668,17 @@ export interface RetrievalResult {
   chunks: RagChunk[]
 }
 
-/** Placeholder — expanded in R2 (embeddings service). */
+/** Local embedder catalogue entry. Lockstep with
+ *  `electron/services/rag/embeddings/catalog.ts`. */
 export interface EmbedderInfo {
   id: string
   name: string
   dimensions: number
   approxBytes: number
+  /** HF model id passed to transformers.js's `pipeline()`. */
+  modelRef: string
   license?: string
+  description?: string
 }
 
 /** Placeholder — expanded in R5 (ingest orchestrator). */

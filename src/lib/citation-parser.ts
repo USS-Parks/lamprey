@@ -22,7 +22,7 @@ export function parseCitations(input: string): CitationSegment[] {
   //    doesn't match inside them. Replace with same-length placeholders
   //    so offsets stay aligned, then unmask at emit time.
   const masks: { start: number; end: number; original: string }[] = []
-  let masked = input
+  const masked = input
 
   // Fenced code: ```...``` (greedy non-newline-aware on opening fence;
   // captures up to the closing ``` on its own line OR inline).

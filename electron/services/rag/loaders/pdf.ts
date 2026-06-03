@@ -34,7 +34,8 @@ export async function loadPdf(path: string): Promise<LoadedPdf> {
     pdfParse = require('pdf-parse') as PdfParseFn
   } catch (err) {
     throw new Error(
-      `pdf-parse unavailable: ${(err as Error)?.message ?? 'unknown'}`
+      `pdf-parse unavailable: ${(err as Error)?.message ?? 'unknown'}`,
+      { cause: err }
     )
   }
 
@@ -70,9 +71,9 @@ export async function loadPdf(path: string): Promise<LoadedPdf> {
   } catch (err) {
     const msg = (err as Error)?.message ?? String(err)
     if (/password|encrypted/i.test(msg)) {
-      throw new Error('PDF is encrypted')
+      throw new Error('PDF is encrypted', { cause: err })
     }
-    throw new Error(`PDF parse failed: ${msg}`)
+    throw new Error(`PDF parse failed: ${msg}`, { cause: err })
   }
 
   const totalChars = pages.reduce((sum, p) => sum + p.text.length, 0)

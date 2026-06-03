@@ -9,6 +9,7 @@ import {
   type ModelRequestAudit
 } from '../services/providers/registry'
 import { boundedJsonPreview, recordEvent } from '../services/event-log'
+import { validateChatSendRequest } from './chat-validation'
 import * as convStore from '../services/conversation-store'
 import * as memStore from '../services/memory-store'
 import { buildSystemPrompt } from '../services/system-prompt-builder'
@@ -148,8 +149,15 @@ function emitPhase(conversationId: string, phase: AgentRunPhase): void {
 
 export function registerChatHandlers(): void {
   ipcMain.handle('chat:send', async (_event, request) => {
-    const { content, model, activeSkillIds, agentMode: requestedAgentMode } = request
-    let { conversationId } = request
+    // Defensive: the renderer is trusted but a malformed payload (hot
+    // reload race, programmatic caller, future SDK consumer) must not
+    // crash the handler. Validate the shape before doing anything.
+    const validation = validateChatSendRequest(request)
+    if (!validation.ok) {
+      return { success: false, error: validation.error }
+    }
+    const { content, model, activeSkillIds, requestedAgentMode } = validation.value
+    let conversationId = validation.value.conversationId
 
     // Hoisted so the catch block can reference it when an exception fires
     // before the regular `activeAbortControllers.set` runs. Generated here
@@ -186,10 +194,10 @@ export function registerChatHandlers(): void {
       // active set when mode is on. mergeAgenticSkillIds dedupes against the
       // user's existing picks so toggling the same skill from the panel
       // doesn't double-inject its content.
-      const requestSkillIds: string[] = Array.isArray(activeSkillIds) ? activeSkillIds : []
+      // activeSkillIds was already validated + filtered at the handler entry.
       const effectiveSkillIds = agentic.mode
-        ? mergeAgenticSkillIds(requestSkillIds, agentic.skills)
-        : requestSkillIds
+        ? mergeAgenticSkillIds(activeSkillIds, agentic.skills)
+        : activeSkillIds
 
       let skillContents: { name: string; content: string }[] = []
       if (effectiveSkillIds.length > 0) {
@@ -551,6 +559,29 @@ export async function runChatRound(
                 }
               } catch (err) {
                 console.warn('[chat] final response composer failed:', err)
+                // The user still gets the original streamed `fullContent`;
+                // the un-composed draft is the safe fallback. Record a
+                // chat.error event so the Activity Timeline shows that the
+                // composer pass didn't land, without disrupting the reply.
+                if (correlationId) {
+                  try {
+                    recordEvent({
+                      type: 'chat.error',
+                      actorKind: 'system',
+                      severity: 'warning',
+                      conversationId,
+                      correlationId,
+                      payload: {
+                        source: 'composer',
+                        errorPreview: boundedJsonPreview(
+                          (err as Error)?.message ?? String(err)
+                        )
+                      }
+                    })
+                  } catch (e) {
+                    console.error('[chat] composer chat.error event failed:', e)
+                  }
+                }
               }
             }
             const assistantMsg = convStore.saveMessage({

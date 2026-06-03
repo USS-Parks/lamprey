@@ -128,7 +128,7 @@ export async function retrieveWithMeta(
   // Try the real DB path; on failure fall through to the memory-fallback
   // lex-only path so unit tests and dev-without-Electron can still exercise
   // ranking semantics.
-  let db: ReturnType<typeof getDb> | null = null
+  let db: ReturnType<typeof getDb> | null
   try {
     db = getDb()
   } catch {
