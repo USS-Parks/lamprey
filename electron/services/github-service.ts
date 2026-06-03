@@ -1,0 +1,886 @@
+import { shell } from 'electron'
+import { spawn } from 'child_process'
+import { createServer } from 'http'
+import * as keychain from './keychain'
+import { createOAuthSession, validateOAuthCallback } from './oauth-state'
+import { runGit } from './git-runner'
+import { buildAuthenticatedEnv } from './github-askpass'
+import type {
+  CloneRepositoryInput,
+  CreatePullRequestInput,
+  GitHubAuthMode,
+  GitHubCompareSummary,
+  GitHubConnectionStatus,
+  GitHubPullRequest,
+  GitHubRepository,
+  GitHubTokenProvider,
+  GitHubViewer,
+  PushBranchInput
+} from './github-types'
+
+// SECURITY MODEL
+// --------------
+// 1. Tokens NEVER cross IPC to the renderer. The service exposes typed
+//    methods that return non-secret data; callers never see the bearer.
+// 2. Tokens NEVER appear in `.git/config` or process args. Push uses the
+//    `GIT_ASKPASS` shim in `./github-askpass.ts` which reads the token from
+//    a child env var.
+// 3. We never log full Authorization headers, full callback URLs (they
+//    contain `?code=...&state=...`), or token bodies. The OAuth flow
+//    only logs the outcome (`success` / `error: code`) and never the
+//    code itself.
+// 4. OAuth callback is bound to 127.0.0.1, with single-use `state`
+//    verified by the shared `oauth-state` helper.
+//
+// OAUTH SCOPES
+// ------------
+// We request `read:user repo` by default:
+//   - read:user → for the connected viewer (login, avatar)
+//   - repo      → list private repos, push branches, open PRs
+// To switch to a less-privileged install, expose a per-flow scope override.
+// Public-only setups can swap to `read:user public_repo`.
+
+const REDIRECT_PORT = 9876
+const REDIRECT_URI = `http://localhost:${REDIRECT_PORT}/callback`
+const DEFAULT_SCOPES = 'read:user repo'
+const GITHUB_API = 'https://api.github.com'
+
+// Keychain entry names. Centralised so the renderer-side wiper / status
+// surface can stay in sync.
+export const KEYCHAIN = {
+  oauthClientId: 'github-oauth-client-id',
+  oauthClientSecret: 'github-oauth-client-secret',
+  accessToken: 'github-access-token',
+  tokenScopes: 'github-token-scopes',
+  appId: 'github-app-id',
+  appPrivateKey: 'github-app-private-key',
+  appInstallationId: 'github-app-installation-id'
+} as const
+
+// Settings keys (live in settings.json, not the keychain). The mode flag is
+// non-secret and convenient to read without unlocking the keychain.
+export const SETTINGS_KEYS = {
+  mode: 'githubMode' // 'oauth' | 'github_app' | 'gh-cli' | 'none'
+} as const
+
+// ---------------------------------------------------------------------------
+// Validation
+// ---------------------------------------------------------------------------
+
+// Matches the worktree branch validator's defence-in-depth posture: ban
+// leading dashes, ban argument-smuggling forms. GitHub's own grammar for
+// owner/repo allows [A-Za-z0-9._-] with some position rules; this regex is
+// stricter than necessary but rejects the dangerous shapes.
+const SLUG_RE = /^[A-Za-z0-9._-]+$/
+
+export function isValidSlug(value: unknown): value is string {
+  if (typeof value !== 'string') return false
+  if (value.length === 0 || value.length > 100) return false
+  if (value.startsWith('-')) return false
+  if (value.startsWith('.')) return false
+  if (value.includes('..')) return false
+  return SLUG_RE.test(value)
+}
+
+const BRANCH_RE = /^[A-Za-z0-9._/-]+$/
+
+export function isValidBranchName(value: unknown): value is string {
+  if (typeof value !== 'string') return false
+  if (value.length === 0 || value.length > 200) return false
+  if (value.startsWith('-')) return false
+  if (value.includes('..')) return false
+  return BRANCH_RE.test(value)
+}
+
+// ---------------------------------------------------------------------------
+// Token providers
+// ---------------------------------------------------------------------------
+
+class OAuthTokenProvider implements GitHubTokenProvider {
+  readonly mode: GitHubAuthMode = 'oauth'
+  async getAccessToken(): Promise<string | null> {
+    return keychain.getKey(KEYCHAIN.accessToken)
+  }
+  async getScopes(): Promise<string[]> {
+    const raw = keychain.getKey(KEYCHAIN.tokenScopes) ?? ''
+    return raw ? raw.split(',').map((s) => s.trim()).filter(Boolean) : []
+  }
+}
+
+class GhCliTokenProvider implements GitHubTokenProvider {
+  readonly mode: GitHubAuthMode = 'gh-cli'
+  async getAccessToken(): Promise<string | null> {
+    const out = await spawnCapture('gh', ['auth', 'token'])
+    if (out.code !== 0) return null
+    const token = out.stdout.trim()
+    return token.length > 0 ? token : null
+  }
+  async getScopes(): Promise<string[]> {
+    // gh's "status" emits human-readable scope info on stderr. Best-effort
+    // parse; an unparseable response just returns [].
+    const out = await spawnCapture('gh', ['auth', 'status', '--show-token'])
+    const text = `${out.stdout}\n${out.stderr}`
+    const m = text.match(/Token scopes:\s*([^\n]+)/i)
+    if (!m) return []
+    return m[1].split(',').map((s) => s.replace(/['"\s]/g, '')).filter(Boolean)
+  }
+}
+
+class GitHubAppTokenProvider implements GitHubTokenProvider {
+  // Intentional stub — the interface boundary is the stable contract so a
+  // later commit can implement App installation tokens (private-key JWT →
+  // POST /app/installations/{id}/access_tokens → cache until expiry minus
+  // 60s) without touching callers.
+  readonly mode: GitHubAuthMode = 'github_app'
+  async getAccessToken(): Promise<string | null> {
+    return null
+  }
+  async getScopes(): Promise<string[]> {
+    return []
+  }
+}
+
+class NoneTokenProvider implements GitHubTokenProvider {
+  readonly mode: GitHubAuthMode = 'none'
+  async getAccessToken(): Promise<string | null> {
+    return null
+  }
+  async getScopes(): Promise<string[]> {
+    return []
+  }
+}
+
+function buildTokenProvider(mode: GitHubAuthMode): GitHubTokenProvider {
+  switch (mode) {
+    case 'oauth':
+      return new OAuthTokenProvider()
+    case 'gh-cli':
+      return new GhCliTokenProvider()
+    case 'github_app':
+      return new GitHubAppTokenProvider()
+    default:
+      return new NoneTokenProvider()
+  }
+}
+
+// ---------------------------------------------------------------------------
+// REST helpers
+// ---------------------------------------------------------------------------
+
+export interface GitHubRequestInit {
+  method?: string
+  body?: unknown
+  /** Override Accept header. */
+  accept?: string
+  signal?: AbortSignal
+}
+
+/** Pure: assemble headers for a GitHub REST request. Exported for tests. */
+export function buildRequestHeaders(token: string, accept = 'application/vnd.github+json'): Record<string, string> {
+  return {
+    Accept: accept,
+    Authorization: `Bearer ${token}`,
+    'X-GitHub-Api-Version': '2022-11-28',
+    'User-Agent': 'Lamprey-Harness'
+  }
+}
+
+export class GitHubApiError extends Error {
+  readonly status: number
+  readonly responseBody: string
+  constructor(status: number, message: string, responseBody: string) {
+    super(message)
+    this.name = 'GitHubApiError'
+    this.status = status
+    this.responseBody = responseBody
+  }
+}
+
+async function githubRequest<T>(
+  path: string,
+  init: GitHubRequestInit,
+  provider: GitHubTokenProvider
+): Promise<T> {
+  const token = await provider.getAccessToken()
+  if (!token) {
+    throw new GitHubApiError(401, 'No GitHub token available — connect GitHub first.', '')
+  }
+  const url = path.startsWith('http') ? path : `${GITHUB_API}${path}`
+  const headers = buildRequestHeaders(token, init.accept)
+  const body = init.body !== undefined ? JSON.stringify(init.body) : undefined
+  if (body) headers['Content-Type'] = 'application/json'
+  const res = await fetch(url, {
+    method: init.method ?? 'GET',
+    headers,
+    body,
+    signal: init.signal
+  })
+  if (!res.ok) {
+    const text = await res.text().catch(() => '')
+    // Map a 401 with auth-flavoured body to a friendlier message; we never
+    // include the token or the Authorization header in the surfaced text.
+    const safeMsg = res.status === 401
+      ? 'GitHub rejected the token (401). It may have been revoked or expired — reconnect from Settings.'
+      : `GitHub API ${res.status}: ${text.slice(0, 400)}`
+    throw new GitHubApiError(res.status, safeMsg, text)
+  }
+  if (res.status === 204) return undefined as unknown as T
+  return (await res.json()) as T
+}
+
+// ---------------------------------------------------------------------------
+// Mode resolution
+// ---------------------------------------------------------------------------
+
+export interface ServiceDeps {
+  /** Returns the current configured mode. Implementations read settings.json. */
+  readMode: () => GitHubAuthMode
+  writeMode: (mode: GitHubAuthMode) => void
+}
+
+let deps: ServiceDeps = {
+  // Default deps are no-ops; the IPC layer wires the real ones at register
+  // time. The defaults keep the module importable in tests without booting
+  // the settings file.
+  readMode: () => (keychain.hasKey(KEYCHAIN.accessToken) ? 'oauth' : 'none'),
+  writeMode: () => undefined
+}
+
+export function configureGitHubService(next: ServiceDeps): void {
+  deps = next
+}
+
+export function currentMode(): GitHubAuthMode {
+  return deps.readMode()
+}
+
+function provider(): GitHubTokenProvider {
+  return buildTokenProvider(currentMode())
+}
+
+// ---------------------------------------------------------------------------
+// Status + viewer
+// ---------------------------------------------------------------------------
+
+export async function getConnectionStatus(): Promise<GitHubConnectionStatus> {
+  const mode = currentMode()
+  const p = buildTokenProvider(mode)
+  const token = await p.getAccessToken()
+  if (!token) {
+    return {
+      connected: false,
+      mode,
+      scopes: [],
+      login: null,
+      avatarUrl: null,
+      installationId: null,
+      reason: mode === 'none' ? 'Not connected' : `${mode} configured but no token available`
+    }
+  }
+  // Probe /user with the token. A successful probe doubles as a scopes
+  // discovery — the response carries an `x-oauth-scopes` header for OAuth
+  // tokens. We cache the scopes string in the keychain so subsequent
+  // status queries don't have to round-trip when offline.
+  try {
+    const headers = buildRequestHeaders(token)
+    const res = await fetch(`${GITHUB_API}/user`, { headers })
+    if (!res.ok) {
+      return {
+        connected: false,
+        mode,
+        scopes: await p.getScopes(),
+        login: null,
+        avatarUrl: null,
+        installationId: null,
+        reason: res.status === 401 ? 'Token rejected (401)' : `Probe failed (${res.status})`
+      }
+    }
+    const headerScopes = res.headers.get('x-oauth-scopes')
+    if (mode === 'oauth' && headerScopes !== null) {
+      try {
+        keychain.setKey(KEYCHAIN.tokenScopes, headerScopes)
+      } catch {
+        // plaintext-consent gate may reject — non-fatal; UI can re-derive
+        // via getScopes()
+      }
+    }
+    const body = (await res.json()) as { login: string; avatar_url: string | null }
+    const scopes = headerScopes
+      ? headerScopes.split(',').map((s) => s.trim()).filter(Boolean)
+      : await p.getScopes()
+    return {
+      connected: true,
+      mode,
+      scopes,
+      login: body.login,
+      avatarUrl: body.avatar_url,
+      installationId: null
+    }
+  } catch (err: any) {
+    return {
+      connected: false,
+      mode,
+      scopes: [],
+      login: null,
+      avatarUrl: null,
+      installationId: null,
+      reason: `Probe error: ${err?.message ?? 'unknown'}`
+    }
+  }
+}
+
+export async function getViewer(): Promise<GitHubViewer> {
+  const body = await githubRequest<{
+    login: string
+    name: string | null
+    avatar_url: string | null
+    html_url: string
+  }>('/user', {}, provider())
+  return {
+    login: body.login,
+    name: body.name,
+    avatarUrl: body.avatar_url,
+    htmlUrl: body.html_url
+  }
+}
+
+// ---------------------------------------------------------------------------
+// OAuth flow (browser → loopback callback)
+// ---------------------------------------------------------------------------
+
+export interface StartOAuthLoginInput {
+  scopes?: string
+  /** Override; defaults to the user's own OAuth app credentials in keychain. */
+  clientId?: string
+  clientSecret?: string
+  /** Inject for tests. */
+  openExternal?: (url: string) => Promise<void> | void
+  /** Inject for tests — defaults to the redirect port above. */
+  port?: number
+}
+
+export interface OAuthLoginResult {
+  login: string
+  scopes: string[]
+}
+
+export async function startOAuthLogin(input: StartOAuthLoginInput = {}): Promise<OAuthLoginResult> {
+  const clientId = input.clientId ?? keychain.getKey(KEYCHAIN.oauthClientId)
+  const clientSecret = input.clientSecret ?? keychain.getKey(KEYCHAIN.oauthClientSecret)
+  if (!clientId || !clientSecret) {
+    throw new Error(
+      'GitHub OAuth client credentials not configured. Create an OAuth App at ' +
+        'https://github.com/settings/developers, set the callback URL to ' +
+        `${REDIRECT_URI}, then save the client ID + secret in Settings → GitHub.`
+    )
+  }
+  const port = input.port ?? REDIRECT_PORT
+  const redirect = `http://localhost:${port}/callback`
+  const scopes = input.scopes ?? DEFAULT_SCOPES
+  const session = createOAuthSession()
+  const authUrl = new URL('https://github.com/login/oauth/authorize')
+  authUrl.searchParams.set('client_id', clientId)
+  authUrl.searchParams.set('redirect_uri', redirect)
+  authUrl.searchParams.set('scope', scopes)
+  authUrl.searchParams.set('state', session.state)
+  authUrl.searchParams.set('allow_signup', 'false')
+
+  const open = input.openExternal ?? ((u: string) => shell.openExternal(u))
+
+  const code = await new Promise<string>((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      try { server.close() } catch { /* noop */ }
+      reject(new Error('GitHub OAuth timeout — no callback received within 2 minutes'))
+    }, 120_000)
+
+    const server = createServer((req, res) => {
+      const reqUrl = new URL(req.url ?? '/', `http://localhost:${port}`)
+      const outcome = validateOAuthCallback(reqUrl, session)
+
+      if (outcome.kind === 'denied') {
+        res.writeHead(outcome.httpStatus, { 'Content-Type': 'text/html' })
+        res.end('<html><body><h2>Authorization denied.</h2><p>You can close this tab.</p></body></html>')
+        clearTimeout(timeout)
+        try { server.close() } catch { /* noop */ }
+        reject(new Error(`OAuth denied: ${outcome.reason}`))
+        return
+      }
+      if (outcome.kind === 'state-mismatch') {
+        res.writeHead(outcome.httpStatus, { 'Content-Type': 'text/html' })
+        res.end('<html><body><h2>OAuth state mismatch.</h2><p>Close this tab and start the flow again from Lamprey.</p></body></html>')
+        clearTimeout(timeout)
+        try { server.close() } catch { /* noop */ }
+        reject(new Error(outcome.reason))
+        return
+      }
+      if (outcome.kind === 'missing-code') {
+        res.writeHead(outcome.httpStatus, { 'Content-Type': 'text/plain' })
+        res.end(outcome.reason)
+        return
+      }
+      res.writeHead(200, { 'Content-Type': 'text/html' })
+      res.end('<html><body><h2>Lamprey connected to GitHub.</h2><p>You can close this tab.</p></body></html>')
+      clearTimeout(timeout)
+      try { server.close() } catch { /* noop */ }
+      resolve(outcome.code)
+    })
+
+    server.on('error', (err) => {
+      clearTimeout(timeout)
+      reject(new Error(`Failed to start OAuth callback server: ${err.message}`, { cause: err }))
+    })
+    server.listen(port, '127.0.0.1', () => {
+      Promise.resolve(open(authUrl.toString())).catch((err) => {
+        clearTimeout(timeout)
+        try { server.close() } catch { /* noop */ }
+        reject(new Error(`Failed to open browser for GitHub OAuth: ${(err as Error).message}`))
+      })
+    })
+  })
+
+  // Exchange code → token. We don't log the body of this exchange.
+  const tokenRes = await fetch('https://github.com/login/oauth/access_token', {
+    method: 'POST',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      'User-Agent': 'Lamprey-Harness'
+    },
+    body: JSON.stringify({
+      client_id: clientId,
+      client_secret: clientSecret,
+      code,
+      redirect_uri: redirect,
+      state: session.state
+    })
+  })
+  if (!tokenRes.ok) {
+    throw new Error(`GitHub token exchange failed (${tokenRes.status})`)
+  }
+  const tokenJson = (await tokenRes.json()) as {
+    access_token?: string
+    token_type?: string
+    scope?: string
+    error?: string
+    error_description?: string
+  }
+  if (tokenJson.error || !tokenJson.access_token) {
+    throw new Error(
+      `GitHub token exchange failed: ${tokenJson.error ?? 'unknown'}${
+        tokenJson.error_description ? ` — ${tokenJson.error_description}` : ''
+      }`
+    )
+  }
+  keychain.setKey(KEYCHAIN.accessToken, tokenJson.access_token)
+  if (tokenJson.scope) keychain.setKey(KEYCHAIN.tokenScopes, tokenJson.scope)
+  deps.writeMode('oauth')
+
+  // Confirm with a /user probe so the caller gets the connected login.
+  const viewer = await getViewer()
+  console.log('[github] oauth connected as', viewer.login)
+  return {
+    login: viewer.login,
+    scopes: tokenJson.scope
+      ? tokenJson.scope.split(',').map((s) => s.trim()).filter(Boolean)
+      : []
+  }
+}
+
+export function disconnect(): void {
+  keychain.deleteKey(KEYCHAIN.accessToken)
+  keychain.deleteKey(KEYCHAIN.tokenScopes)
+  deps.writeMode('none')
+}
+
+// ---------------------------------------------------------------------------
+// Repositories
+// ---------------------------------------------------------------------------
+
+interface RawRepo {
+  id: number
+  full_name: string
+  name: string
+  owner: { login: string }
+  private: boolean
+  default_branch: string
+  html_url: string
+  clone_url: string
+  ssh_url: string
+  description: string | null
+  updated_at: string
+}
+
+/** Pure: parse a GitHub /user/repos payload into our normalised shape. */
+export function parseRepoList(raw: unknown): GitHubRepository[] {
+  if (!Array.isArray(raw)) return []
+  const out: GitHubRepository[] = []
+  for (const item of raw as RawRepo[]) {
+    if (!item || typeof item !== 'object') continue
+    if (typeof item.full_name !== 'string') continue
+    out.push({
+      id: item.id,
+      fullName: item.full_name,
+      owner: item.owner?.login ?? item.full_name.split('/')[0] ?? '',
+      name: item.name,
+      private: Boolean(item.private),
+      defaultBranch: item.default_branch || 'main',
+      htmlUrl: item.html_url,
+      cloneUrl: item.clone_url,
+      sshUrl: item.ssh_url,
+      description: item.description ?? null
+    })
+  }
+  return out
+}
+
+export async function listAccessibleRepositories(opts: { page?: number; perPage?: number } = {}): Promise<GitHubRepository[]> {
+  const per = Math.min(100, Math.max(1, opts.perPage ?? 100))
+  const page = Math.max(1, opts.page ?? 1)
+  const raw = await githubRequest<unknown>(
+    `/user/repos?per_page=${per}&page=${page}&sort=updated&affiliation=owner,collaborator,organization_member`,
+    {},
+    provider()
+  )
+  return parseRepoList(raw)
+}
+
+export async function getRepository(owner: string, repo: string): Promise<GitHubRepository> {
+  if (!isValidSlug(owner) || !isValidSlug(repo)) {
+    throw new Error('Invalid repository owner/name')
+  }
+  const raw = await githubRequest<RawRepo>(`/repos/${owner}/${repo}`, {}, provider())
+  const [parsed] = parseRepoList([raw])
+  if (!parsed) throw new Error('Unexpected repo response shape')
+  return parsed
+}
+
+// ---------------------------------------------------------------------------
+// Clone
+// ---------------------------------------------------------------------------
+
+export async function cloneRepository(input: CloneRepositoryInput): Promise<{ localPath: string }> {
+  if (!isValidSlug(input.owner) || !isValidSlug(input.repo)) {
+    throw new Error('Invalid repository owner/name')
+  }
+  if (typeof input.targetDir !== 'string' || input.targetDir.length === 0) {
+    throw new Error('targetDir is required')
+  }
+  if (input.targetDir.startsWith('-')) {
+    throw new Error('targetDir must not begin with "-"')
+  }
+  const cloneUrl = input.cloneUrl ?? `https://github.com/${input.owner}/${input.repo}.git`
+  if (input.cloneUrl && !/^(https:\/\/|git@)/i.test(input.cloneUrl)) {
+    throw new Error('cloneUrl must be https:// or git@ form')
+  }
+  const token = await provider().getAccessToken()
+  // We DO NOT embed the token in the clone URL (that would persist into
+  // .git/config as the origin remote). Instead we hand git the askpass
+  // helper + the token in env, exactly like push does.
+  const env = token ? buildAuthenticatedEnv(token) : { ...process.env, GIT_TERMINAL_PROMPT: '0' }
+  const res = await runGitWithEnv(['clone', '--', cloneUrl, input.targetDir], process.cwd(), env)
+  if (res.code !== 0) {
+    throw new Error(res.stderr.trim() || 'git clone failed')
+  }
+  return { localPath: input.targetDir }
+}
+
+// ---------------------------------------------------------------------------
+// Compare + PR
+// ---------------------------------------------------------------------------
+
+export async function compareBranchToBase(
+  owner: string,
+  repo: string,
+  base: string,
+  head: string
+): Promise<GitHubCompareSummary> {
+  if (!isValidSlug(owner) || !isValidSlug(repo)) throw new Error('Invalid repo')
+  // `head` may carry an owner: prefix when comparing across a fork.
+  const headLabel = head.includes(':')
+    ? head
+    : (isValidBranchName(head) ? head : null)
+  if (!headLabel) throw new Error('Invalid head ref')
+  if (!isValidBranchName(base)) throw new Error('Invalid base ref')
+  const raw = await githubRequest<{
+    status: GitHubCompareSummary['status']
+    ahead_by: number
+    behind_by: number
+    commits: Array<{ sha: string; commit: { message: string; author: { name?: string } | null }; author: { login?: string } | null }>
+    files?: Array<{ filename: string; additions: number; deletions: number; status: string }>
+  }>(
+    `/repos/${owner}/${repo}/compare/${encodeURIComponent(base)}...${encodeURIComponent(headLabel)}`,
+    {},
+    provider()
+  )
+  return {
+    base,
+    head: headLabel,
+    status: raw.status,
+    aheadBy: raw.ahead_by,
+    behindBy: raw.behind_by,
+    commits: (raw.commits ?? []).map((c) => ({
+      sha: c.sha,
+      message: c.commit?.message ?? '',
+      author: c.author?.login ?? c.commit?.author?.name ?? null
+    })),
+    files: (raw.files ?? []).map((f) => ({
+      filename: f.filename,
+      additions: f.additions,
+      deletions: f.deletions,
+      status: f.status
+    }))
+  }
+}
+
+/** Pure: build the JSON body for POST /repos/{owner}/{repo}/pulls. Exported for tests. */
+export function buildCreatePullRequestPayload(input: CreatePullRequestInput): {
+  title: string
+  body: string
+  head: string
+  base: string
+  draft: boolean
+} {
+  return {
+    title: input.title,
+    body: input.body ?? '',
+    head: input.headLabel ?? input.head,
+    base: input.base,
+    draft: Boolean(input.draft)
+  }
+}
+
+export async function createPullRequest(input: CreatePullRequestInput): Promise<GitHubPullRequest> {
+  if (!isValidSlug(input.owner) || !isValidSlug(input.repo)) throw new Error('Invalid repo')
+  if (!isValidBranchName(input.base)) throw new Error('Invalid base branch')
+  // head can be "owner:branch"; validate the branch portion in either form.
+  const headBranch = input.head.includes(':') ? input.head.split(':')[1] : input.head
+  if (!isValidBranchName(headBranch)) throw new Error('Invalid head branch')
+  if (!input.title || input.title.trim().length === 0) throw new Error('PR title is required')
+
+  const raw = await githubRequest<RawPullRequest>(
+    `/repos/${input.owner}/${input.repo}/pulls`,
+    { method: 'POST', body: buildCreatePullRequestPayload(input) },
+    provider()
+  )
+  return parsePullRequest(raw)
+}
+
+interface RawPullRequest {
+  number: number
+  title: string
+  body: string | null
+  state: 'open' | 'closed'
+  draft?: boolean
+  merged?: boolean
+  merged_at?: string | null
+  html_url: string
+  user: { login: string; avatar_url: string | null }
+  base: { ref: string; sha: string; label: string | null }
+  head: { ref: string; sha: string; label: string | null }
+  created_at: string
+  updated_at: string
+}
+
+/** Pure: turn a GitHub PR payload into our normalised shape. Exported for tests. */
+export function parsePullRequest(raw: RawPullRequest): GitHubPullRequest {
+  return {
+    number: raw.number,
+    title: raw.title,
+    body: raw.body,
+    state: raw.state,
+    draft: Boolean(raw.draft),
+    merged: Boolean(raw.merged) || Boolean(raw.merged_at),
+    htmlUrl: raw.html_url,
+    user: {
+      login: raw.user?.login ?? '',
+      avatarUrl: raw.user?.avatar_url ?? null
+    },
+    base: { ref: raw.base.ref, sha: raw.base.sha ?? null, label: raw.base.label ?? null },
+    head: { ref: raw.head.ref, sha: raw.head.sha ?? null, label: raw.head.label ?? null },
+    createdAt: raw.created_at,
+    updatedAt: raw.updated_at
+  }
+}
+
+export async function listPullRequests(
+  owner: string,
+  repo: string,
+  opts: { state?: 'open' | 'closed' | 'all'; per_page?: number } = {}
+): Promise<GitHubPullRequest[]> {
+  if (!isValidSlug(owner) || !isValidSlug(repo)) throw new Error('Invalid repo')
+  const state = opts.state ?? 'open'
+  const per = Math.min(100, Math.max(1, opts.per_page ?? 30))
+  const raw = await githubRequest<RawPullRequest[]>(
+    `/repos/${owner}/${repo}/pulls?state=${state}&per_page=${per}&sort=updated&direction=desc`,
+    {},
+    provider()
+  )
+  return raw.map(parsePullRequest)
+}
+
+export async function getPullRequest(owner: string, repo: string, number: number): Promise<GitHubPullRequest> {
+  if (!isValidSlug(owner) || !isValidSlug(repo)) throw new Error('Invalid repo')
+  if (!Number.isInteger(number) || number <= 0) throw new Error('Invalid PR number')
+  const raw = await githubRequest<RawPullRequest>(
+    `/repos/${owner}/${repo}/pulls/${number}`,
+    {},
+    provider()
+  )
+  return parsePullRequest(raw)
+}
+
+// ---------------------------------------------------------------------------
+// Push (token-authenticated via askpass)
+// ---------------------------------------------------------------------------
+
+/**
+ * Pure: decide whether `pushBranch` should try a token-authenticated push,
+ * fall back to plain `git push`, or refuse. Tested as a unit so the IPC
+ * handler can stay thin.
+ */
+export type PushPlan =
+  | { kind: 'token'; reason: 'connected' }
+  | { kind: 'plain'; reason: 'no-token' }
+  | { kind: 'refuse'; reason: string }
+
+export function planPushBranch(input: {
+  hasToken: boolean
+  mode: GitHubAuthMode
+  branchValid: boolean
+}): PushPlan {
+  if (!input.branchValid) return { kind: 'refuse', reason: 'invalid branch name' }
+  if (input.hasToken && input.mode !== 'none') return { kind: 'token', reason: 'connected' }
+  return { kind: 'plain', reason: 'no-token' }
+}
+
+export interface PushBranchResult {
+  pushed: boolean
+  stdout: string
+  /** Set when push fell back to plain `git push` (no GitHub token). */
+  usedFallback: boolean
+  /** Set when both token-auth + plain push failed; surfaces a helpful message. */
+  authHint?: string
+}
+
+export async function pushBranch(input: PushBranchInput): Promise<PushBranchResult> {
+  if (!isValidBranchName(input.branch)) throw new Error('Invalid branch name')
+  const p = provider()
+  const token = await p.getAccessToken()
+  const plan = planPushBranch({
+    hasToken: token !== null,
+    mode: p.mode,
+    branchValid: true
+  })
+  if (plan.kind === 'refuse') throw new Error(plan.reason)
+
+  const refspec = `refs/heads/${input.branch}:refs/heads/${input.branch}`
+  const setUpstream = input.setUpstream !== false
+  const args = ['push']
+  if (setUpstream) args.push('--set-upstream')
+  args.push('origin', refspec)
+
+  // When we have a token, swap in the github.com remote URL with auth via
+  // the askpass helper. We DO NOT rewrite the user's configured remote —
+  // we pass the URL on the command line for this single invocation. That
+  // means the URL CAN appear in process args, but the URL is non-secret
+  // (the token is provided via env to askpass, separately).
+  if (plan.kind === 'token' && token) {
+    const env = buildAuthenticatedEnv(token)
+    // First try: keep the user's configured `origin` remote and let askpass
+    // supply creds when prompted. This preserves any custom remote config
+    // the user has set.
+    const tokenRes = await runGitWithEnv(args, input.cwd, env)
+    if (tokenRes.code === 0) {
+      return { pushed: true, stdout: tokenRes.stdout.trim(), usedFallback: false }
+    }
+    // If the failure looks like a missing-remote case (e.g. fresh local
+    // repo with no `origin`), retry with an explicit URL that points at
+    // the GitHub repo. Token still rides via askpass env.
+    if (/origin.*does not appear to be a git repository/i.test(tokenRes.stderr) ||
+        /no configured push destination/i.test(tokenRes.stderr) ||
+        /No such remote/i.test(tokenRes.stderr)) {
+      const url = `https://github.com/${input.owner}/${input.repo}.git`
+      const argsWithUrl = ['push']
+      if (setUpstream) argsWithUrl.push('--set-upstream')
+      argsWithUrl.push(url, refspec)
+      const retry = await runGitWithEnv(argsWithUrl, input.cwd, env)
+      if (retry.code === 0) {
+        return { pushed: true, stdout: retry.stdout.trim(), usedFallback: false }
+      }
+      return {
+        pushed: false,
+        stdout: retry.stdout,
+        usedFallback: false,
+        authHint: friendlyAuthHint(retry.stderr, p.mode)
+      }
+    }
+    return {
+      pushed: false,
+      stdout: tokenRes.stdout,
+      usedFallback: false,
+      authHint: friendlyAuthHint(tokenRes.stderr, p.mode)
+    }
+  }
+
+  // No GitHub token — fall back to plain `git push`, which relies on the
+  // user's local credentials.
+  const plain = await runGit(args, input.cwd)
+  if (plain.code === 0) {
+    return { pushed: true, stdout: plain.stdout.trim(), usedFallback: true }
+  }
+  return {
+    pushed: false,
+    stdout: plain.stdout,
+    usedFallback: true,
+    authHint: friendlyAuthHint(plain.stderr, p.mode)
+  }
+}
+
+/** Pure: map a git-push stderr blob into a user-readable hint. Exported for tests. */
+export function friendlyAuthHint(stderr: string, mode: GitHubAuthMode): string | undefined {
+  const txt = stderr.toLowerCase()
+  if (txt.includes('authentication failed') || txt.includes('could not read username') || txt.includes('403')) {
+    if (mode === 'none') {
+      return 'Push failed: no GitHub credentials. Connect GitHub in Settings, or configure local Git credentials.'
+    }
+    return 'Push failed: GitHub rejected the credentials. Try reconnecting GitHub in Settings.'
+  }
+  if (txt.includes('rejected') && txt.includes('non-fast-forward')) {
+    return 'Push rejected (non-fast-forward). Pull/rebase the latest base branch and retry.'
+  }
+  return undefined
+}
+
+// ---------------------------------------------------------------------------
+// Process helpers
+// ---------------------------------------------------------------------------
+
+interface RunResult {
+  stdout: string
+  stderr: string
+  code: number
+}
+
+function runGitWithEnv(args: string[], cwd: string, env: NodeJS.ProcessEnv): Promise<RunResult> {
+  return new Promise((resolve) => {
+    const proc = spawn('git', args, { cwd, env, windowsHide: true })
+    let stdout = ''
+    let stderr = ''
+    proc.stdout.on('data', (b: Buffer) => { stdout += b.toString('utf8') })
+    proc.stderr.on('data', (b: Buffer) => { stderr += b.toString('utf8') })
+    proc.on('error', (err) => resolve({ stdout, stderr: stderr + String(err), code: -1 }))
+    proc.on('close', (code) => resolve({ stdout, stderr, code: code ?? -1 }))
+  })
+}
+
+function spawnCapture(cmd: string, args: string[]): Promise<RunResult> {
+  return new Promise((resolve) => {
+    const proc = spawn(cmd, args, { windowsHide: true })
+    let stdout = ''
+    let stderr = ''
+    proc.stdout.on('data', (b: Buffer) => { stdout += b.toString('utf8') })
+    proc.stderr.on('data', (b: Buffer) => { stderr += b.toString('utf8') })
+    proc.on('error', (err) => resolve({ stdout, stderr: stderr + String(err), code: -1 }))
+    proc.on('close', (code) => resolve({ stdout, stderr, code: code ?? -1 }))
+  })
+}

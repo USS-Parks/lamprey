@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useUiStore } from '@/stores/ui-store'
 import { useAgentStore } from '@/stores/agent-store'
 import { useEnvironment } from '@/hooks/useEnvironment'
@@ -6,6 +6,13 @@ import { useSources } from '@/hooks/useSources'
 import { toast } from '@/stores/toast-store'
 import { WorkModePopover } from './WorkModePopover'
 import { BranchPickerPopover } from './BranchPickerPopover'
+import { RepositoryPickerDialog } from './RepositoryPickerDialog'
+import { PullRequestDialog } from './PullRequestDialog'
+import { PullRequestListPopover } from './PullRequestListPopover'
+import { useGitHubStore } from '@/stores/github-store'
+import { useChatStore } from '@/stores/chat-store'
+import { github as githubClient } from '@/lib/ipc-client'
+import type { GitHubProjectRepoLink } from '@/lib/github-types'
 
 function ChevronDownGlyph(): React.ReactElement {
   return (
@@ -52,6 +59,27 @@ function CommitGlyph(): React.ReactElement {
       <circle cx="12" cy="12" r="4" />
       <line x1="2" y1="12" x2="8" y2="12" />
       <line x1="16" y1="12" x2="22" y2="12" />
+    </svg>
+  )
+}
+
+function GitHubGlyph(): React.ReactElement {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22" />
+    </svg>
+  )
+}
+
+function PullRequestGlyph(): React.ReactElement {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <circle cx="6" cy="6" r="3" />
+      <circle cx="6" cy="18" r="3" />
+      <circle cx="18" cy="18" r="3" />
+      <line x1="6" y1="9" x2="6" y2="15" />
+      <path d="M18 9a9 9 0 0 0-9-6h-2" />
+      <polyline points="11 5 7 1 11 5 7 9" transform="translate(0 -1)" />
     </svg>
   )
 }
@@ -106,9 +134,37 @@ export function EnvironmentPanel(): React.ReactElement {
 
   const workModeRef = useRef<HTMLButtonElement>(null)
   const branchRef = useRef<HTMLButtonElement>(null)
+  const prListRef = useRef<HTMLButtonElement>(null)
   const [workModeOpen, setWorkModeOpen] = useState(false)
   const [branchOpen, setBranchOpen] = useState(false)
   const [committing, setCommitting] = useState(false)
+
+  // GitHub integration state — kept local because the picker/dialogs are
+  // only opened from this panel.
+  const conversations = useChatStore((s) => s.conversations)
+  const activeConversationId = useChatStore((s) => s.activeConversationId)
+  const activeConversation = conversations.find((c) => c.id === activeConversationId) ?? null
+  const projectId = activeConversation?.projectId ?? null
+  const githubStatus = useGitHubStore((s) => s.status)
+  const refreshGithubStatus = useGitHubStore((s) => s.refreshStatus)
+  const [repoLink, setRepoLink] = useState<GitHubProjectRepoLink | null>(null)
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const [prDialogOpen, setPrDialogOpen] = useState(false)
+  const [prListOpen, setPrListOpen] = useState(false)
+
+  useEffect(() => {
+    void refreshGithubStatus()
+  }, [refreshGithubStatus])
+
+  useEffect(() => {
+    if (!projectId) {
+      setRepoLink(null)
+      return
+    }
+    void githubClient.getProjectRepo(projectId).then((res) => {
+      setRepoLink(res.success ? res.data : null)
+    })
+  }, [projectId])
 
   const handleCommitOrPush = async () => {
     if (committing || !window.api?.review) return
@@ -187,6 +243,63 @@ export function EnvironmentPanel(): React.ReactElement {
       <div className="my-2 border-t border-[var(--border)]" aria-hidden />
 
       <div className="px-3 pb-1 pt-1 text-[12px] font-medium text-[var(--text-secondary)]">
+        GitHub
+      </div>
+      <PanelRow
+        leading={<GitHubGlyph />}
+        label={
+          repoLink
+            ? repoLink.fullName
+            : githubStatus?.connected
+              ? 'Link GitHub repo…'
+              : 'Connect GitHub…'
+        }
+        trailing={
+          repoLink ? (
+            <span className="font-mono text-[10px] text-[var(--text-muted)]">
+              {repoLink.localPath ? 'local' : 'remote'}
+            </span>
+          ) : undefined
+        }
+        onClick={() => {
+          if (!projectId) {
+            toast.info('Assign this conversation to a project first to link a GitHub repo.')
+            return
+          }
+          setPickerOpen(true)
+        }}
+        title={
+          repoLink
+            ? `Default branch: ${repoLink.defaultBranch}`
+            : 'Pick a GitHub repository to associate with this project'
+        }
+      />
+      {repoLink && (
+        <PanelRow
+          buttonRef={prListRef}
+          leading={<PullRequestGlyph />}
+          label="Pull requests"
+          trailing={<ChevronDownGlyph />}
+          onClick={() => setPrListOpen((v) => !v)}
+        />
+      )}
+      {repoLink && snapshot.branch && (
+        <PanelRow
+          leading={<PullRequestGlyph />}
+          label={
+            snapshot.branch === repoLink.defaultBranch
+              ? `New PR from ${snapshot.branch}…`
+              : `New PR (${snapshot.branch} → ${repoLink.defaultBranch})`
+          }
+          onClick={() => setPrDialogOpen(true)}
+          disabled={snapshot.branch === repoLink.defaultBranch && !snapshot.hasChanges && snapshot.ahead === 0}
+          title="Push the current branch and open a pull request"
+        />
+      )}
+
+      <div className="my-2 border-t border-[var(--border)]" aria-hidden />
+
+      <div className="px-3 pb-1 pt-1 text-[12px] font-medium text-[var(--text-secondary)]">
         Sources
       </div>
       {sources.length === 0 ? (
@@ -250,6 +363,45 @@ export function EnvironmentPanel(): React.ReactElement {
         anchorRef={branchRef}
         onChanged={() => void refresh()}
       />
+      {projectId && (
+        <RepositoryPickerDialog
+          open={pickerOpen}
+          onClose={() => setPickerOpen(false)}
+          projectId={projectId}
+          onSelected={({ repo, localPath }) => {
+            setRepoLink({
+              projectId,
+              repoId: repo.id,
+              fullName: repo.fullName,
+              owner: repo.owner,
+              name: repo.name,
+              defaultBranch: repo.defaultBranch,
+              htmlUrl: repo.htmlUrl,
+              cloneUrl: repo.cloneUrl,
+              localPath,
+              linkedAt: Date.now()
+            })
+          }}
+        />
+      )}
+      {repoLink && (
+        <PullRequestListPopover
+          open={prListOpen}
+          onClose={() => setPrListOpen(false)}
+          anchorRef={prListRef}
+          repoLink={repoLink}
+        />
+      )}
+      {repoLink && snapshot.branch && (
+        <PullRequestDialog
+          open={prDialogOpen}
+          onClose={() => setPrDialogOpen(false)}
+          repoLink={repoLink}
+          headBranch={snapshot.branch}
+          cwd={snapshot.cwd || repoLink.localPath || ''}
+          conversationId={activeConversationId ?? undefined}
+        />
+      )}
     </div>
   )
 }

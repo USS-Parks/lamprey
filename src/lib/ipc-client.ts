@@ -104,6 +104,86 @@ export const mcp = {
     api.mcp.onConfirmationRequired(cb as any)
 }
 
+// GitHub façade. The main side owns tokens; the renderer only sees these
+// typed responses (never the bearer).
+import type {
+  GitHubConnectionStatus,
+  GitHubViewer,
+  GitHubRepository,
+  GitHubPullRequest,
+  GitHubCompareSummary,
+  GitHubProjectRepoLink,
+  ConversationPullRequestLink,
+  PushBranchResult,
+  OAuthLoginResult
+} from './github-types'
+
+export const github = {
+  status: (): Promise<IpcResponse<GitHubConnectionStatus>> => api.github.status(),
+  hasOAuthClient: (): Promise<IpcResponse<boolean>> => api.github.hasOAuthClient(),
+  saveOAuthClient: (clientId: string, clientSecret: string): Promise<IpcResponse<null>> =>
+    api.github.saveOAuthClient({ clientId, clientSecret }),
+  setMode: (mode: 'oauth' | 'github_app' | 'gh-cli' | 'none'): Promise<IpcResponse<null>> =>
+    api.github.setMode(mode),
+  connect: (): Promise<IpcResponse<OAuthLoginResult>> => api.github.connect(),
+  disconnect: (): Promise<IpcResponse<null>> => api.github.disconnect(),
+  viewer: (): Promise<IpcResponse<GitHubViewer>> => api.github.viewer(),
+  repositories: (args?: { page?: number; perPage?: number }): Promise<IpcResponse<GitHubRepository[]>> =>
+    api.github.repositories(args),
+  getRepository: (owner: string, repo: string): Promise<IpcResponse<GitHubRepository>> =>
+    api.github.getRepository({ owner, repo }),
+  pickCloneDir: (): Promise<IpcResponse<string | null>> => api.github.pickCloneDir(),
+  clone: (owner: string, repo: string, targetDir: string): Promise<IpcResponse<{ localPath: string }>> =>
+    api.github.clone({ owner, repo, targetDir }),
+  getProjectRepo: (projectId: string): Promise<IpcResponse<GitHubProjectRepoLink | null>> =>
+    api.github.getProjectRepo({ projectId }),
+  assignRepoToProject: (
+    projectId: string,
+    owner: string,
+    repo: string,
+    localPath?: string | null
+  ): Promise<IpcResponse<GitHubProjectRepoLink>> =>
+    api.github.assignRepoToProject({ projectId, owner, repo, localPath }),
+  unlinkRepo: (projectId: string): Promise<IpcResponse<null>> =>
+    api.github.unlinkRepo({ projectId }),
+  compare: (
+    owner: string,
+    repo: string,
+    base: string,
+    head: string
+  ): Promise<IpcResponse<GitHubCompareSummary>> =>
+    api.github.compare({ owner, repo, base, head }),
+  createPullRequest: (args: {
+    owner: string
+    repo: string
+    title: string
+    body?: string
+    head: string
+    base: string
+    draft?: boolean
+    headLabel?: string
+    conversationId?: string
+  }): Promise<IpcResponse<GitHubPullRequest>> => api.github.createPullRequest(args),
+  pullRequests: (
+    owner: string,
+    repo: string,
+    opts?: { state?: 'open' | 'closed' | 'all'; per_page?: number }
+  ): Promise<IpcResponse<GitHubPullRequest[]>> =>
+    api.github.pullRequests({ owner, repo, ...(opts ?? {}) }),
+  getPullRequest: (owner: string, repo: string, number: number): Promise<IpcResponse<GitHubPullRequest>> =>
+    api.github.getPullRequest({ owner, repo, number }),
+  listConversationPullRequests: (conversationId: string): Promise<IpcResponse<ConversationPullRequestLink[]>> =>
+    api.github.listConversationPullRequests({ conversationId }),
+  pushBranch: (args: {
+    cwd: string
+    branch: string
+    owner: string
+    repo: string
+    setUpstream?: boolean
+  }): Promise<IpcResponse<PushBranchResult>> => api.github.pushBranch(args),
+  openInBrowser: (url: string): Promise<IpcResponse<null>> => api.github.openInBrowser(url)
+}
+
 export const artifact = {
   render: (type: ArtifactType, content: string): Promise<IpcResponse<void>> =>
     api.artifact.render(type, content),
