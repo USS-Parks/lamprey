@@ -91,18 +91,27 @@ function App(): React.ReactElement {
   // therefore `(chatColumnWidth - 896)/2 + 24`. The card's right edge
   // sits flush with the chat-column's right edge (rail width 32px +
   // surround padding 8px == card right offset 40px from viewport), so
-  // the card occupies the rightmost cardWidth pixels of that margin —
-  // we only show it when the margin can hold cardWidth + a small visual
-  // buffer between content and card.
+  // the card occupies the rightmost cardWidth pixels of that margin.
+  //
+  // Strict no-overlap (margin >= cardWidth + buffer) would hide the
+  // 280px card at workspaces below ~1440px — losing it on common
+  // 1680/1440 monitors. We allow up to ENV_CARD_OVERLAP_TOLERANCE of
+  // overlap into the bubble area instead: the card has its own bg +
+  // border + shadow, so visually it reads as a layered floating panel
+  // sitting on top of the right edge of older messages rather than a
+  // hard conflict. Below the relaxed threshold the card hides cleanly.
   const CHAT_CONTENT_MAX_WIDTH = 896
   const CHAT_CONTENT_INNER_PADDING = 24
   const CHAT_SURROUND_PADDING_X = 16 // chat surround `p-2` left + right
   const ENV_CARD_CONTENT_BUFFER = 8 // small visual gap between content and card
+  const ENV_CARD_OVERLAP_TOLERANCE = 100 // max px of bubble overlap before we hide
   const chatColumnWidth = Math.max(0, chatWorkspaceWidth - CHAT_SURROUND_PADDING_X)
   const rightMarginOfContent =
     Math.max(0, (chatColumnWidth - CHAT_CONTENT_MAX_WIDTH) / 2) + CHAT_CONTENT_INNER_PADDING
   const chatHasRoomForEnvCard =
-    chatColumnWidth > 0 && rightMarginOfContent >= ENV_CARD_WIDTH + ENV_CARD_CONTENT_BUFFER
+    chatColumnWidth > 0 &&
+    rightMarginOfContent >=
+      ENV_CARD_WIDTH + ENV_CARD_CONTENT_BUFFER - ENV_CARD_OVERLAP_TOLERANCE
   // Single boolean the card animates around. Includes every "we don't
   // float in this mode" exclusion: narrow drawer mode, expanded right
   // panel (docked EnvironmentPanel owns Environment then), and not
