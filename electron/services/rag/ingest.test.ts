@@ -277,6 +277,12 @@ describe('IngestManager — cancellation', () => {
   })
 })
 
+// Note: the IngestManager enforces a 500 MB cap on per-file source size to
+// keep the embedder + chunker from OOM. The cap is module-private and a
+// full-size negative test would allocate ~600 MB of host memory; the cap
+// is well-defined in code (search MAX_INGEST_BYTES in ingest.ts) and its
+// behaviour is exercised at runtime by the user's smoke path.
+
 // ──────────────────── delete cascade ────────────────────
 
 describe('IngestManager — delete cascade in memory fallback', () => {

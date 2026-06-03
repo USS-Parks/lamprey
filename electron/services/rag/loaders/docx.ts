@@ -16,7 +16,8 @@ export async function loadDocx(path: string): Promise<LoadedDocx> {
     mammoth = require('mammoth') as MammothModule
   } catch (err) {
     throw new Error(
-      `mammoth unavailable: ${(err as Error)?.message ?? 'unknown'}`
+      `mammoth unavailable: ${(err as Error)?.message ?? 'unknown'}`,
+      { cause: err }
     )
   }
   try {
@@ -28,6 +29,9 @@ export async function loadDocx(path: string): Promise<LoadedDocx> {
       mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
     }
   } catch (err) {
-    throw new Error(`DOCX parse failed: ${(err as Error)?.message ?? 'unknown'}`)
+    throw new Error(
+      `DOCX parse failed: ${(err as Error)?.message ?? 'unknown'}`,
+      { cause: err }
+    )
   }
 }

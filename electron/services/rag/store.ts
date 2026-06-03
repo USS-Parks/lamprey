@@ -364,11 +364,13 @@ function rowToDocument(row: DocumentRow): RagDocument {
   }
 }
 
-interface MemoryDocument extends RagDocument {
-  // The memory fallback also holds the chunks in process memory so the
-  // ingest orchestrator can verify counts + the orchestrator's
-  // transaction-shape behaviour in tests.
-}
+// Memory fallback shape is identical to RagDocument; aliased for clarity
+// so the mutating in-memory operations read as "MemoryDocument" at the
+// call sites without inventing an interface that adds no members.
+// The memory fallback also holds chunks in process memory so the ingest
+// orchestrator can verify counts + the orchestrator's transaction-shape
+// behaviour in tests.
+type MemoryDocument = RagDocument
 
 const memoryDocuments: MemoryDocument[] = []
 const memoryChunks: RagChunkRow[] = []

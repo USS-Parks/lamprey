@@ -104,10 +104,15 @@ export class EmbeddingsService {
   /**
    * Embed an array of texts. Batches up to BATCH_SIZE per worker call so
    * the worker can run one forward pass per batch. Returns a Float32Array
-   * per input text in the same order.
+   * per input text in the same order. An optional `signal` lets the
+   * caller bail between batches if the underlying job (e.g. an ingest
+   * round) was cancelled — the in-flight batch still runs to completion
+   * because terminate-from-outside doesn't compose cleanly with the
+   * worker_threads message queue.
    */
-  async embed(texts: string[]): Promise<Float32Array[]> {
+  async embed(texts: string[], signal?: AbortSignal): Promise<Float32Array[]> {
     if (texts.length === 0) return []
+    if (signal?.aborted) throw new Error('embed: aborted')
     await this.ensureWorker()
     // Ensure the active model is actually loaded — autoload it on first
     // embed so callers don't have to remember the setActive dance.
@@ -116,6 +121,7 @@ export class EmbeddingsService {
     }
     const out: Float32Array[] = []
     for (let i = 0; i < texts.length; i += BATCH_SIZE) {
+      if (signal?.aborted) throw new Error('embed: aborted')
       const batch = texts.slice(i, i + BATCH_SIZE)
       const vectors = (await this.send({
         type: 'embed',

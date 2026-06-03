@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto'
 import { app } from 'electron'
 import { listAttachments } from './store'
 import { retrieveWithMeta, persistRetrieval, type RetrievedChunk } from './retrieve'
@@ -42,11 +43,19 @@ export type RagAugmentOptions = {
 }
 
 export interface RagAugmentResult {
+  /** Pre-generated id the caller will pass to persistRetrieval(...) once the
+   *  assistant message exists. Threaded into rag_retrievals so the message
+   *  row's retrieval_id column links cleanly. */
   retrievalId: string
   context: ContextBuildOutput
   chunks: RetrievedChunk[]
   rewrites?: string[]
   scopes: string[]
+  stats: {
+    lexHitsTotal: number
+    vecHitsTotal: number
+    durationMs: number
+  }
 }
 
 export async function augmentForChat(
@@ -121,23 +130,22 @@ export async function augmentForChat(
     citationRequired: settings.citationRequired
   })
 
-  // 6. Persist the rag_retrievals row. We don't yet have the message id —
-  //    the chat handler hands us back the result and persists with the
-  //    real message id once the assistant row is saved. For now we capture
-  //    the retrieval id and let the caller call persistRetrieval(...).
-  const retrievalId = `pending:${Date.now()}` // placeholder, caller overrides
-  void retrievalId
-  void persistRetrieval // re-export for callers
-  void lexHitsTotal
-  void vecHitsTotal
-  void startedAt
-
+  // Generate the retrieval id NOW so the caller can both stamp it onto the
+  // assistant message row AND call persistRetrieval(retrievalId, ...) once
+  // the message lands. Earlier-then-later id assignment is the standard
+  // Lamprey pattern (chat correlationId works the same way).
+  const retrievalId = randomUUID()
   return {
-    retrievalId: '', // chat handler assigns
+    retrievalId,
     context,
     chunks: topResults,
     rewrites,
-    scopes: collectionIds
+    scopes: collectionIds,
+    stats: {
+      lexHitsTotal,
+      vecHitsTotal,
+      durationMs: Date.now() - startedAt
+    }
   }
 }
 
