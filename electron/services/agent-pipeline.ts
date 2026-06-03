@@ -206,7 +206,12 @@ export async function runAgentPipeline(opts: RunAgentPipelineOptions): Promise<v
 
   // PLANNER ------------------------------------------------------------
   emitter.status({ conversationId, role: 'planner', model: roster.planner, state: 'running' })
-  let planText = ''
+  // Declared without an initializer because both error paths in the
+  // try/catch below `return` before any read; TS' flow analysis confirms
+  // assignment-before-use at the line that reads planText (the rewritten
+  // user message). ESLint's no-useless-assignment correctly flags an
+  // initial `= ''`.
+  let planText: string
   try {
     const planResult = await executeMultiAgentRun({
       args: {
@@ -270,7 +275,10 @@ export async function runAgentPipeline(opts: RunAgentPipelineOptions): Promise<v
     ...opts.priorMessages,
     { role: 'user', content: buildCoderUserContent(opts.userContent, planText) }
   ]
-  let coderMessage: { message: unknown } | null = null
+  // Declared without an initializer for the same reason as planText above:
+  // the catch returns, and the try always assigns. ESLint's
+  // no-useless-assignment flags the dead initializer.
+  let coderMessage: { message: unknown } | null
   try {
     coderMessage = await opts.coderRunner({
       conversationId,
