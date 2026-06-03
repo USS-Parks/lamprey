@@ -46,7 +46,7 @@ function makeReq(partial: Partial<ToolApprovalRequest> = {}): ToolApprovalReques
     name: 'shell_command',
     serverId: 'internal',
     providerKind: 'native',
-    risks: ['destructive', 'write', 'network'],
+    risks: ['write', 'network'],
     args: { command: 'git status' },
     ...partial
   }

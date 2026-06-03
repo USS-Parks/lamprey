@@ -22,8 +22,8 @@ import type { ToolRisk } from './tool-registry'
 //
 // Risk policies match against the descriptor's risks array: a policy on the
 // 'destructive' risk matches any tool whose risks include 'destructive', so a
-// single "deny destructive globally" silences shell_command, apply_patch, and
-// Chrome destructive MCP tools at once.
+// single "deny destructive globally" silences apply_patch and Chrome
+// destructive MCP tools at once.
 
 export type PolicyScope = 'conversation' | 'workspace' | 'global'
 export type PolicySubjectKind = 'tool' | 'risk'

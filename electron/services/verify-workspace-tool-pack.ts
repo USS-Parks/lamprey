@@ -43,10 +43,10 @@ toolRegistry.registerNative(
       }
     },
     // Inferred package scripts are still arbitrary process execution. Even
-    // when selected conservatively, tests/checks can mutate files, hit the
-    // network, or run destructive project hooks, so policy matching should
-    // mirror shell_command rather than treat this as a narrow write.
-    risks: ['write', 'network', 'destructive'],
+    // when selected conservatively, tests/checks can mutate files or hit the
+    // network, so policy matching mirrors shell_command rather than treating
+    // this as a narrow write.
+    risks: ['write', 'network'],
     requiresApproval: true,
     enabled: true
   },

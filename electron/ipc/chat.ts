@@ -18,6 +18,7 @@ import { readAgentsMd } from '../services/agents-md-loader'
 import { fireHooks } from '../services/hooks-runner'
 import { mcpManager } from '../services/mcp-manager'
 import { listSkills, getSkillContent } from '../services/skill-loader'
+import { buildApiMessagesFromStoredMessages } from '../services/chat-history'
 import { toolRegistry } from '../services/tool-registry'
 import {
   partitionToolCallWindows,
@@ -232,52 +233,7 @@ export function registerChatHandlers(): void {
       // OpenAI-compatible function schemas.
       const tools: ChatCompletionTool[] = toolRegistry.getOpenAITools()
 
-      // Rebuild the chat history for the API. Tool replies are only valid if
-      // the directly preceding assistant message has a matching entry in
-      // tool_calls — otherwise the provider 400s with "Messages with role
-      // 'tool' must be a response to a preceding message with 'tool_calls'".
-      // Legacy DB rows from before the tool_calls column landed have orphan
-      // tool replies; we drop those silently so old conversations don't break.
-      const apiMessages: ChatCompletionMessageParam[] = [
-        { role: 'system' as const, content: systemPrompt }
-      ]
-      for (const m of allMessages) {
-        if (m.role === 'system') continue
-        if (m.role === 'tool' && m.toolCallId) {
-          const prev = apiMessages[apiMessages.length - 1] as
-            | (ChatCompletionMessageParam & { tool_calls?: Array<{ id: string }> })
-            | undefined
-          const hasMatchingCall =
-            prev?.role === 'assistant' &&
-            Array.isArray(prev.tool_calls) &&
-            prev.tool_calls.some((tc) => tc.id === m.toolCallId)
-          if (hasMatchingCall) {
-            apiMessages.push({
-              role: 'tool' as const,
-              content: m.content,
-              tool_call_id: m.toolCallId
-            })
-          }
-          continue
-        }
-        if (m.role === 'assistant') {
-          if (m.toolCalls && m.toolCalls.length > 0) {
-            apiMessages.push({
-              role: 'assistant' as const,
-              content: m.content || null,
-              tool_calls: m.toolCalls.map((tc) => ({
-                id: tc.id,
-                type: 'function' as const,
-                function: { name: tc.function.name, arguments: tc.function.arguments }
-              }))
-            } as ChatCompletionMessageParam)
-          } else {
-            apiMessages.push({ role: 'assistant' as const, content: m.content })
-          }
-          continue
-        }
-        apiMessages.push({ role: 'user' as const, content: m.content })
-      }
+      const apiMessages = buildApiMessagesFromStoredMessages(systemPrompt, allMessages)
 
       const abortController = new AbortController()
       // Stash the abort controller + the correlationId generated above so

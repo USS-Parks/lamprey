@@ -493,7 +493,7 @@ toolRegistry.registerNative(
       },
       required: ['command']
     },
-    risks: ['write', 'network', 'destructive'],
+    risks: ['write', 'network'],
     requiresApproval: true,
     enabled: true
   },

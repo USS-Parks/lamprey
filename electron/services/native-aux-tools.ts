@@ -201,7 +201,7 @@ export interface RequestPermissionsArgs {
 }
 
 const SCOPE_RISKS: Record<PermissionScope, ToolRisk[]> = {
-  shell: ['destructive'],
+  shell: ['write', 'network'],
   network: ['network'],
   write_workspace: ['write'],
   destructive_fs: ['destructive', 'write'],

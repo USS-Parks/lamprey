@@ -40,7 +40,7 @@ function makeReq(
     name: 'shell_command',
     serverId: 'internal',
     providerKind: 'native',
-    risks: ['destructive', 'write', 'network'],
+    risks: ['write', 'network'],
     args: {},
     ...partial
   }

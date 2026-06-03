@@ -33,7 +33,7 @@ describe('inferPhaseFromDescriptor', () => {
 
   it('routes verification tools to verifying', () => {
     expect(
-      inferPhaseFromDescriptor(descriptor('verify_workspace', ['write', 'network', 'destructive']))
+      inferPhaseFromDescriptor(descriptor('verify_workspace', ['write', 'network']))
     ).toBe('verifying')
     expect(inferPhaseFromDescriptor(descriptor('frontend_qa', ['network', 'read']))).toBe(
       'verifying'
@@ -45,7 +45,7 @@ describe('inferPhaseFromDescriptor', () => {
       'acting'
     )
     expect(
-      inferPhaseFromDescriptor(descriptor('shell_command', ['write', 'network', 'destructive']))
+      inferPhaseFromDescriptor(descriptor('shell_command', ['write', 'network']))
     ).toBe('acting')
   })
 

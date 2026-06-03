@@ -298,10 +298,10 @@ describe('resolveDecisionFromPolicies — risk matching against multi-risk descr
         decision: 'deny'
       })
     ]
-    // shell_command carries write, network, destructive — the destructive
-    // policy should match regardless of order.
+    // A multi-risk descriptor should match the destructive policy regardless
+    // of order.
     const decision = resolveDecisionFromPolicies(policies, {
-      toolId: 'shell_command',
+      toolId: 'apply_patch',
       risks: ['write', 'network', 'destructive']
     })
     expect(decision).toEqual({ decision: 'deny', policyId: 'global-destructive' })
@@ -319,7 +319,7 @@ describe('resolveDecisionFromPolicies — risk matching against multi-risk descr
     ]
     const decision = resolveDecisionFromPolicies(policies, {
       toolId: 'shell_command',
-      risks: ['write', 'network', 'destructive']
+      risks: ['write', 'network']
     })
     expect(decision).toBeNull()
   })
