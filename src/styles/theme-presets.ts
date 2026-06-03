@@ -1,6 +1,6 @@
 import type { ThemeMode, ThemePreset, ThemePresetId, ThemePresetTokens } from '@/lib/types'
 
-export const DEFAULT_PRESET_ID: ThemePresetId = 'lamprey-default'
+export const DEFAULT_PRESET_ID: ThemePresetId = 'arcgis-blue'
 export const DEFAULT_THEME_MODE: ThemeMode = 'dark'
 
 function tintToward(hex: string, amount: number): string {
@@ -112,45 +112,45 @@ export const THEME_PRESETS: ThemePreset[] = [
     }
   },
   {
-    id: 'arcgis-violet',
-    name: 'Lamprey Violet',
-    source: 'Esri Purple 1',
-    swatch: ['#57318c', '#7b5ba9', '#a085c6', '#c4afe2', '#d6c4f1'],
+    id: 'lamprey-mint',
+    name: 'Lamprey Mint',
+    source: 'Forest + mint, kelly green accent',
+    swatch: ['#0e2818', '#1a5a2c', '#4cbb17', '#9ad99a', '#d4f0c8'],
     tokens: {
-      bgPrimary: '#0d0a14',
-      bgSecondary: '#15101e',
-      bgTertiary: '#1f1828',
-      border: '#2a2236',
-      textPrimary: '#e8e2f0',
-      textSecondary: '#9286a8',
-      textMuted: '#4a3e60',
-      accent: '#a085c6',
-      accentDim: '#3d2860',
+      bgPrimary: '#07140d',
+      bgSecondary: '#0e1f15',
+      bgTertiary: '#162c20',
+      border: '#1f3a28',
+      textPrimary: '#d8f0d8',
+      textSecondary: '#7aa890',
+      textMuted: '#3a5848',
+      accent: '#4cbb17',
+      accentDim: '#1c4218',
       success: '#3d9e60',
       warning: '#c47a2a',
       error: '#c43a3a',
-      codeBg: '#110d1a'
+      codeBg: '#0a180f'
     }
   },
   {
-    id: 'arcgis-inferno',
-    name: 'Lamprey Inferno',
-    source: 'ArcGIS Inferno',
-    swatch: ['#520d8e', '#bc2e9a', '#ff5c6a', '#ffb71b', '#ffff64'],
+    id: 'lamprey-earth',
+    name: 'Lamprey Earth',
+    source: 'Brown + tan + beige, mahogany accent',
+    swatch: ['#3d1e0e', '#7a3818', '#8b3a1a', '#c9a075', '#e8d5b0'],
     tokens: {
-      bgPrimary: '#0e0810',
-      bgSecondary: '#170f1a',
-      bgTertiary: '#221726',
-      border: '#2e2030',
-      textPrimary: '#f0e0e8',
-      textSecondary: '#a08090',
-      textMuted: '#503040',
-      accent: '#ff5c6a',
-      accentDim: '#5c1828',
+      bgPrimary: '#110a07',
+      bgSecondary: '#1c130e',
+      bgTertiary: '#281c14',
+      border: '#3a281c',
+      textPrimary: '#e8d5b8',
+      textSecondary: '#b0987a',
+      textMuted: '#5a4a38',
+      accent: '#8b3a1a',
+      accentDim: '#3a1808',
       success: '#3d9e60',
-      warning: '#ffb71b',
+      warning: '#c47a2a',
       error: '#c43a3a',
-      codeBg: '#110a14'
+      codeBg: '#14100a'
     }
   },
   {
@@ -194,11 +194,36 @@ export const THEME_PRESETS: ThemePreset[] = [
       error: '#c43a3a',
       codeBg: '#0a1410'
     }
+  },
+  {
+    id: 'lamprey-drab',
+    name: 'Lamprey Drab',
+    source: 'Olive + mustard + khaki, mocha accent',
+    swatch: ['#3a3018', '#5a4828', '#a67c52', '#c4b48a', '#d4a017'],
+    tokens: {
+      bgPrimary: '#14110a',
+      bgSecondary: '#1e1a12',
+      bgTertiary: '#2a241a',
+      border: '#382f22',
+      textPrimary: '#e8dcb8',
+      textSecondary: '#a09478',
+      textMuted: '#5a4f3a',
+      accent: '#a67c52',
+      accentDim: '#3d2e1d',
+      success: '#7a8f2a',
+      warning: '#d4a017',
+      error: '#c43a3a',
+      codeBg: '#18140d'
+    }
   }
 ]
 
 export function getPreset(id: ThemePresetId | undefined): ThemePreset {
-  return THEME_PRESETS.find((p) => p.id === id) ?? THEME_PRESETS[0]
+  return (
+    THEME_PRESETS.find((p) => p.id === id) ??
+    THEME_PRESETS.find((p) => p.id === DEFAULT_PRESET_ID) ??
+    THEME_PRESETS[0]
+  )
 }
 
 export function getActiveTokens(preset: ThemePreset, mode: ThemeMode): ThemePresetTokens {

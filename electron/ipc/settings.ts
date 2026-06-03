@@ -15,7 +15,7 @@ const getSettingsPath = () => join(app.getPath('userData'), 'settings.json')
 
 const defaultSettings = {
   theme: 'dark' as const,
-  themePreset: 'lamprey-default' as const,
+  themePreset: 'arcgis-blue' as const,
   themeMode: 'dark' as 'light' | 'dark',
   fontSize: 14,
   defaultModel: 'deepseek-v4-pro',

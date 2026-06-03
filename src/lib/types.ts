@@ -110,10 +110,11 @@ export type ThemePresetId =
   | 'lamprey-default'
   | 'arcgis-blue'
   | 'arcgis-ember'
-  | 'arcgis-violet'
-  | 'arcgis-inferno'
+  | 'lamprey-mint'
+  | 'lamprey-earth'
   | 'arcgis-magma'
   | 'arcgis-viridis'
+  | 'lamprey-drab'
 
 export interface ThemePresetTokens {
   bgPrimary: string
