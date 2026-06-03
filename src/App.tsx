@@ -12,10 +12,7 @@ import { SettingsDialog } from '@/components/settings/SettingsDialog'
 import { ToolApprovalModal } from '@/components/tools/ToolApprovalModal'
 import { MemoryModal } from '@/components/memory/MemoryModal'
 import { ToastContainer } from '@/components/ui/Toast'
-import {
-  FloatingEnvironmentCard,
-  ENV_CARD_WIDTH
-} from '@/components/workspace/FloatingEnvironmentCard'
+import { FloatingEnvironmentCard } from '@/components/workspace/FloatingEnvironmentCard'
 import { useChatStore } from '@/stores/chat-store'
 import { useModelStore } from '@/stores/model-store'
 import { useSettingsStore } from '@/stores/settings-store'
@@ -84,38 +81,31 @@ function App(): React.ReactElement {
     return () => ro.disconnect()
   }, [needsApiKey])
 
-  // Chat content geometry: the inner reading column is `max-w-4xl px-6`
-  // — a 896px max-width box with 24px of inner padding on each side,
-  // centered inside the chat-column. The empty right margin between the
-  // last possible message bubble and the chat-column's right edge is
-  // therefore `(chatColumnWidth - 896)/2 + 24`. The card's right edge
-  // sits flush with the chat-column's right edge (rail width 32px +
-  // surround padding 8px == card right offset 40px from viewport), so
-  // the card occupies the rightmost cardWidth pixels of that margin.
-  //
-  // Strict no-overlap (margin >= cardWidth + buffer) would hide the
-  // 280px card at workspaces below ~1440px — losing it on common
-  // 1680/1440 monitors. We allow up to ENV_CARD_OVERLAP_TOLERANCE of
-  // overlap into the bubble area instead: the card has its own bg +
-  // border + shadow, so visually it reads as a layered floating panel
-  // sitting on top of the right edge of older messages rather than a
-  // hard conflict. Below the relaxed threshold the card hides cleanly.
-  const CHAT_CONTENT_MAX_WIDTH = 896
-  const CHAT_CONTENT_INNER_PADDING = 24
+  // Card width tracks (rightPanelWidth - rail width). When the right
+  // panel is expanded the chat workspace shrinks by exactly that delta;
+  // setting the card to the same width makes the chat content area
+  // identical in both states, so collapsing or expanding the panel
+  // doesn't shift the input pill or any message bubble. ChatView gets
+  // the same value as its `rightInset` so chat-column padding-right
+  // and card width move together.
+  const RAIL_WIDTH = 32
+  const envCardWidth = Math.max(0, rightPanelWidth - RAIL_WIDTH)
+
+  // Visibility check: the card only shows if the remaining chat content
+  // area (chatColumn minus the card slot) is still wide enough to host
+  // a usable dialogue. With padding-based recenter (ChatView pads its
+  // chat-column by envCardWidth) the card no longer overlaps message
+  // bubbles — so the gate is just "is the leftover chat area
+  // workable?" instead of the old margin-overlap arithmetic.
   const CHAT_SURROUND_PADDING_X = 16 // chat surround `p-2` left + right
-  const ENV_CARD_CONTENT_BUFFER = 8 // small visual gap between content and card
-  const ENV_CARD_OVERLAP_TOLERANCE = 100 // max px of bubble overlap before we hide
+  const MIN_CHAT_CONTENT_WIDTH = 480
   const chatColumnWidth = Math.max(0, chatWorkspaceWidth - CHAT_SURROUND_PADDING_X)
-  const rightMarginOfContent =
-    Math.max(0, (chatColumnWidth - CHAT_CONTENT_MAX_WIDTH) / 2) + CHAT_CONTENT_INNER_PADDING
   const chatHasRoomForEnvCard =
-    chatColumnWidth > 0 &&
-    rightMarginOfContent >=
-      ENV_CARD_WIDTH + ENV_CARD_CONTENT_BUFFER - ENV_CARD_OVERLAP_TOLERANCE
+    chatColumnWidth > 0 && chatColumnWidth - envCardWidth >= MIN_CHAT_CONTENT_WIDTH
   // Single boolean the card animates around. Includes every "we don't
   // float in this mode" exclusion: narrow drawer mode, expanded right
   // panel (docked EnvironmentPanel owns Environment then), and not
-  // enough centered-content margin to host the card.
+  // enough chat-column width to host the card without squeezing chat.
   const shouldShowEnvCard = !isNarrow && rightPanelCollapsed && chatHasRoomForEnvCard
 
   const handleRightResizeStart = useCallback(
@@ -278,7 +268,7 @@ function App(): React.ReactElement {
           <SecurityBanner />
           <UpdateBanner />
           <div className="flex flex-1 overflow-hidden bg-[var(--bg-secondary)] p-2">
-            <ChatView rightInset={shouldShowEnvCard ? ENV_CARD_WIDTH : 0} />
+            <ChatView rightInset={shouldShowEnvCard ? envCardWidth : 0} />
           </div>
         </div>
 
@@ -388,7 +378,7 @@ function App(): React.ReactElement {
           rightward as it fades — instead of being dragged leftward by a
           shrinking parent. The right panel mounts underneath it and is
           revealed as the card fades out. */}
-      <FloatingEnvironmentCard visible={shouldShowEnvCard} />
+      <FloatingEnvironmentCard visible={shouldShowEnvCard} width={envCardWidth} />
 
       <ToastContainer />
     </div>

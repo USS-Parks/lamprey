@@ -8,18 +8,15 @@ import { toast } from '@/stores/toast-store'
 import { WorkModePopover } from './WorkModePopover'
 import { BranchPickerPopover } from './BranchPickerPopover'
 
-// Card dimensions. The card is a true floating overlay anchored to the
-// viewport (position: fixed), NOT to the chat surround — so when the
-// right panel expands the card stays put and retreats rightward as it
-// fades, instead of being dragged leftward by the surround shrinking.
-// It sits in the empty margin beside the centered chat content
-// (max-w-4xl) and is hidden when that margin can't fit it.
+// Card layout constants. The card is a true floating overlay anchored
+// to the viewport (position: fixed), NOT to the chat surround — so
+// when the right panel expands the card stays put and retreats
+// rightward as it fades, instead of being dragged leftward.
 //
-// Width sized so a 5-digit additions/deletions value
-// (e.g. "+12345 -67890") fits in the Changes row trailing slot with
-// comfortable breathing room around the label — matches the Codex
-// reference proportions.
-export const ENV_CARD_WIDTH = 280
+// Width is provided by the parent and tracks (rightPanelWidth - rail)
+// so the chat content area stays identical width whether the card is
+// showing or the right panel is expanded — toggling between the two
+// no longer shifts the input pill.
 // From viewport top: clears the 36px (h-9) titlebar with a 20px gap.
 export const ENV_CARD_TOP_OFFSET = 56
 // From viewport right: rail is 32px wide; we sit 8px to its left.
@@ -247,10 +244,17 @@ interface FloatingEnvironmentCardProps {
   // overlapping the chat dialogue. We never make this decision here —
   // the card just animates in / out around the boolean.
   visible: boolean
+  // Pixel width the card should render at. Driven by the right panel's
+  // expanded width minus the rail width, so the chat content stays the
+  // same width whether the card is shown or the right panel is expanded
+  // (no input-pill shift on toggle). The card itself doesn't know or
+  // care why it's that wide — it just renders.
+  width: number
 }
 
 export function FloatingEnvironmentCard({
-  visible
+  visible,
+  width
 }: FloatingEnvironmentCardProps): React.ReactElement | null {
   const openSettings = useUiStore((s) => s.openSettings)
   const setActiveTool = useUiStore((s) => s.setActiveTool)
@@ -354,7 +358,7 @@ export function FloatingEnvironmentCard({
         style={{
           top: ENV_CARD_TOP_OFFSET,
           right: ENV_CARD_RIGHT_OFFSET,
-          width: ENV_CARD_WIDTH,
+          width,
           pointerEvents: interactive ? 'auto' : 'none',
           ...motionStyle
         }}
