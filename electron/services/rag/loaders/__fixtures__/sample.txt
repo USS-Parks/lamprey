@@ -1,0 +1,3 @@
+Plain text sample fixture for loader tests. Used to verify the text loader
+returns the file content verbatim and detects mime as text/plain. Padded
+to comfortably exceed the binary-sniff threshold and the chunker's floor.

@@ -15,6 +15,8 @@ import { PermissionsSettings } from './PermissionsSettings'
 import { PlanGoalSettings } from './PlanGoalSettings'
 import { GitHubSettings } from './GitHubSettings'
 import { ActivityTimeline } from '@/components/activity/ActivityTimeline'
+import { LibraryView } from '@/components/library/LibraryView'
+import { RagSettings } from './RagSettings'
 import { useUiStore } from '@/stores/ui-store'
 
 interface SettingsDialogProps {
@@ -37,6 +39,8 @@ const TABS = [
   { id: 'planGoal', label: 'Plans & Goals' },
   { id: 'hooks', label: 'Hooks' },
   { id: 'automations', label: 'Automations' },
+  { id: 'library', label: 'Library' },
+  { id: 'rag', label: 'RAG' },
   { id: 'activity', label: 'Activity' }
 ] as const
 
@@ -96,6 +100,8 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
             {activeTab === 'planGoal' && <PlanGoalSettings />}
             {activeTab === 'hooks' && <HooksSettings />}
             {activeTab === 'automations' && <AutomationsSettings />}
+            {activeTab === 'library' && <LibraryView />}
+            {activeTab === 'rag' && <RagSettings />}
             {activeTab === 'activity' && <ActivityTimeline />}
           </div>
         </div>

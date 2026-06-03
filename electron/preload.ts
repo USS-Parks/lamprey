@@ -533,6 +533,95 @@ const api = {
     timeline: (filter: unknown) => ipcRenderer.invoke('events:timeline', filter)
   },
 
+  // Local RAG (Lamprey RAG Plan, R1+). R1 ships collection CRUD; R2 adds the
+  // embedder catalogue + active-id surface. Document / query / attachment
+  // namespaces arrive in R5-R12. `embed()` is intentionally NOT exposed —
+  // raw embedding access would let a renderer DoS the worker.
+  rag: {
+    status: () => ipcRenderer.invoke('rag:status'),
+    collection: {
+      list: () => ipcRenderer.invoke('rag:collection:list'),
+      create: (input: {
+        name: string
+        description?: string
+        embedderId: string
+        chunkSize?: number
+        chunkOverlap?: number
+        workspacePath?: string
+        projectId?: string
+      }) => ipcRenderer.invoke('rag:collection:create', input),
+      update: (
+        id: string,
+        patch: {
+          name?: string
+          description?: string
+          embedderId?: string
+          chunkSize?: number
+          chunkOverlap?: number
+          workspacePath?: string
+          projectId?: string
+        }
+      ) => ipcRenderer.invoke('rag:collection:update', id, patch),
+      delete: (id: string) => ipcRenderer.invoke('rag:collection:delete', id)
+    },
+    embedder: {
+      catalog: () => ipcRenderer.invoke('rag:embedder:catalog'),
+      active: () => ipcRenderer.invoke('rag:embedder:active'),
+      setActive: (id: string) => ipcRenderer.invoke('rag:embedder:setActive', id)
+    },
+    // R5 document + ingest surface. `onProgress` returns an unsubscribe
+    // function so effect cleanup (hot reload, tab switch) detaches the
+    // listener without duplicating progress event handling.
+    document: {
+      list: (collectionId: string) =>
+        ipcRenderer.invoke('rag:document:list', collectionId),
+      ingest: (
+        collectionId: string,
+        files: Array<{
+          path?: string
+          text?: string
+          name: string
+          sourceKind?: string
+        }>
+      ) => ipcRenderer.invoke('rag:document:ingest', collectionId, files),
+      reingest: (documentId: string) =>
+        ipcRenderer.invoke('rag:document:reingest', documentId),
+      delete: (documentId: string) =>
+        ipcRenderer.invoke('rag:document:delete', documentId),
+      cancel: (jobId: string) =>
+        ipcRenderer.invoke('rag:document:cancel', jobId),
+      onProgress: (cb: (e: unknown) => void): (() => void) => {
+        const handler = (_: unknown, e: unknown): void => cb(e)
+        ipcRenderer.on('rag:document:progress', handler)
+        return () => ipcRenderer.removeListener('rag:document:progress', handler)
+      }
+    },
+    query: {
+      run: (input: {
+        query: string
+        collectionIds: string[]
+        topN?: number
+      }) => ipcRenderer.invoke('rag:query:run', input)
+    },
+    attachments: {
+      list: (conversationId: string) =>
+        ipcRenderer.invoke('rag:attachments:list', conversationId),
+      add: (input: {
+        conversationId: string
+        collectionId?: string
+        documentId?: string
+      }) => ipcRenderer.invoke('rag:attachments:add', input),
+      remove: (input: {
+        conversationId: string
+        collectionId?: string
+        documentId?: string
+      }) => ipcRenderer.invoke('rag:attachments:remove', input)
+    },
+    chunk: {
+      get: (chunkId: string) => ipcRenderer.invoke('rag:chunk:get', chunkId)
+    }
+  },
+
   app: {
     onError: (cb: (e: { message: string }) => void) =>
       ipcRenderer.on('app:error', (_, e) => cb(e)),

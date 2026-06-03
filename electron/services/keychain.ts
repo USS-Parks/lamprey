@@ -2,6 +2,7 @@ import { safeStorage } from 'electron'
 import { app } from 'electron'
 import { chmodSync, existsSync, readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
+import { recordEvent } from './event-log'
 
 // Local credential store. Keys live in JSON at userData/keys.json, each value
 // either base64-encoded electron safeStorage ciphertext or a `plain:`-prefixed
@@ -101,7 +102,14 @@ export function isEncryptionAvailable(): boolean {
  * dialog the user has accepted.
  */
 export function grantPlaintextConsent(): void {
+  const alreadyGranted = sessionPlaintextConsent
   sessionPlaintextConsent = true
+  if (!alreadyGranted) {
+    emitKeychainEvent({
+      action: 'plaintext-consent-granted',
+      outcome: 'granted'
+    })
+  }
 }
 
 /** Whether this session has plaintext-storage consent recorded. */
@@ -116,9 +124,12 @@ export function __resetPlaintextConsentForTest(): void {
 
 export function setKey(provider: string, key: string, opts: SetKeyOptions = {}): void {
   const keys = readKeys()
+  const wasNewProvider = !(provider in keys)
+  let storageMode: 'encrypted' | 'plaintext'
   if (safeStorage.isEncryptionAvailable()) {
     const encrypted = safeStorage.encryptString(key)
     keys[provider] = encrypted.toString('base64')
+    storageMode = 'encrypted'
   } else if (opts.allowPlaintext || sessionPlaintextConsent) {
     // The renderer is expected to have confirmed plaintext storage before
     // reaching this code path (either via the per-call flag or via the
@@ -126,10 +137,23 @@ export function setKey(provider: string, key: string, opts: SetKeyOptions = {}):
     // callers that bypass that flow.
     console.warn('[keychain] safeStorage unavailable — storing key as plaintext (consent recorded)')
     keys[provider] = `plain:${key}`
+    storageMode = 'plaintext'
   } else {
+    emitKeychainEvent({
+      action: 'key-set-refused',
+      provider,
+      outcome: 'refused-no-consent',
+      severity: 'warning'
+    })
     throw new PlaintextConsentRequiredError(provider)
   }
   writeKeys(keys)
+  emitKeychainEvent({
+    action: wasNewProvider ? 'key-created' : 'key-updated',
+    provider,
+    outcome: 'persisted',
+    storageMode
+  })
 }
 
 export function getKey(provider: string): string | null {
@@ -164,8 +188,16 @@ export function getKey(provider: string): string | null {
 
 export function deleteKey(provider: string): void {
   const keys = readKeys()
+  const existed = provider in keys
   delete keys[provider]
   writeKeys(keys)
+  if (existed) {
+    emitKeychainEvent({
+      action: 'key-deleted',
+      provider,
+      outcome: 'deleted'
+    })
+  }
 }
 
 export function hasKey(provider: string): boolean {
@@ -177,3 +209,58 @@ export function hasKey(provider: string): boolean {
 // the value without re-deriving it. The mode is documented in the source
 // comment above; this export is the contract.
 export const __KEYS_FILE_MODE_FOR_TEST = KEYS_FILE_MODE
+
+interface KeychainEventDetail {
+  /** What the caller attempted. Discrete strings so the timeline UI can
+   *  group "set" vs "delete" vs "consent" without parsing free-form copy. */
+  action:
+    | 'key-created'
+    | 'key-updated'
+    | 'key-deleted'
+    | 'key-set-refused'
+    | 'plaintext-consent-granted'
+  /** Which provider's key moved. Optional for consent events that aren't
+   *  tied to a single provider. NEVER a value. */
+  provider?: string
+  /** Outcome flag — a short status string. NEVER includes the key value. */
+  outcome:
+    | 'persisted'
+    | 'deleted'
+    | 'refused-no-consent'
+    | 'granted'
+  /** Distinguishes safeStorage-encrypted writes from plaintext-fallback
+   *  writes. Refused / consent events leave this undefined. */
+  storageMode?: 'encrypted' | 'plaintext'
+  severity?: 'info' | 'warning'
+}
+
+/**
+ * Mirror a keychain mutation into the event spine. CRITICAL: this helper
+ * never receives the key VALUE — only the provider id and an outcome flag.
+ * That contract is enforced at the call sites: callers pass discrete
+ * metadata, not the key string. A future refactor that adds a `key?: string`
+ * field to KeychainEventDetail breaks the audit contract and must be
+ * caught in review.
+ *
+ * Failures here are swallowed: the keychain write itself is the load-bearing
+ * side-effect, and the event-log already owns its memory fallback.
+ */
+function emitKeychainEvent(detail: KeychainEventDetail): void {
+  try {
+    recordEvent({
+      type: 'security.decision',
+      actorKind: 'user',
+      severity: detail.severity ?? 'info',
+      entityKind: 'keychain',
+      entityId: detail.provider,
+      payload: {
+        action: detail.action,
+        provider: detail.provider,
+        outcome: detail.outcome,
+        storageMode: detail.storageMode
+      }
+    })
+  } catch (err) {
+    console.error('[keychain] security.decision event failed:', err)
+  }
+}

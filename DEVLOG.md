@@ -1,5 +1,382 @@
 # Lamprey Harness Dev Log
 
+## RAG R6 → R14 — Library UI, retrieval, rerank, multi-query, context, chat attachments, citations, settings, agent integration, E2E (2026-06-03)
+
+Nine prompts landed in one continuous march. The full stack is now in place: a renderer Library tab for managing collections, the hybrid-retrieval engine, optional rerank + multi-query rewrite, the `<retrieved_context>` block + citation protocol, per-conversation attachments, citation chips + source preview, the Settings → RAG panel, and an integration helper (`augmentForChat`) the chat handler can call to enrich a turn end-to-end. Build status: **58 test files / 797 passing / 5 skipped / 0 failed** (up from R5's 51/736; +61 new tests, 0 regressions).
+
+### R6 — Library UI
+
+**`src/stores/rag-store.ts` (new).** Zustand store. State: collections, per-collection documents, ingest progress (Map keyed by jobId), embedder catalogue + active id. Actions: `loadCollections`, `createCollection`, `renameCollection`, `deleteCollection`, `selectCollection`, `loadEmbedders`, `setActiveEmbedder`, `loadDocuments`, `submitIngest`, `cancelIngest`, `reingestDocument`, `deleteDocument`, plus `bindProgress` / `unbindProgress` for the per-window `rag:document:progress` subscription (idempotent — subscribing twice no-ops).
+
+**Components (`src/components/library/`).**
+- `LibraryView` — two-pane layout (collections left, docs right). Top toolbar: new-collection input + embedder selector showing the active model with approx-MB hint.
+- `CollectionList` — vertical list with doc count + embedder id per row, double-click to rename, hover-revealed × button to delete (with `confirm()` prompt).
+- `DocumentTable` — sticky-header table: name, status (with dot color + statusDetail tooltip on error), chunk count, ingested-at, reingest + delete actions.
+- `IngestDropzone` — drag-drop region with visual feedback + "Browse" button. Uses `window.api.app.getPathForFile` when present (Electron 32+), falls back to `(File as any).path` for older builds.
+- `IngestProgressCard` — per-job phase label + progress bar + cancel button. Color-codes terminal phases (green ready, red error, amber in-flight).
+
+Embedded as a **Library** tab in `SettingsDialog`. No new top-level navigation.
+
+**Renderer tests skipped per plan.** Vitest env is node-only (jsdom-bound render tests are still a carry-forward from the prior audit Prompt 12). Skipping is intentional and explicit; the Zustand store's actions are testable in node and would be a clean follow-up.
+
+### R7 — Hybrid Retrieval
+
+**`electron/services/rag/retrieve.ts` (new).** Three legs:
+1. **Lexical** — `bm25(rag_chunks_fts)` over the user query, scoped to `collection_id IN (...)` by joining `rag_chunks`. Query tokens are split on whitespace and each is wrapped in `"…"` so reserved FTS5 chars (`-`, `+`, `:`, `NEAR`, etc.) don't fall through as operators. Empty query after tokenizing → empty result.
+2. **Vector** — sqlite-vec KNN syntax (`WHERE embedding MATCH ? AND k = ?`), JOIN to `rag_chunks` for the collection scope filter. Query vector is supplied via `input.queryEmbedding` OR `input.embed([query])[0]`. Gated on `isVecAvailable()` — when sqlite-vec is missing the vector leg is silently skipped and the lex leg drives ranking on its own.
+3. **RRF fusion** — exported `fuseRRF(lex, vec, topN, k=60)`. Each candidate's fused score = sum of `1/(k+rank)` across legs that returned it; missing leg contributes 0. The `k=60` constant is the Cormack & Clarke (2009) reference.
+
+**Hydration** — top-N chunk ids JOIN `rag_documents` to get `display_name` + `source_path`, then results are stitched onto the fused-order ranking. Each `RetrievedChunk` carries `scores: {lex?, vec?, fused}` AND `ranks: {lex?, vec?}` so the timeline reader can audit fusion math.
+
+**Memory-fallback path** — when `getDb()` throws (headless test env), `retrieveFromMemory` does a TF-style match against `__peekMemoryChunks()`. Production never hits this; tests use it to exercise scope and event emission contracts without booting better-sqlite3.
+
+**`rag:query:run` IPC** + `window.api.rag.query.run`. Validates query + collectionIds; embeds the query via the singleton embeddings service. Returns the full `RetrievalRunInfo` (retrievalId + results + per-leg counts + duration).
+
+**`rag.query.completed` / `rag.query.failed`** event types added to the catalogue. Payload: scopes, lexHits, vecHits, fusedCount, durationMs, query preview (bounded to 200 chars).
+
+**Tests (`retrieve.test.ts`).** 7 tests: RRF math (both-legs > one-leg, topN cap, per-leg rank preserved); memory-fallback retrieval respects scope, empty query → empty, empty scopes → empty; `rag.query.completed` event payload has the right scopes + counts.
+
+### R8 — Optional Reranking
+
+**`electron/services/rag/rerank.ts` (new).** Three modes:
+- `'off'` — pass-through.
+- `'local-cross-encoder'` — calls `deps.crossEncoderScore(q, candidates)`; reorders by descending score.
+- `'llm'` — calls `deps.llmRerank(q, candidates)`; reorders by the returned id sequence. **Candidates the LLM dropped are appended at the end so no chunk is silently lost.** Parse failure (null return) falls through to input order with a `severity: 'warning'` rerank event.
+
+All failures route to graceful fallback — input order is preserved + the event records `errorPreview`. The `maxCandidates` cap bounds rerank cost.
+
+**`rag.rerank.completed`** event type. Payload: mode, candidate count, durationMs, beforeTopIds + afterTopIds (top 8 each), errorPreview.
+
+**Tests (`rerank.test.ts`).** 8 tests cover off pass-through, cross-encoder reordering, dep-failure graceful degradation (preserves input order + warning event), wrong-length scores rejected with warning, LLM ordering respected, LLM drops appended, parse failure fall-through, maxCandidates cap.
+
+### R9 — Multi-Query Rewrite
+
+**`electron/services/rag/multi-query.ts` (new).** `rewriteQuery(query, planner, maxRewrites=3)`. Prompts the planner for a JSON array of 2-3 alternate phrasings. Returns `[original, ...parsedRewrites]` capped at `maxRewrites + 1`. **Graceful fall-through**: planner throws → `[original]`; reply doesn't parse → `[original]`; rewrites over 200 chars dropped; case-insensitive duplicates of original dropped.
+
+`parseRewrites(raw)` — exported pure helper: tolerates leading prose (finds the first JSON array), filters non-string entries, returns null on malformed JSON.
+
+`fuseAcrossVariants(variantResults, topN)` — RRF across per-variant rankings for multi-query retrieval. Chunks present in more variants rank higher.
+
+**Tests (`multi-query.test.ts`).** 14 tests: parse with prose leading text, malformed JSON → null, non-array → null, filters non-strings; full rewriteQuery + planner contract including length cap and dupe filtering; fuseAcrossVariants ordering.
+
+### R10 — Context Assembly + Citation Protocol
+
+**`electron/services/rag/context-builder.ts` (new).** `buildContext({chunks, maxTokens, citationRequired})` → `{block, sourceMap}`. Block format:
+
+```
+<retrieved_context>
+  <source id="1" name="sample.md" lines="42-78">
+  chunk text...
+  </source>
+  ...
+</retrieved_context>
+
+Instruction: Cite sources by id in square brackets…
+```
+
+- Ids assigned 1..N in fused-score (input) order. `sourceMap[i].id = i+1`.
+- Locator format: `lines="X-Y"` for code chunks (`lineStart`/`End` present), `page="N"` for PDFs, `heading="..."` for markdown, `locator="chunk"` fallback.
+- Token cap approximated as `Math.ceil(chars/4)`; lowest-ranked sources dropped first to fit.
+- **Prompt-injection defence**: chunk text with `</...>` substrings is escaped to `< /...>` so a malicious chunk can't close the `<retrieved_context>` wrapper early.
+- `citationRequired: true` upgrades the instruction to the explicit refusal form ("If NO source supports a claim, you MUST say 'No source supports an answer to this.' rather than answering from prior knowledge.").
+
+**Tests (`context-builder.test.ts`).** 10 tests: empty chunks → empty; id assignment in fused-score order; envelope emission; all four locator formats; cap drops lowest-ranked; citationRequired upgrade; the `</` escape defence pinned.
+
+### R11 — Chat attachments
+
+**Schema (`database.ts`).** New `conversation_rag_attachments` table — PK `(conversation_id, COALESCE(collection_id, ''), COALESCE(document_id, ''))` so the "exactly one of collection_id / document_id is set" rule is unique-able even with NULLs. Index on `conversation_id` for the per-conversation list path.
+
+**Store ops (`store.ts`).** `addAttachment` validates "exactly one of collectionId/documentId is set" + "conversationId required", upserts via `ON CONFLICT(...) DO UPDATE SET attached_at = excluded.attached_at` (re-attaching the same target updates the timestamp instead of error-ing). `removeAttachment`, `listAttachments` newest-first. Memory fallback mirrors the rest of the store.
+
+**IPC + preload.** `rag:attachments:list/add/remove` + `window.api.rag.attachments.{list, add, remove}`.
+
+**`ContextAttachBar` component** above ChatInput. Renders attached chips with a × detach button; tooltip shows whether the attachment is a collection or a specific document. No-renders when no attachments (zero visual chrome).
+
+**Tests (`attachments.test.ts`).** 8 tests: validation rejects (empty conversationId, neither/both of collectionId & documentId), add/list/remove roundtrip, list scoped per conversation, dedup-on-re-add updates timestamp, remove returns true/false.
+
+### R12 — Citation chips + source preview
+
+**`src/lib/citation-parser.ts` (new).** Pure `parseCitations(input): CitationSegment[]` — alternating text/citation segments. Recognizes `[N]`, `[N, M]`, `[N, M, K]` patterns ANYWHERE except inside fenced code blocks (`` ``` ``…`` ``` ``) and inline code (`` `…` ``). Adjacent text segments are merged so the renderer sees one entry per run.
+
+**Components.**
+- `CitationChip` — small numbered chip per id. Hover → tooltip with `displayName + locator`. Click → `onOpen(source)` so a parent can route to the preview pane.
+- `SourcePreviewPane` — right-side slide-in. Fetches chunk text via `window.api.rag.chunk.get(chunkId)`; shows monospace `<pre>` of the chunk text.
+
+**Schema.** `safeAddColumn(messages, 'retrieval_id TEXT')` — nullable column linking an assistant message to its rag_retrievals row. Pre-Prompt-12 conversations unaffected.
+
+**IPC.** `rag:chunk:get(chunkId)` + `window.api.rag.chunk.get` returning `{id, documentId, collectionId, text, headingPath, page, lineStart, lineEnd, ...}`.
+
+**Renderer types.** `CitationSource` added; `RagAttachment` exported for the attachment bar.
+
+**Tests (`citation-parser.test.ts`).** 12 tests: single citation; multi-id `[1, 2, 3]`; whitespace tolerance; multiple citations on the same line; fenced code blocks DON'T parse citations (including with language hints); inline code DOESN'T parse; non-number brackets ignored; stray brackets tolerated; merged adjacent text.
+
+### R13 — RAG Settings + agent integration helper
+
+**`src/components/settings/RagSettings.tsx` (new).** Apply-on-change settings panel with sections for: embedder choice + MB hint, chunking (size + overlap with clamped numeric inputs), retrieval (lexK / vecK / fusedTopN), rerank mode select, multi-query toggle, auto-RAG toggle, citation-required toggle. Hydrates from `settings.json`'s `rag` block on mount; every change writes back. Embedded as the new **RAG** tab in `SettingsDialog`.
+
+**`electron/services/rag/chat-augmentation.ts` (new).** `augmentForChat({conversationId, query, settings, planner, rerankDeps, ...})` — single entry point for the chat handler to call per turn:
+1. Reads attachments for the conversation. Returns `null` when none → caller skips the `<retrieved_context>` block.
+2. Optional multi-query rewrite (R9).
+3. Retrieves per variant (R7) with `topN × 3` over-fetch when rerank is enabled.
+4. Cross-variant RRF fusion.
+5. Optional rerank (R8).
+6. Trim to settings.fusedTopN.
+7. Build the `<retrieved_context>` block (R10).
+8. Returns `{retrievalId, context, chunks, rewrites, scopes}` for the chat handler to persist + forward to the renderer.
+
+Per-role retrieval for the agent pipeline (Planner: broad, Coder: focused on plan text, Reviewer: reuse coder's sources) is wired through this same helper — the caller varies `queryKind` + the input query text per role. Doc says so; chat.ts/agent-pipeline.ts call insertion is a clean ~5-line follow-up the next prompt can do without touching the engine.
+
+### R14 — End-to-end + final gates
+
+**`electron/services/rag/end-to-end.test.ts` (new).** 2 tests exercise the orchestration chain end-to-end via the memory fallback (no native modules required). The first walks retrieve → rerank → context-builder and verifies the assembled block + sourceMap + spine events for each step. The second pins that retrieval scope is honored across multiple collections — chunks from B never leak into a query scoped to A.
+
+**Updated tests.** `electron/ipc/rag.test.ts` now pins the **R7 + R11 + R12 surfaces present**: `rag:query:run`, `rag:attachments:list/add/remove`, `rag:chunk:get`.
+
+**Event-presentation extension.** Labels + subtitles added for `rag.query.completed/failed`, `rag.rerank.completed` so timeline rows read at a glance.
+
+**Verification.** `tsc --noEmit -p tsconfig.node.json` + `-p tsconfig.web.json` both clean across the full march. New tests: 7 retrieve + 8 rerank + 14 multi-query + 10 context-builder + 12 citation-parser + 8 attachments + 2 end-to-end = **61 new tests**. Full suite: **58 files / 797 passed + 5 skipped / 0 failed** (+61 over R5; 0 regressions across 51 previously-green files).
+
+**Carry-forward to a future prompt.**
+- **chat.ts insertion**: call `augmentForChat({...})` before the provider call when settings.rag.enabled && attachments exist; pipe `context.block` into `buildSystemPrompt`'s retrieval slot; emit a `chat:retrieval` IPC event with the sourceMap; persist a `rag_retrievals` row with the assistant message id once it lands.
+- **agent-pipeline.ts insertion**: call `augmentForChat` with `queryKind: 'planner-rewrite'` (broad) before Planner, `queryKind: 'coder-followup'` (focused on plan text) before Coder, `queryKind: 'reviewer-fixed'` (reuse coder's persisted retrieval) before Reviewer. All three share the chat correlation_id.
+- **Real-DB rerank/retrieve smoke**: the FTS5 query escaping, sqlite-vec MATCH syntax, and chunk-rowid → vec0 alignment all exist in production code but vitest can't load the natives. Runtime smoke (DevTools roundtrip with one ingested file + one query) covers them.
+- **README + docs/local-rag.md**: a user-facing doc page covering "create a collection, drop files, attach to a conversation, see citations" — clean follow-up that doesn't block any engine work.
+
+## RAG R5 — Ingest orchestrator + document IPC (2026-06-03)
+
+Unifies R1–R4. The IngestManager ties loaders → chunker → embeddings → SQLite in a single transaction, with progress events, cancellation, hash-dedupe, and rollback on failure. Documents become a first-class IPC surface alongside collections. Build status: **51 test files / 736 passing / 5 skipped / 0 failed** (up from R4's 50/727; +9 new tests, 0 regressions).
+
+**Store extension (`electron/services/rag/store.ts`).** Three new sections — Documents, Chunks, test hooks — landed alongside the existing collections layer. Same memory-fallback discipline so the orchestrator tests run headlessly without booting better-sqlite3.
+- `insertDocument`, `updateDocument` (selective patch via dynamic SET clause), `getDocument`, `findDocumentByHash`, `listDocuments` (newest-first per collection), `deleteDocument` (clears vec rows BEFORE the chunk-cascade so freed `rowid`s don't leak into the next vec INSERT).
+- `insertChunks(chunks, vectors?)` runs inside a `db.transaction()` so the chunk rows, the FTS5 mirror (via the R1 AFTER-INSERT trigger), and the vec0 rows all commit atomically. Vec writes are gated on `isVecAvailable()`; when the extension is missing the chunks still land and retrieval falls back to FTS-only. Returns `{rowids, ids}` so the caller can reconcile.
+- `deleteChunksForDocument` mirrors the delete-vec-then-cascade ordering.
+- `countChunksForDocument` and `__peekMemoryChunks` (test-only) for orchestrator assertions.
+
+**`electron/services/rag/ingest.ts` (new).** The IngestManager — an `EventEmitter` subclass.
+- `submit(collectionId, files): jobId` returns immediately; per-file work runs async. Files process **serially** to keep memory bounded (a single ONNX inference batch can be ~250 MB of activation memory; parallel files risk OOM).
+- `cancel(jobId): boolean` aborts the controller.
+- `on('progress', ...)` streams `IngestProgressEvent { jobId, documentId, displayName, phase, progress, chunkCount?, error? }`.
+- Per-file phase progression: `loading` (0.1) → `chunking` (0.3) → `embedding` (0.5) → `ready` (1.0). Each phase transition updates the row and emits a progress event. Errors at any phase route to `failDoc` which sets `status='error'`, truncates the reason into `status_detail`, AND **rolls back any chunks already inserted** so the doc row's `chunk_count` truthfully reflects on-disk state.
+- **Hash dedupe** (sha256 over the source buffer): if a `ready` document with the same hash already lives in the collection, emit a synthetic `ready` progress event referencing the existing row and skip — no duplicate document row, no re-chunking, no re-embedding. Hashes are computed once per ingest from the same buffer that gets handed to the loader.
+- **PDF path**: when `loadDocument` returns `{kind: 'paged', pages}`, the orchestrator calls the chunker once per page with `page` set and re-numbers indices sequentially across pages so the chunk_index sequence is gap-free.
+- **Cancel timing**: `checkCancel(signal)` runs between every phase AND immediately after the embed await (before the vector-count contract check). This means a user cancel mid-embed surfaces as `'cancelled'`, NOT as a misleading "vector count mismatch" if the worker returned a partial batch.
+- **Spine emission**: `rag.ingest.started` and `rag.ingest.completed` (or `.failed`). The `correlationId` is the **jobId** so Activity Timeline can reconstruct a multi-file ingest from one id — same pattern as the Prompt 3 chat correlation.
+- **Empty-content path**: if the chunker filters everything (input below `MIN_CHUNK_CHARS`, or a PDF whose extracted text is only TOC fragments), the doc lands `ready` with `chunk_count: 0` and `status_detail: 'no extractable content'`. The UI shows "indexed, no content" rather than re-trying on every refresh.
+- `EmbeddingsLike` is the minimum interface — `embed(texts) → Promise<Float32Array[]>`. Tests inject a deterministic stub; production passes `getEmbeddingsService()` from R2. Singleton `getIngestManager(deps?)` + `__resetIngestManager()`.
+
+**Event catalogue (`event-log.ts` + `src/lib/types.ts`).** Three new entries: `rag.ingest.started`, `rag.ingest.completed`, `rag.ingest.failed`. Renderer presentation layer adds labels and a subtitle like `"sample.md (12 chunks)"` so timeline rows read at a glance.
+
+**IPC (`electron/ipc/rag.ts`).** Five new handlers under the existing `rag` namespace:
+- `rag:document:list(collectionId)` — newest-first feed for one collection.
+- `rag:document:ingest(collectionId, files)` — validates the `files` shape (each needs a `name`; each needs at least one of `{path, text}`), then calls `manager.submit`. Returns `{jobId}`.
+- `rag:document:reingest(documentId)` — only valid for path-sourced rows (paste rows can't be re-ingested because the buffer is gone). Sets the row back to `queued`, drops chunks, resubmits.
+- `rag:document:delete(documentId)` — store-level delete with the vec-then-chunks ordering.
+- `rag:document:cancel(jobId)` — aborts the in-flight job.
+
+The progress fan-out is wired at first ingest-handler call via `ensureIngestWired()`: it builds the IngestManager singleton lazily (so app startup pays no cost when RAG is unused), subscribes to the `'progress'` event, and forwards each progress payload to every renderer window via `webContents.send('rag:document:progress', e)`.
+
+**Preload bridge.** New `window.api.rag.document.{list, ingest, reingest, delete, cancel, onProgress}` namespace. `onProgress` returns an unsubscribe function so React effects can clean up cleanly on hot reload / tab switch — same pattern as `tools.onApprovalRequired` from earlier prompts.
+
+**Tests (`electron/services/rag/ingest.test.ts`).** 8 tests under the same `vi.mock('electron')` + forced memory fallback pattern. A deterministic fake embedder (`Float32Array(384)` with char-code buckets) sits in for the real worker.
+- **Happy path**: `loading → chunking → embedding → ready` phase progression observed via progress events; doc lands `ready` with `chunkCount > 0`; chunks materialize in the memory store with matching `documentId`; spine events are `[rag.ingest.started, rag.ingest.completed]` ordered by time, both with `correlationId === jobId`.
+- **Dedupe**: a second submission of the same file produces no new doc rows; the dedupe hash lookup hits.
+- **Unsupported extension**: doc lands `error` with a non-empty `status_detail` (lowercase-match `unsupported`); no chunks; `rag.ingest.failed` event fires.
+- **Embedding failure**: a rejecting embedder produces `status='error'` + the error message in `status_detail`; chunks count returns to 0 (failDoc rolls back).
+- **Vector-count mismatch**: an embedder that returns one vector for a multi-chunk input fails with a clear "1 vectors for N chunks" message. Uses an inline-generated multi-chunk text file so the test doesn't depend on the fixture's chunk count.
+- **Cancellation**: a blocking embedder (resolver captured by the test) holds the job in the embedding phase; `mgr.cancel(jobId)` returns true; once the embedder unblocks, the orchestrator's post-await `checkCancel` flips the doc to `error` with `status_detail: 'cancelled'` (NOT a count-mismatch error, thanks to the cancel-before-count-check ordering).
+- **Cancel on unknown jobId**: returns false.
+- **Delete cascade**: deleting a ready doc removes the row AND drops every chunk for it from the memory store.
+
+**IPC test (`electron/ipc/rag.test.ts`) extended.** Now pins the R5 document surface (`list, ingest, reingest, delete, cancel`) as present AND pins the absence of R7+ handlers (`query, attachments`) so a future test catches accidental cross-prompt registrations.
+
+**Verification.** `tsc --noEmit -p tsconfig.node.json` + `-p tsconfig.web.json` both clean. New tests: 8/8 ingest + 1 updated IPC absence assertion + the existing IPC surface (10 total in the rag.test.ts file). Full suite: **51 files / 736 passing + 5 skipped / 0 failed** — +9 new tests, 0 regressions.
+
+**Acceptance check vs. R5 plan.**
+- IngestManager with submit/cancel + EventEmitter progress: ✓
+- Serial per-file processing with phase progression (loading → chunking → embedding → ready): ✓
+- Hash dedupe; existing-and-ready short-circuits: ✓
+- Transactional chunk + vec insert (gated on isVecAvailable): ✓
+- AbortSignal between phases AND after embed await: ✓
+- `rag.ingest.started/completed/failed` spine events, correlationId=jobId: ✓
+- IPC surface + preload + onProgress unsubscribe: ✓
+- Tests for dedupe / error / cancel / cascade — all green via the memory fallback. ✓
+- The R1 FTS sync trigger + the vec0 dimension contract are **runtime smoke** items (production hits a real SQLite + a real sqlite-vec; vitest can't load either). Documented in `store.ts`'s `insertChunks` comment.
+
+**Carry-forward.** R6 builds the Library UI (collection list, document table, ingest dropzone, progress cards) on top of the IPC surface this prompt landed. R7 implements hybrid retrieval (FTS5 + sqlite-vec MATCH + RRF) — also reads from the populated tables this prompt fills. The IngestManager singleton's lazy embed-service wiring means R7 can call `getEmbeddingsService` from a different IPC handler without re-initialization.
+
+## RAG R2 + R3 + R4 — Embeddings service, chunker, document loaders (2026-06-03)
+
+Three sequential R-prompts landed in one session. The pieces don't yet talk to each other (ingest is R5) but every piece has full unit-test coverage and TS+suite gates clean. Build status: 50 test files / 727 passing / 5 skipped / 0 failures (up from R1's 47/689; +38 new tests, 0 regressions).
+
+### R2 — Local Embeddings Service
+
+**Dependency.** `@xenova/transformers` added.
+
+**`electron/services/rag/embeddings/catalog.ts` (new).** `EMBEDDING_CATALOG: readonly EmbedderInfo[]` with two entries — `bge-small-en-v1.5` (384-dim, ~33 MB, MIT, default) and `all-MiniLM-L6-v2` (384-dim, ~23 MB, Apache-2.0, fastest). Each entry: `id`, `name`, `dimensions`, `approxBytes`, `modelRef` (HF id passed to `pipeline()`), `license`, `description`. `getEmbedder(id)` + `getDefault()` accessors. `DEFAULT_EMBEDDER_ID = 'bge-small-en-v1.5'`.
+
+**`electron/services/rag/embeddings/worker.ts` (new).** Worker-thread that hosts a transformers.js feature-extraction pipeline. Communication via `parentPort` `postMessage` / `'message'` events. Inbound: `{type: 'load', modelRef, id}`, `{type: 'embed', texts, id}`, `{type: 'dispose'}`. Outbound: `{type: 'load:done', id}`, `{type: 'embed:done', id, vectors}`, `{type: 'error', id, message}`. The cached pipeline promise is keyed on `modelRef`; switching models resets the cache so the new weights load instead of returning the stale pipeline. `env.cacheDir` is pinned to `userData/models/transformers/` so production installs share the download between sessions. Workload: `pipeline(texts, { pooling: 'mean', normalize: true })`; tensor `data` slices into per-text `Float32Array[]` so the main thread doesn't have to derive the layout.
+
+**`electron/services/rag/embeddings/service.ts` (new).** Main-thread façade. `EmbeddingsService` constructor takes `userDataPath` and an optional `WorkerFactory` (injected for tests; defaults to a real `worker_threads.Worker`). Lazy: the worker isn't spawned until the first `setActive`/`embed` call so app startup pays nothing when RAG is unused. Batches inputs at `BATCH_SIZE = 32` per worker call. The model auto-loads on first `embed()` so callers don't have to remember the setActive dance. `setActive(id)` emits `rag.model.download.started` and `rag.model.download.completed` on the **first activation of a given model id only** — subsequent calls don't re-emit, and switching to a *different* model DOES emit a new started/completed pair. Failure path: `rag.model.download.failed` with `errorPreview` from `boundedJsonPreview`. Singleton accessor `getEmbeddingsService(userDataPath)` + `__resetEmbeddingsService()` test hook.
+
+**Why `embed()` is NOT in `window.api`.** A renderer with raw embed access could DoS the worker by spamming giant batches. The ingest orchestrator (R5) is the only legitimate caller; the renderer asks for ingest *progress*, not raw embeddings. Pinned by an absence assertion in the IPC test (`rag:embedder:embed` is never registered).
+
+**IPC (`electron/ipc/rag.ts`).** Three new handlers: `rag:embedder:catalog` (returns `EMBEDDING_CATALOG`), `rag:embedder:active` (returns `{id}` from the singleton), `rag:embedder:setActive(id)` (validates id and switches). All use `app.getPath('userData')` to seed the singleton on first call.
+
+**Preload bridge.** `window.api.rag.embedder.{catalog, active, setActive}` added under the existing `rag` namespace. `embed` is intentionally absent.
+
+**Event catalogue.** `EVENT_TYPES` + the renderer `EventType` union gain `rag.model.download.started/completed/failed`. `event-presentation.ts` adds labels ("Embedder downloading / ready / download failed") and a subtitle showing `name` (or `embedderId` fallback).
+
+**Tests (`electron/services/rag/embeddings/service.test.ts`).** 12 tests + 1 intentionally skipped. The skip is the model-download integration test — gated behind `LAMPREY_RUN_EMBED_NETWORK=1` per the plan's "first-run download allowed up to 60s" note; we don't default it on because that's ~33 MB of bandwidth per CI run.
+- Catalog: default is `bge-small-en-v1.5`; every entry has the required fields and a `Xenova/*` modelRef; `getEmbedder('not-real')` returns `undefined`.
+- A fake `WorkerLike` factory replies to `load`/`embed` messages with deterministic vectors (char-code buckets mod dim) so the service's queue + batching + event emission can be exercised without spawning a real thread or downloading a model.
+- `setActive` emits started + completed on first activation.
+- Second `setActive` for the *same* model emits no second download pair (the `downloadEventEmittedFor` set is the contract).
+- Switching to a *different* model DOES emit a new pair.
+- Unknown model id throws with a clear "unknown embedder" message.
+- `embed` returns one `Float32Array` per input in input order; 75 texts produce ceil(75/32)=3 embed messages (batching contract).
+- `embed([])` no-ops without touching the worker.
+- `dispose` calls `terminate` on the worker.
+- A worker `'error'` reply on an embed message rejects the embed promise with the worker error text.
+
+### R3 — Chunker
+
+**`electron/services/rag/chunker.ts` (new).** Pure: no IO, no IPC, no DB. Recursive character splitter with separators `["\n\n", "\n", ". ", " ", ""]`. Markdown heading-aware path: pre-split on `#`/`##`/`###`/etc and stamp `headingPath` like `"Top > Section A > Sub A1"` (respects fenced code blocks so `# headings` inside ```` ``` ```` blocks don't open sections). Source-code path: counts newlines to set `lineStart`/`lineEnd` per chunk. PDF page-stamping: callers (R4 loader → R5 orchestrator) pass one `ChunkInput` per page with `input.page` set, and every emitted chunk inherits the page number. Hard ceilings exported as `MAX_CHUNK_CHARS = 2000` and `MIN_CHUNK_CHARS = 50` — chunks above the ceiling are re-split with chunkSize/2; chunks below the floor are dropped and indices are re-numbered so emitted chunks form a 0..N-1 sequence. Default `ChunkOptions`: `chunkSize: 800`, `chunkOverlap: 100` — matches the `rag_collections` defaults from R1.
+
+**Internal design.** `splitIntoPieces` walks the separator hierarchy until every piece is ≤ chunkSize; `splitWithSeparator` keeps the separator attached to the *preceding* piece so paragraph breaks stay readable; `windowPieces` aggregates consecutive small pieces into ~chunkSize chunks with `chunkOverlap` overlap, retreating `i` to create the overlap without infinite-looping on tiny pieces. Tree-sitter-aware splitting is **intentionally not built** — the plan calls it out as a v2 concern and the dumb splitter is the right starting point.
+
+**Tests (`electron/services/rag/chunker.test.ts`).** 14 tests, full coverage of every contract:
+- Floors + ceilings: empty/short input → `[]`; input above the floor but below chunkSize → exactly one chunk; 10,000-char no-separator blob never emits a chunk over `MAX_CHUNK_CHARS`; no emitted chunk under `MIN_CHUNK_CHARS`.
+- 5,000-char prose input → 5–10 chunks, sequential indices, all under chunkSize, every chunk is a substring of input.
+- Markdown: paths populated as `Top`, `Top > Section A`, `Top > Section A > Sub A1`, `Top > Section B`; fenced code blocks don't open sections (heading inside ```` ``` ```` keeps the surrounding `Real Heading` path); no-heading input → no `headingPath` set.
+- Source code: `lineStart`/`lineEnd` populated, monotonically advancing across chunks; one-line file → `lineStart === lineEnd === 1`; NON-code source kind → `lineStart`/`lineEnd` undefined.
+- PDF page stamp: every chunk emitted from a `page: 7` input has `page: 7`.
+
+### R4 — Document Loaders
+
+**Dependencies.** `pdf-parse` + `mammoth` added.
+
+**`electron/services/rag/loaders/text.ts` (new).** `loadText(path)` → `{ text, mime }`. Detects mime by extension across markdown, plain text, JSON, CSV, YAML, and every code extension the chunker recognizes. **Two rejection paths**: oversize (>25 MB — split the corpus into smaller files first) and binary (NUL byte in the first 4 KB — same heuristic git uses). Reads the file into a buffer once, then sniffs, then UTF-8-decodes; no double read. `loadFromBuffer(name, buffer)` covers paste/in-memory cases — same mime detection, same size cap, same binary sniff. PDF/DOCX paste support is intentionally NOT in v1.
+
+**`electron/services/rag/loaders/pdf.ts` (new).** `loadPdf(path)` → `{ pages: { page, text }[], mime: 'application/pdf' }`. Uses `pdf-parse` with a `pagerender` hook so per-page text is captured into the `pages` array as the parser walks the PDF (default `pdf-parse` concatenates everything into one big string). Strips form-feeds and collapses 3+ newlines to 2. Throws `"PDF is encrypted"` when the parser surfaces an encryption error, and `"PDF appears scanned (no extractable text)"` when total text across all pages is < 100 chars. Late require of `pdf-parse` so its module-init self-test doesn't crash tests that don't exercise PDFs.
+
+**`electron/services/rag/loaders/docx.ts` (new).** `loadDocx(path)` → `{ text, mime: '...wordprocessingml.document' }`. Uses `mammoth.extractRawText({ path })`. Normalizes `\r\n` → `\n` so the chunker's separator hierarchy works.
+
+**`electron/services/rag/loaders/index.ts` (new).** `loadDocument(path)` dispatcher — discriminated union `{ kind: 'text', text, mime } | { kind: 'paged', pages, mime }`. The chunker dispatches on `kind` (R5 will wire this through the ingest orchestrator).
+
+**Fixtures (`electron/services/rag/loaders/__fixtures__/`).** `sample.md`, `sample.ts`, `sample.txt` — small real files used by the loader tests. PDF + DOCX fixtures are NOT generated inline (small binary blobs round-trip poorly through PR review); their runtime contracts are unit-tested through the failure paths (encryption / scanned / parse failure), and the integration smoke is the user's "drop a real PDF into a collection" path.
+
+**Tests (`electron/services/rag/loaders/loaders.test.ts`).** 11 tests:
+- `loadText` round-trips each of the three real fixtures and reports the right mime.
+- Unsupported extension → "Unsupported text extension" error.
+- File with NUL bytes (written to a tmp dir) → "binary" error.
+- Oversize buffer → "exceeds" error (exercised via `loadFromBuffer` so the test doesn't have to write a 25 MB file).
+- `loadFromBuffer`: returns content with mime derived from name; unknown extension falls back to `text/plain`; binary buffer is rejected.
+- `loadDocument` dispatcher routes `.md` to the text loader and rejects unknown extensions.
+
+### Combined gates
+
+**TS.** `tsc --noEmit -p tsconfig.node.json` + `-p tsconfig.web.json` both clean across all three prompts.
+
+**Vitest.** Full suite — **50 files / 727 passed + 5 skipped / 0 failed**. Net additions per prompt:
+- R2: +12 tests + 1 skipped (network gate).
+- R3: +14 tests.
+- R4: +11 tests.
+- Plus an updated IPC test that now pins the R2 embedder surface and pins the R5+ absence. 0 regressions across the existing 47 files.
+
+**Carry-forward.** R5 wires everything together: the ingest orchestrator picks up `loadDocument` → `chunk` → `getEmbeddingsService().embed` → a single SQLite transaction that inserts `rag_documents` + `rag_chunks` (FTS sync triggers from R1 fire automatically) + `rag_chunk_vec` rows (gated on `isVecAvailable`). Progress events stream through a new `rag:document:onProgress` channel. The integration test in R5 finally exercises the R1 FTS sync trigger contract that was deferred under the vitest native-module constraint. The UI prompts (R6 / R11 / R12) come after the engine is fully cohesive; R7-R10 (retrieval, rerank, multi-query, context-builder) are then mostly pure functions over the populated tables.
+
+## RAG R1 — Schema, sqlite-vec, Collections (2026-06-03)
+
+First step of the new Lamprey RAG plan (`PLANNING/LAMPREY_RAG_PLAN.md`). Lands the SQLite foundation for local retrieval: the sqlite-vec extension loader, the migrations for every RAG table (collections, documents, chunks, FTS5 mirror with sync triggers, vec0 vector index, retrievals), and collection CRUD with spine-emitting IPC handlers. **No embeddings yet, no ingest, no retrieval** — those land in R2-R7. The schema covers both lexical AND dense retrieval from day one (replacing Data Spine Prompts 7-8's FTS-only scope, per the RAG plan's "Prerequisites §5").
+
+**Dependency.** `sqlite-vec` added (^0.x). Ships precompiled binaries for win/mac/linux x64+arm64; the npm `postinstall` already rebuilds better-sqlite3 against Electron 35's ABI so the two natives coexist.
+
+**`electron/services/rag/vec-loader.ts` (new).** Wraps `sqlite-vec.load(db)` in a try/catch and runs a `SELECT vec_version() AS v` probe to confirm the extension is actually present (not just that `load()` didn't throw on a broken stub). Exposes `loadSqliteVec(db)`, `isVecAvailable()`, `getVecLoadError()`. On failure logs `[db] sqlite-vec UNAVAILABLE: <reason>` and the app still boots — RAG IPC handlers consult the flag and the renderer can surface a clear banner. The vec0 virtual table creation is gated on the same flag inside `database.ts` so the rest of the RAG schema (lexical-only) works without the extension.
+
+**`electron/services/database.ts` schema additions.** RAG block lands at the end of `initSchema`, after the GitHub tables and the existing index pass:
+- `rag_collections` — id, name, description, embedder_id, chunk_size, chunk_overlap, workspace_path, project_id, timestamps. `idx_rag_collections_updated` for the listing UI.
+- `rag_documents` — id, collection_id (FK ON DELETE CASCADE), source_kind (CHECK), source_path, display_name, mime, bytes, hash_sha256, mtime, status (CHECK), status_detail, chunk_count, ingested_at, updated_at. Indexes on collection_id, status, hash_sha256.
+- `rag_chunks` — id, document_id (FK ON DELETE CASCADE), collection_id (denormalized for query speed — retrieval scopes by collection without joining through documents), chunk_index, start/end offset, heading_path, page, line_start/end, text, token_count, created_at. Indexes on (document_id, chunk_index) and collection_id.
+- `rag_chunks_fts` — FTS5 virtual table in external-content mode keyed on rag_chunks.rowid. Tokenizer `porter unicode61 remove_diacritics 2`. **Sync triggers** for INSERT / DELETE / UPDATE keep FTS in lockstep with rag_chunks — INSERT mirrors text + heading_path, DELETE writes a `'delete'` tombstone, UPDATE does both. All triggers are `CREATE TRIGGER IF NOT EXISTS` (idempotent).
+- `rag_chunk_vec` — vec0 virtual table `FLOAT[384]`. **Conditional**: created only when `isVecAvailable()` returns true. Dimension matches the v1 default embedder (bge-small / MiniLM); a dimension change is a future drop+rebuild migration.
+- `rag_retrievals` — id, message_id, conversation_id, query_text, query_kind, scopes_json, results_json, duration_ms, created_at, correlation_id. Two indexes (by message, and by conversation + recency).
+
+Every migration uses `CREATE TABLE IF NOT EXISTS` / `CREATE TRIGGER IF NOT EXISTS` / `CREATE INDEX IF NOT EXISTS` so the migration is forward-additive and idempotent — matches the project's `safeAddColumn` migration convention.
+
+**`electron/services/rag/store.ts` (new).** Collection CRUD: `createCollection`, `listCollections`, `getCollection`, `updateCollection`, `deleteCollection`. Patches selectively (only supplied fields move); clearing optional scope strings via empty-string input is supported. The `RagCollection` interface is duplicated in `src/lib/types.ts` for the renderer (the two tsconfig roots can't reach across) — the convention's `LampreyToolCall` does the same. Memory fallback mirrors `permission-policies-store.ts`: activates when `getDb()` throws so headless vitest tests can exercise CRUD without booting better-sqlite3 (rebuilt against Electron's ABI; not loadable under Node 24). `__resetCollectionStore` + `__forceMemoryFallback` exposed as test-only hooks.
+
+**`electron/ipc/rag.ts` (new).** R1 surface only — `rag:collection:list/create/update/delete` plus a `rag:status` probe returning `{ vecAvailable, vecError }` for the future "vector search disabled" banner. Every successful mutation emits a `rag.collection.created/updated/deleted` event with `entityKind: 'rag-collection'` and `entityId` = collection id. `projectId` and `workspacePath` are mirrored to the dedicated event columns when set, so `events:timeline({projectId})` picks up collection activity. The delete handler captures the pre-delete row name BEFORE the delete so the event payload can identify what the user removed (post-delete the row is gone). R2+ handlers (`document`, `query`, `embedder`, `attachments`) are intentionally absent; the IPC test pins that absence.
+
+**Event-type catalogue.** Three new entries in `EVENT_TYPES` (backend) + the renderer `EventType` union: `rag.collection.created`, `rag.collection.updated`, `rag.collection.deleted`. The renderer-side presentation layer (`src/lib/event-presentation.ts`) grows three labels ("Collection created/updated/removed") and a subtitle branch that shows `name · embedderId` so Activity Timeline rows read usefully.
+
+**Preload bridge.** `window.api.rag` namespace added under `events`. R1 exposes `rag.status()` + `rag.collection.{list, create, update, delete}`. Document / query / embedder / attachment namespaces will be added incrementally as later R-prompts land their backends.
+
+**Renderer type mirrors (`src/lib/types.ts`).** Added `RagCollection`, `RagDocument` (full shape with `RagDocumentStatus` + `RagDocumentSourceKind` unions matching the SQL CHECK constraints), `RagChunk` (subset for rendering), plus placeholders for `RetrievalResult` (R7), `EmbedderInfo` (R2), and `IngestProgressEvent` (R5). Lockstep contract: any future schema change to a column must also update the renderer mirror.
+
+**Tests.**
+- `electron/services/rag/store.test.ts` — 17 tests using the standard `vi.mock('electron')` + forced memory fallback pattern. Input validation (name + embedderId required); create/get roundtrip with defaults; preserves caller-supplied chunkSize / chunkOverlap / scope fields; list ordering by `updatedAt DESC`; selective patch via `updateCollection` (only supplied fields move; updatedAt bumps; createdAt stable); empty-string patch clears optional scope fields; throws on unknown id; delete returns true/false (hit/miss) and doesn't affect siblings; memory-fallback signal probe. A `describe.skip` block holds the two contract tests R1 plans (cascade through documents+chunks, FTS sync trigger fires on chunk insert) — both require a real better-sqlite3 connection that vitest can't load, so the SQL contract is documented inline as the substitute audit trail.
+- `electron/ipc/rag.test.ts` — 7 tests. Handler registration pins the R1 surface AND pins absence of the R2+ channels. `rag:status` returns a deterministic `vecAvailable` boolean. Collection create roundtrip emits `rag.collection.created` with `entityId` + `projectId` + payload `name`. Create with bad input returns the error envelope and emits **no** event. List returns the seeded collections. Update emits `rag.collection.updated`. Update with missing id returns `error: 'id is required'`. Delete captures the pre-delete name into the event payload (the row is gone post-delete; the payload is the only place to recover it). Delete of unknown id returns `success: true, data: false` and emits no event.
+
+**Verification.** `tsc --noEmit -p tsconfig.node.json` + `-p tsconfig.web.json` both clean. New tests `npx vitest run electron/services/rag/store.test.ts electron/ipc/rag.test.ts` — **24/24 passed + 2 skipped (the DB-only contract placeholders)**. Full suite (`npx vitest run`) — **47 files / 689 passed + 4 skipped / 0 failed** (up from Prompt 6's 45/665; +24 new tests, +2 skipped, 0 regressions across the existing 45 files). The runtime verification step (manual DevTools roundtrip + `[db] sqlite-vec loaded` in main-process logs) the plan calls for needs a running app — deferred to user-side smoke; the spine-event tests cover the contract.
+
+**Acceptance check vs. R1 plan.**
+- Schema lands. ✓ (all six tables + FTS triggers + vec0)
+- Extension loaded before migrations; app boots even if vec is unavailable. ✓
+- Collection CRUD shipped through `store.ts`. ✓
+- Three IPC handlers + `rag:status`. ✓ (R2+ namespaces intentionally absent and pinned by test)
+- `window.api.rag.collection.{list, create, update, delete}` exposed. ✓
+- Tests for collection roundtrip, list ordering, delete (cascade in DB skip block). ✓
+- FTS sync trigger contract documented inline; real-DB test deferred to runtime smoke. ✓ (under vitest's native-module constraint)
+- DEVLOG entry. ✓
+
+**Carry-forward.** R2 builds the local embeddings service (transformers.js worker thread, `bge-small-en-v1.5` default). The `embedder_id` column on `rag_collections` is already in place; R2's `setActive` will wire it. The skipped FTS sync trigger test gets exercised for real in R5 when ingest writes actual chunks — at that point the test environment will have a real ingest fixture and can verify the trigger end-to-end via the production code path. The R1 store stops short of any document / chunk / vec writes; those land with R5's ingest orchestrator.
+
+## Data Spine Prompt 6 — Persistence Boundary Cleanup (2026-06-03)
+
+Closes the spine's audit story for the last unaudited mutating surface (the keychain) and ships the load-bearing doc the plan's acceptance bar calls for: a `ARCHITECTURE/PERSISTENCE.md` that maps every category of local state to its backend, writer, and audit hook. No schema migrations, no broad refactor — the existing repository modules already conform to the pattern; this prompt codifies the contract.
+
+**`security.decision` events for keychain mutations (`electron/services/keychain.ts`).** The `security.decision` event type was reserved in Prompt 1's catalogue but had no producer. Wired three call sites:
+- `setKey(provider, key, opts)` — emits `key-created` (first write for a provider) or `key-updated` (overwrite). `storageMode` distinguishes safeStorage-encrypted writes from plaintext-fallback writes. When `safeStorage.isEncryptionAvailable()` is false AND consent is absent, the helper emits `key-set-refused` with severity `warning` BEFORE throwing `PlaintextConsentRequiredError`, so the timeline records the refusal even though no key was written.
+- `deleteKey(provider)` — emits `key-deleted` only when the provider actually existed (no event for delete-of-absent).
+- `grantPlaintextConsent()` — emits `plaintext-consent-granted` only on the false→true transition. Second grant calls in the same session are no-ops at the event layer too.
+
+The audit contract is enforced at the call sites, not in the helper: every `emitKeychainEvent` call passes only discrete metadata (`action`, `provider`, `outcome`, `storageMode`). The key VALUE is never an argument and never lands in `payload_json`. A future refactor that adds a `key?: string` field to `KeychainEventDetail` breaks the contract and must fail review — the source comment in `keychain.ts` makes this explicit.
+
+**Implicit consent re-grant left silent.** When `getKey` reads an existing `plain:` row, it flips `sessionPlaintextConsent` so background refreshers (the mcp-manager OAuth token refresh, primarily) can re-save without re-prompting. This re-grant deliberately does NOT emit a `plaintext-consent-granted` event — we don't want one event per OAuth refresh. The user's *original* consent was emitted whenever the `plain:` row was first written, which is the actually-interesting moment in the audit trail.
+
+**`ARCHITECTURE/PERSISTENCE.md` (new).** Single-page reference doc with a summary table mapping every backend (SQLite, settings.json, mcp-servers.json, keys.json, active-workspace.txt, github/askpass scripts, RAM-only caches) to its owner module, what it holds, and which event categories audit its mutations. Plus:
+- **5 invariant rules**: one owner per backend; no second writer to `settings.json` or `keys.json`; no credentials in SQLite and no metadata in the keychain; caches are RAM only; one-off text files only when materially better.
+- **SQLite table inventory**: one row per table with its owner `*-store.ts` module and audit footprint. Calls out which tables are intentionally NOT audited (memory entries, plan steps, goals, project rename/touch) and why.
+- **Repository pattern contract**: the shape every `*-store.ts` follows — `rowToX`, public CRUD with prepared statements, spine emission inside the store (not the IPC handler), and which two modules have a memory fallback for headless tests (`event-log.ts`, `permission-policies-store.ts`).
+- **Per-backend rules**: `settings.json` (no file lock, single-threaded JS is the only defence; logs key NAMES only), `mcp-servers.json` (not currently audited, called out as a clean Prompt 4 follow-up), `keys.json` (the audit contract; the `key-set-refused` event; the implicit-consent doc), `active-workspace.txt` (why not in settings.json), `github/askpass.{sh,cmd}` (helper contains no secret).
+- **Migration story**: `safeAddColumn` is the migration primitive — forward-additive only, no version table, no drops. Rename/split workflow documented (add new → dual-write → backfill → switch reads → stop writing old; never DROP).
+- **Carry-forward**: Prompts 7-8 will add `documents` and `document_chunks` tables and an FTS5 index. Both follow the documented repo pattern and need no change to this doc.
+
+**No store-module refactors.** The repository pattern is already consistent across the 13 `*-store.ts` modules; the doc audit confirmed it. The two exceptions to the strict "let getDb errors propagate" rule (`event-log.ts` + `permission-policies-store.ts` with their memory fallbacks) are documented as intentional. Nothing else needed to move.
+
+**No data migrations.** Existing `lamprey.db` files from any pre-spine version remain compatible: the spine adds tables via `CREATE TABLE IF NOT EXISTS` and the events table has no foreign-key constraints to the older domain tables (the `conversation_id` / `project_id` / `tool_call_id` columns are unconstrained references — the spine writer is the only producer and it already only writes IDs that exist).
+
+**Tests (`electron/services/keychain-audit-events.test.ts`).** 11 tests using the same `vi.mock('electron')` shape as the existing `keychain.test.ts` (real tmp `userData` dir plus a fake `safeStorage`), with the event-log forced into its memory fallback so its writes don't try to open a real SQLite db in the same tmp tree.
+- First `setKey` for a provider → `key-created` with `storageMode: 'encrypted'`.
+- Second `setKey` for the same provider → `key-updated`, not `key-created`.
+- The key VALUE never appears in any payload JSON (asserted by `JSON.stringify(events).includes('sk-leaky-value')` returning false) — both for the encrypted path and the plaintext path.
+- Plaintext write without consent → `key-set-refused` with severity `warning`, AND the function throws.
+- Plaintext write with `{ allowPlaintext: true }` → one persistence event with `storageMode: 'plaintext'`.
+- `grantPlaintextConsent()` called twice → exactly one `plaintext-consent-granted` event (no-op on the second call).
+- Plaintext write under session consent → exactly one new event (the key write), NOT a second consent event.
+- Delete-existing → `key-deleted` filtered by action (not `[length-1]`, because same-millisecond stable-sort can swap insertion order under the desc-by-time return).
+- Delete-of-absent → no event.
+
+**Verification.** `tsc --noEmit -p tsconfig.node.json` + `-p tsconfig.web.json` both clean. `npx vitest run electron/services/keychain-audit-events.test.ts electron/services/keychain.test.ts` — **29/29 passed (+ 2 skipped from the existing file)**. Full suite (`npx vitest run`) — **45 files / 665 passed + 2 skipped / 0 failed** (up from Prompt 5's 43/621; +11 new tests, 0 regressions across the existing 43 files, including the existing keychain test file which is unchanged).
+
+**Acceptance check vs. plan.**
+- "No broad ORM migration" — zero schema changes; the repo pattern was already in place. ✓
+- "Existing data remains compatible" — no column changes, no table renames; events table additions from Prompt 1 used `CREATE TABLE IF NOT EXISTS`. ✓
+- "Store boundaries are documented and easier to audit" — `ARCHITECTURE/PERSISTENCE.md` is the doc; the keychain mutations are now in the spine alongside settings, workspace, worktree, automation, project, and chat-run producers. ✓
+- "Existing persistence tests" pass (29/29 keychain + 665/665 full suite); migration compatibility verified by the additive nature of all spine work; existing conversations / projects / automations / permissions are unaffected (no producers in those paths changed in this prompt). ✓
+
+**Carry-forward.** `mcp-servers.json` mutations are still unaudited — adding an `mcp.config.updated` event to the catalogue would round out the JSON-file story; called out in `PERSISTENCE.md`. `permission_policies` CRUD has `permission.policy.created/updated/deleted` reserved in the catalogue but unwired; a clean follow-up. Both are independent of the Prompt 7 retrieval foundation and can land at any time.
+
 ## Workspace UI — Environment Card Refactor + Theme Refresh (2026-06-02, v0.1.30 → v0.1.38)
 
 A multi-iteration UI pass landing on main as a single merge. Two distinct work streams.
