@@ -292,17 +292,39 @@ app.whenReady().then(() => {
     app.setAppUserModelId('com.lamprey.harness')
   }
 
-  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
-    if (details.url.includes('lamprey-artifact')) {
-      callback({
-        responseHeaders: {
-          ...details.responseHeaders,
-          'Content-Security-Policy': ["default-src 'self' 'unsafe-inline' 'unsafe-eval'; connect-src 'none'; img-src 'self' data:;"]
-        }
-      })
-    } else {
-      callback({ responseHeaders: details.responseHeaders })
+  // Sandboxed artifact documents (model-authored HTML/JSX) run with eval/inline
+  // for the Babel/JSX path but no network egress (connect-src 'none').
+  const ARTIFACT_CSP =
+    "default-src 'self' 'unsafe-inline' 'unsafe-eval'; connect-src 'none'; img-src 'self' data:;"
+  // The main renderer ships only bundled (self) scripts — no inline scripts — so
+  // script-src 'self' is the XSS backstop (an injected inline/remote script can't
+  // run). Applied to the packaged build only: the Vite dev server needs inline +
+  // eval + ws for HMR, so dev (is.dev) is left without a CSP. style-src allows
+  // inline (React style props / theme CSS vars); img/font/worker allow data:/blob:.
+  const RENDERER_CSP =
+    "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; " +
+    "img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; " +
+    "worker-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-src 'self'"
+
+  // Precise artifact match: a file:// document whose basename is the
+  // lamprey-artifact temp file — not a brittle substring of the whole URL.
+  const isArtifactUrl = (url: string): boolean => {
+    try {
+      const u = new URL(url)
+      return u.protocol === 'file:' && basename(u.pathname).startsWith('lamprey-artifact')
+    } catch {
+      return false
     }
+  }
+
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    const responseHeaders = { ...details.responseHeaders }
+    if (isArtifactUrl(details.url)) {
+      responseHeaders['Content-Security-Policy'] = [ARTIFACT_CSP]
+    } else if (!is.dev) {
+      responseHeaders['Content-Security-Policy'] = [RENDERER_CSP]
+    }
+    callback({ responseHeaders })
   })
 
   ipcMain.handle('ping', () => 'pong')

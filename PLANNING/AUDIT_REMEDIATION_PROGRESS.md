@@ -28,7 +28,7 @@ _None yet — populate as prompts land._
 | 3 | CI: run smokes on PRs | CI-1 | Done |
 | 4 | Streaming & connection bugs | BUG-1, BUG-2 | Done |
 | 5 | Test foundation (jsdom + stores/services) | TEST-1, TEST-2 | Done |
-| 6 | Renderer privilege hardening | SEC-1, SEC-7 | Pending |
+| 6 | Renderer privilege hardening | SEC-1, SEC-7 | Done |
 | 7 | Main-process correctness | BUG-3, BUG-5, QUAL-2, QUAL-3 | Pending |
 | 8 | Renderer + IPC-contract correctness | BUG-4, BUG-6 | Pending |
 | 9 | Model-input security | SEC-2, SEC-5, SEC-6, SEC-8 | Pending |
@@ -45,6 +45,23 @@ _None yet — populate as prompts land._
 - `npm run typecheck` — **no-op** (DOC-4; fixed in Prompt 1).
 
 ## Prompt entries
+
+## Prompt 6 — Renderer privilege hardening — Done (2026-06-02)
+
+Closes the High finding SEC-1 + SEC-7.
+
+### Files
+- `electron/ipc/files.ts` — `confineToWorkspace()` confines `readText/listDir/walkProject` to the workspace root + descendants (root-inclusive; `path.relative`-based, prefix-sibling safe) (SEC-1).
+- `electron/main.ts` — precise artifact URL match (file: scheme + basename) + a prod-only (`!is.dev`) header-level renderer CSP with `script-src 'self'` (SEC-7).
+- `electron/ipc/files.test.ts` *(new)* — confinement tests.
+
+### Verification
+- `npm run typecheck` — pass. `npm run lint` — 0 errors. `npm test` — 382 tests / 33 files (+6). `npm run build` + both smokes — PASS.
+- Finding: the renderer HTML already had a `<meta>` CSP (`script-src 'self'`), so the app already runs under that constraint — the new header CSP reinforces it (harder to bypass) and adds connect/object/frame/base directives. Prod CSP not headless-verifiable; packaged-build launch is the final check.
+
+### Acceptance
+- ✅ `files.*` IPC cannot read outside the workspace root; the browser/palette still work (root + descendants allowed).
+- ✅ Main renderer ships a header-level CSP (prod); artifact scheme matched precisely.
 
 ## Prompt 5 — Test foundation — Done (2026-06-02)
 

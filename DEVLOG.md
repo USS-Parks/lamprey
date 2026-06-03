@@ -1,5 +1,19 @@
 # Lamprey Harness Dev Log
 
+## Audit remediation Prompt 6 — Renderer privilege hardening (2026-06-02)
+
+Fixes the High finding SEC-1 plus SEC-7.
+
+- **SEC-1** (`electron/ipc/files.ts`): `files.readText/listDir/walkProject` took an arbitrary absolute path with only a non-empty-string check, so a renderer XSS could read `~/.ssh/id_rsa` or enumerate the disk. Added a `confineToWorkspace()` helper that resolves each candidate against the active workspace (`getActiveWorkspace()` — which is exactly the file-browser root that `files:getWorkdir` returns) and rejects anything outside it via `path.relative` (catches `../` escapes, absolute out-of-root paths, **and** prefix-sibling tricks like `/work/space-evil`). It deliberately ALLOWS the root itself (unlike `apply-patch`'s `resolvePathWithinWorkspace`, which refuses the root) because the browser lists/walks the workdir root. The handlers now operate on the normalized confined path.
+- **SEC-7** (`electron/main.ts`): the `onHeadersReceived` CSP was applied only to URLs whose full string `.includes('lamprey-artifact')` (brittle substring) and the main renderer got no header-level CSP. Now: artifact URLs are matched precisely (a `file:` document whose basename starts with `lamprey-artifact`), and the packaged renderer gets a header-level CSP (`script-src 'self'` as the XSS backstop, `style-src 'self' 'unsafe-inline'`, `img/font/worker` allowing `data:`/`blob:`, `connect-src 'self'`, `object-src 'none'`, `base-uri 'self'`, `frame-src 'self'`). Applied **prod-only** (`!is.dev`) — the Vite dev server needs inline + eval + ws for HMR.
+
+  Note: the renderer HTML already ships a `<meta>` CSP (`script-src 'self'`, no inline scripts), so the app is already known to run under `script-src 'self'` — the new header CSP is a more-robust, harder-to-bypass reinforcement that also adds `connect-src`/`object-src`/`frame-src`/`base-uri` the meta lacked. (The audit's "no renderer CSP" was imprecise — it checked the headers, not the HTML.)
+
+### Tests
+- `electron/ipc/files.test.ts` *(new)* — `confineToWorkspace`: allows root + descendants; rejects absolute-outside, `../` traversal (resolved + raw), the prefix-sibling sneak, and empty/whitespace.
+
+**Verification.** `npm run typecheck` — pass. `npm run lint` — 0 errors. `npm test` — 382 tests / 33 files (was 376 / 32; +6). `npm run build` + `smoke:bundle` + `smoke:renderer` — PASS. The prod CSP isn't runtime-verifiable headless, but the existing meta CSP (same `script-src 'self'`) under which the app already runs gives high confidence; a packaged-build launch is still the final check.
+
 ## Audit remediation Prompt 5 — Test foundation (2026-06-02)
 
 Stands up the renderer test environment and covers the highest-risk untested code (TEST-1, TEST-2). Unblocks the renderer tests in Prompts 8 and 11.
