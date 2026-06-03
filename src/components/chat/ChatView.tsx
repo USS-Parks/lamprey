@@ -1,5 +1,6 @@
 import { useChatStore } from '@/stores/chat-store'
 import { useSkillsStore } from '@/stores/skills-store'
+import { usePrefersReducedMotion } from '@/hooks/usePrefersReducedMotion'
 import { MessageList } from './MessageList'
 import { ChatInput } from './ChatInput'
 import { AttachmentPreview } from './AttachmentPreview'
@@ -15,7 +16,20 @@ import { PlanChecklist } from './PlanChecklist'
 // the comfortable-reading width; `px-6` keeps content off the column edge.
 export const CHAT_COLUMN_CLASS = 'mx-auto w-full max-w-4xl px-6'
 
-export function ChatView() {
+interface ChatViewProps {
+  // Pixels of right-side padding applied to the chat-column. When the
+  // floating Environment card is visible the parent passes the card's
+  // width here so the centered max-w-4xl content (messages + input pill)
+  // re-centers within the remaining space — same effect as expanding
+  // the right sidebar would have, but achieved by padding the chat-
+  // column itself (inside its border, on the same bg-primary surface)
+  // so no separator line appears between chat and card. Animates in
+  // lockstep with the card's entry/exit.
+  rightInset?: number
+}
+
+export function ChatView({ rightInset = 0 }: ChatViewProps = {}) {
+  const reducedMotion = usePrefersReducedMotion()
   const {
     messages,
     isStreaming,
@@ -34,7 +48,15 @@ export function ChatView() {
   }
 
   return (
-    <div className="chat-column relative flex flex-1 flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--bg-primary)]">
+    <div
+      className="chat-column relative flex flex-1 flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--bg-primary)]"
+      style={{
+        paddingRight: rightInset,
+        transition: reducedMotion
+          ? undefined
+          : 'padding-right 220ms cubic-bezier(0.2, 0.8, 0.2, 1)'
+      }}
+    >
       <FileDropZone />
 
       <div className="flex flex-1 flex-col overflow-hidden">
@@ -52,7 +74,7 @@ export function ChatView() {
         )}
       </div>
 
-      <div className="flex justify-center border-t border-[var(--border)] bg-[var(--bg-primary)] pt-3 pb-4">
+      <div className="flex justify-center bg-[var(--bg-primary)] pt-3 pb-4">
         <div className={CHAT_COLUMN_CLASS}>
           <PlanChecklist />
           <AgentRunBanner />

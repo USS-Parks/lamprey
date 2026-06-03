@@ -1,11 +1,82 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useUiStore } from '@/stores/ui-store'
 import { useAgentStore } from '@/stores/agent-store'
 import { useEnvironment } from '@/hooks/useEnvironment'
 import { useSources } from '@/hooks/useSources'
+import { usePrefersReducedMotion } from '@/hooks/usePrefersReducedMotion'
 import { toast } from '@/stores/toast-store'
 import { WorkModePopover } from './WorkModePopover'
 import { BranchPickerPopover } from './BranchPickerPopover'
+
+// Card layout constants. The card is a true floating overlay anchored
+// to the viewport (position: fixed), NOT to the chat surround — so
+// when the right panel expands the card stays put and retreats
+// rightward as it fades, instead of being dragged leftward.
+//
+// Width is provided by the parent and tracks (rightPanelWidth - rail)
+// so the chat content area stays identical width whether the card is
+// showing or the right panel is expanded — toggling between the two
+// no longer shifts the input pill.
+// From viewport top: clears the 36px (h-9) titlebar with a 20px gap.
+export const ENV_CARD_TOP_OFFSET = 56
+// From viewport right: rail is 32px wide; we sit 8px to its left.
+export const ENV_CARD_RIGHT_OFFSET = 40
+export const ENV_CARD_TRANSITION_MS = 220
+// How far the card translates rightward during exit / starts left of
+// during entry. Larger value = more visible "retreating toward the
+// rail" motion. Was 12 — bumped to 20 for clearer handoff.
+const ENV_CARD_TRANSLATE_PX = 20
+
+type CardState = 'hidden' | 'entering' | 'visible' | 'exiting'
+
+// Drives a four-phase transition so the card can play an enter or exit
+// animation around React's mount/unmount. The component returns null while
+// state === 'hidden', so the DOM is only present while the card is meant
+// to be seen or animating.
+function useCardState(visible: boolean, durationMs: number): CardState {
+  const [state, setState] = useState<CardState>(visible ? 'visible' : 'hidden')
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const rafRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    if (timeoutRef.current) clearTimeout(timeoutRef.current)
+    if (rafRef.current) cancelAnimationFrame(rafRef.current)
+
+    if (visible) {
+      // hidden | exiting | entering → entering, then a paint later → visible.
+      // The double-RAF gives the browser one frame to commit the entering
+      // styles (opacity 0, translated) before we flip to visible — otherwise
+      // the CSS transition has no "from" frame to interpolate from.
+      setState((prev) => (prev === 'visible' ? 'visible' : 'entering'))
+      rafRef.current = requestAnimationFrame(() => {
+        rafRef.current = requestAnimationFrame(() => {
+          rafRef.current = null
+          setState('visible')
+        })
+      })
+    } else {
+      // visible | entering | exiting → exiting now, → hidden after the
+      // transition completes. We leave it mounted during exiting so the
+      // CSS transition has somewhere to run.
+      setState((prev) => (prev === 'hidden' ? 'hidden' : 'exiting'))
+      if (durationMs <= 0) {
+        setState('hidden')
+      } else {
+        timeoutRef.current = setTimeout(() => {
+          timeoutRef.current = null
+          setState('hidden')
+        }, durationMs)
+      }
+    }
+
+    return () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current)
+      if (rafRef.current) cancelAnimationFrame(rafRef.current)
+    }
+  }, [visible, durationMs])
+
+  return state
+}
 
 function GearGlyph(): React.ReactElement {
   return (
@@ -154,7 +225,7 @@ function CardRow({
       }}
       disabled={disabled}
       title={title}
-      className={`flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-[13px] transition-colors ${
+      className={`flex w-full items-center gap-3 rounded-md px-2.5 py-2 text-left text-[13px] transition-colors ${
         disabled
           ? 'cursor-not-allowed text-[var(--text-muted)] opacity-60'
           : 'text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]'
@@ -168,25 +239,31 @@ function CardRow({
 }
 
 interface FloatingEnvironmentCardProps {
-  // Pass true when the docked panel is showing a non-environment tool — the
-  // card hides itself in that case (decided behavior).
-  hidden?: boolean
-  // Pixel inset from the viewport's right edge. App.tsx passes the right
-  // panel's effective width here so the card sits over the chat column, not
-  // hidden behind the docked panel's vertical strip.
-  rightInset?: number
+  // The parent (App.tsx) computes this from: not narrow viewport, right
+  // panel collapsed, and workspace wide enough to fit the card without
+  // overlapping the chat dialogue. We never make this decision here —
+  // the card just animates in / out around the boolean.
+  visible: boolean
+  // Pixel width the card should render at. Driven by the right panel's
+  // expanded width minus the rail width, so the chat content stays the
+  // same width whether the card is shown or the right panel is expanded
+  // (no input-pill shift on toggle). The card itself doesn't know or
+  // care why it's that wide — it just renders.
+  width: number
 }
 
 export function FloatingEnvironmentCard({
-  hidden,
-  rightInset = 0
+  visible,
+  width
 }: FloatingEnvironmentCardProps): React.ReactElement | null {
   const openSettings = useUiStore((s) => s.openSettings)
   const setActiveTool = useUiStore((s) => s.setActiveTool)
   const agentMode = useAgentStore((s) => s.mode)
   const { snapshot, refresh } = useEnvironment()
   const { sources, groups } = useSources()
+  const reduced = usePrefersReducedMotion()
 
+  const containerRef = useRef<HTMLDivElement>(null)
   const workModeRef = useRef<HTMLButtonElement>(null)
   const branchRef = useRef<HTMLButtonElement>(null)
   const [workModeOpen, setWorkModeOpen] = useState(false)
@@ -194,7 +271,23 @@ export function FloatingEnvironmentCard({
   const [committing, setCommitting] = useState(false)
   const [headerCollapsed, setHeaderCollapsed] = useState(false)
 
-  if (hidden) return null
+  const duration = reduced ? 0 : ENV_CARD_TRANSITION_MS
+  const state = useCardState(visible, duration)
+
+  // When the card starts exiting, drop focus out of it so screen readers
+  // and keyboard users aren't trapped inside a region that's about to
+  // disappear. Popovers anchored to card rows close for the same reason.
+  useEffect(() => {
+    if (state !== 'exiting') return
+    setWorkModeOpen(false)
+    setBranchOpen(false)
+    const active = document.activeElement
+    if (active instanceof HTMLElement && containerRef.current?.contains(active)) {
+      active.blur()
+    }
+  }, [state])
+
+  if (state === 'hidden') return null
 
   const handleCommitOrPush = async () => {
     if (committing) return
@@ -235,16 +328,46 @@ export function FloatingEnvironmentCard({
     : 'Commit or push'
   const workModeLabel = agentMode === 'multi' ? 'Pipeline' : 'Local'
 
+  const settled = state === 'visible'
+  const interactive = settled
+  const easing = 'cubic-bezier(0.2, 0.8, 0.2, 1)'
+
+  const motionStyle: React.CSSProperties = reduced
+    ? {
+        opacity: settled ? 1 : 0,
+        transition: `opacity 80ms linear`
+      }
+    : {
+        opacity: settled ? 1 : 0,
+        // Retreats rightward on exit (toward where the rail / expanding
+        // right panel sits) and slides in from the right on entry. The
+        // viewport-fixed positioning means the chat surround shrinking
+        // can't drag the card leftward — it stays put and fades.
+        transform: settled
+          ? 'translateX(0) scale(1)'
+          : `translateX(${ENV_CARD_TRANSLATE_PX}px) scale(0.98)`,
+        transformOrigin: 'top right',
+        transition: `opacity ${duration}ms ${easing}, transform ${duration}ms ${easing}`
+      }
+
   return (
     <>
       <div
-        className="pointer-events-auto fixed z-40 w-[360px] rounded-xl border border-[var(--border)] bg-[var(--bg-secondary)] p-1.5 shadow-xl"
-        style={{ top: 56, right: rightInset + 16 }}
+        ref={containerRef}
+        className="pointer-events-auto fixed z-40 rounded-xl border border-[var(--border)] bg-[var(--bg-secondary)] p-2 shadow-xl"
+        style={{
+          top: ENV_CARD_TOP_OFFSET,
+          right: ENV_CARD_RIGHT_OFFSET,
+          width,
+          pointerEvents: interactive ? 'auto' : 'none',
+          ...motionStyle
+        }}
         role="region"
         aria-label="Environment"
+        aria-hidden={interactive ? undefined : true}
       >
         {/* Header */}
-        <div className="flex items-center gap-2 px-2 py-1.5">
+        <div className="flex items-center gap-2 px-2.5 py-2">
           <button
             type="button"
             onClick={() => setHeaderCollapsed((v) => !v)}
@@ -328,17 +451,17 @@ export function FloatingEnvironmentCard({
               disabled={commitDisabled || committing}
             />
 
-            <div className="my-1.5 border-t border-[var(--border)]" aria-hidden />
+            <div className="my-2 border-t border-[var(--border)]" aria-hidden />
 
-            <div className="px-2 pb-1 pt-0.5 text-[12px] font-medium text-[var(--text-secondary)]">
+            <div className="px-2.5 pb-1 pt-1 text-[12px] font-medium text-[var(--text-secondary)]">
               Sources
             </div>
             {sources.length === 0 ? (
-              <div className="px-2 pb-1.5 text-[12px] text-[var(--text-muted)]">
+              <div className="px-2.5 pb-2 text-[12px] text-[var(--text-muted)]">
                 No sources yet
               </div>
             ) : (
-              <div className="max-h-[200px] overflow-y-auto pb-1">
+              <div className="max-h-[200px] overflow-y-auto pb-1.5">
                 {(['files', 'skills', 'memory', 'mcp'] as const).map((groupKey) => {
                   const group = groups[groupKey]
                   if (group.length === 0) return null
@@ -350,13 +473,13 @@ export function FloatingEnvironmentCard({
                   }
                   return (
                     <div key={groupKey}>
-                      <div className="px-2 pb-0.5 pt-1 text-[10px] uppercase tracking-wide text-[var(--text-muted)]">
+                      <div className="px-2.5 pb-0.5 pt-1.5 text-[10px] uppercase tracking-wide text-[var(--text-muted)]">
                         {labels[groupKey]}
                       </div>
                       {group.map((item) => (
                         <div
                           key={item.id}
-                          className="group flex items-center gap-2 px-2 py-1 text-[12px] text-[var(--text-secondary)]"
+                          className="group flex items-center gap-2.5 px-2.5 py-1.5 text-[12px] text-[var(--text-secondary)]"
                         >
                           <span className="min-w-0 flex-1 truncate">{item.title}</span>
                           {item.subtitle && (
