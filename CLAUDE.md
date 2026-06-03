@@ -14,7 +14,7 @@ Electron desktop **multi-agent coding harness** (React 19, TypeScript, electron-
 - **Original 22-prompt build + multi-provider revision**: shipped — provider registry, Gemma/Qwen/OpenRouter support, agent roster + multi-key UI.
 - **Codex toolset parity sprint (Prompts 1–15)**: shipped — see `PLANNING/CODEX_TOOLSET_PARITY_PROGRESS.md`. Native gated tools, persistent permission policies, plan/goal SQLite persistence, verification loop, frontend QA, parallel sub-agents, final-response composer, 7 codex skills, end-to-end agentic coding mode.
 - **Code version**: `package.json` is 0.1.26; no published GitHub release yet (builds are cut ad hoc per platform).
-- **Active work**: audit remediation — see `REPO_AUDIT.md` and `PLANNING/AUDIT_REMEDIATION_PLAN.md` / `_PROGRESS.md`.
+- **Active work**: audit remediation — 8 of 12 prompts shipped (P1–P8) on branch `claude/code-quality-review-z3VhL`; P9–P12 pending. Full state + resume notes in `PLANNING/AUDIT_REMEDIATION_PROGRESS.md` ("Session handoff"); findings in `REPO_AUDIT.md`; plan in `PLANNING/AUDIT_REMEDIATION_PLAN.md`.
 - Read `DEVLOG.md` for detailed build history before making changes.
 
 ## Build & Run

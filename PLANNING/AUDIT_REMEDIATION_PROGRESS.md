@@ -3,6 +3,36 @@
 Tracks execution of `AUDIT_REMEDIATION_PLAN.md` (remediation of `REPO_AUDIT.md`,
 2026-06-02). One row per prompt; one DEVLOG entry per landed prompt.
 
+## Session handoff (2026-06-02)
+
+**Progress: 8 of 12 prompts Done (P1–P8); P9–P12 Pending.** All work is on branch
+`claude/code-quality-review-z3VhL`, last commit `c135906` (audit P8). Working tree
+clean / in sync with origin; no partial work in flight (P9 was not started).
+
+Current gate state at the branch tip (every landed prompt was verified green):
+- `npm run typecheck` — pass (now real; was a no-op before P1).
+- `npm run lint` — **0 errors** (207 `no-explicit-any` warnings, intentional/non-blocking).
+- `npm test` — **394 tests / 36 files** (was 307 / 23 at session start).
+- `npm run build` + `npm run smoke:bundle` + `npm run smoke:renderer` — PASS.
+- CI: `ci.yml` runs lint + typecheck + tests + both smokes on every PR/push (added P3).
+
+**Resume at Prompt 9.** Remaining prompts and the one thing to know about each:
+- **P9 — Model-input security** (SEC-2/5/6/8): shared `assertPublicUrl()` SSRF
+  blocklist for `web_open`/`web_find` with redirect re-check; git branch validation +
+  `--` in `worktree.ts`; drop `file:` from model nav in `browser-manager.ts`; argv-form
+  (drop `shell:true`) for `files:openInVSCode`'s launch.
+- **P10 — Secrets & OAuth** (SEC-3/9/10): `keys.json` `0o600` + surface the plaintext
+  fallback via `isEncryptionAvailable`; OAuth `state` CSRF check in `mcp.ts`. (The
+  keychain round-trip test already landed in P5.)
+- **P11 — agentMode rewire** (QUAL-1): the big one. Renderer pipeline UI + `agent:status`
+  IPC + `useAgentStore` are already wired and dormant — build the main-process
+  orchestrator (`agent-pipeline.ts`) + emit. Detailed design in `AUDIT_REMEDIATION_PLAN.md`
+  Prompt 11. Benefits from the P5 jsdom foundation for its renderer tests.
+- **P12 — CI: macOS + coverage gate** (CI-2): unsigned `macos-latest` build+smoke job;
+  wire `--coverage` with a baseline threshold (the v8 coverage block landed in P5).
+
+Each prompt is one PR: implement → full gate green → DEVLOG entry → flip its roster row.
+
 ## Status legend
 
 - **Done** — code in tree, both tsc configs pass, lint clean, vitest green, smokes pass where applicable, all acceptance criteria met.

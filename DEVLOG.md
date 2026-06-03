@@ -1,5 +1,11 @@
 # Lamprey Harness Dev Log
 
+## Session wrap — audit remediation P1–P8 (2026-06-02)
+
+Closed the first 8 of 12 prompts in `PLANNING/AUDIT_REMEDIATION_PLAN.md` (full per-prompt entries below). Net effect this session: a working `tsc -b`-equivalent typecheck (was a no-op), a flat-config ESLint that's now CI-enforced, both **High** bugs fixed (chatStream retry corruption, MCP double-reconnect) and both **High** security items (renderer FS confinement + CSP, plus the streaming bugs), a jsdom/testing-library foundation, and the renderer/IPC-contract cleanup — with the test suite grown from **307 → 394** (23 → 36 files) and a CI workflow running lint + typecheck + tests + both bundle smokes on every PR. Lint is 0 errors; build + smokes pass.
+
+Remaining (P9–P12): model-input security (SSRF/git/file:/VSCode), secrets & OAuth, the agentMode rewire, and macOS CI + coverage gate. Resume notes + gate state are in the `PLANNING/AUDIT_REMEDIATION_PROGRESS.md` "Session handoff" section. Branch: `claude/code-quality-review-z3VhL`.
+
 ## Audit remediation Prompt 8 — Renderer + IPC-contract correctness (2026-06-02)
 
 Fixes BUG-4 and BUG-6 (the latter changes a preload IPC contract, hence its own prompt).
