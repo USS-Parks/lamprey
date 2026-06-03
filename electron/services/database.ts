@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3'
 import { app } from 'electron'
 import { join } from 'path'
+import { isVecAvailable, loadSqliteVec } from './rag/vec-loader'
 
 let db: Database.Database | null = null
 
@@ -10,6 +11,12 @@ export function getDb(): Database.Database {
     db = new Database(dbPath)
     db.pragma('journal_mode = WAL')
     db.pragma('foreign_keys = ON')
+    // Load sqlite-vec BEFORE migrations: the RAG vec0 virtual table can only
+    // be created after the extension is registered. When the extension fails
+    // to load (missing native binary on this target), `initSchema` skips the
+    // vec0 table and the rest of the schema continues. RAG IPC handlers
+    // surface the disabled state through `isVecAvailable()`.
+    loadSqliteVec(db)
     initSchema(db)
   }
   return db
@@ -267,7 +274,149 @@ function initSchema(db: Database.Database): void {
       created_at INTEGER NOT NULL,
       PRIMARY KEY (conversation_id, full_name, pr_number)
     );
+
+    -- ──────────────────── RAG (Local retrieval) ────────────────────
+    -- See PLANNING/LAMPREY_RAG_PLAN.md §2.2 for the schema design rationale.
+    -- All RAG tables share the main DB so a delete-all is atomic and there's
+    -- no second-db orphan risk. Migrations are forward-additive via
+    -- CREATE TABLE IF NOT EXISTS, matching the project's migration primitive.
+
+    -- Collections: user-facing grouping (e.g. "Project docs", "Tax 2025").
+    CREATE TABLE IF NOT EXISTS rag_collections (
+      id            TEXT PRIMARY KEY,
+      name          TEXT NOT NULL,
+      description   TEXT,
+      embedder_id   TEXT NOT NULL,
+      chunk_size    INTEGER NOT NULL DEFAULT 800,
+      chunk_overlap INTEGER NOT NULL DEFAULT 100,
+      workspace_path TEXT,
+      project_id    TEXT,
+      created_at    INTEGER NOT NULL,
+      updated_at    INTEGER NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_rag_collections_updated
+      ON rag_collections(updated_at DESC);
+
+    -- Documents: one row per ingested source (file or pasted blob).
+    CREATE TABLE IF NOT EXISTS rag_documents (
+      id            TEXT PRIMARY KEY,
+      collection_id TEXT NOT NULL REFERENCES rag_collections(id) ON DELETE CASCADE,
+      source_kind   TEXT NOT NULL CHECK(source_kind IN ('file','paste','workspace','skill','memory','planning')),
+      source_path   TEXT,
+      display_name  TEXT NOT NULL,
+      mime          TEXT,
+      bytes         INTEGER,
+      hash_sha256   TEXT NOT NULL,
+      mtime         INTEGER,
+      status        TEXT NOT NULL CHECK(status IN ('queued','loading','chunking','embedding','ready','error','stale')),
+      status_detail TEXT,
+      chunk_count   INTEGER NOT NULL DEFAULT 0,
+      ingested_at   INTEGER,
+      updated_at    INTEGER NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_rag_documents_collection
+      ON rag_documents(collection_id);
+    CREATE INDEX IF NOT EXISTS idx_rag_documents_status
+      ON rag_documents(status);
+    CREATE INDEX IF NOT EXISTS idx_rag_documents_hash
+      ON rag_documents(hash_sha256);
+
+    -- Chunks: the indexable atoms. collection_id is denormalized for query
+    -- speed (retrieval scopes by collection without a join through documents).
+    CREATE TABLE IF NOT EXISTS rag_chunks (
+      id            TEXT PRIMARY KEY,
+      document_id   TEXT NOT NULL REFERENCES rag_documents(id) ON DELETE CASCADE,
+      collection_id TEXT NOT NULL,
+      chunk_index   INTEGER NOT NULL,
+      start_offset  INTEGER NOT NULL,
+      end_offset    INTEGER NOT NULL,
+      heading_path  TEXT,
+      page          INTEGER,
+      line_start    INTEGER,
+      line_end      INTEGER,
+      text          TEXT NOT NULL,
+      token_count   INTEGER,
+      created_at    INTEGER NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_rag_chunks_document
+      ON rag_chunks(document_id, chunk_index);
+    CREATE INDEX IF NOT EXISTS idx_rag_chunks_collection
+      ON rag_chunks(collection_id);
+
+    -- FTS5 mirror for lexical retrieval. Uses external-content mode keyed on
+    -- rag_chunks.rowid; the triggers below keep FTS in sync on every
+    -- chunk INSERT/UPDATE/DELETE.
+    CREATE VIRTUAL TABLE IF NOT EXISTS rag_chunks_fts USING fts5(
+      text,
+      heading_path,
+      content='rag_chunks',
+      content_rowid='rowid',
+      tokenize='porter unicode61 remove_diacritics 2'
+    );
+
+    -- FTS sync triggers (idempotent — CREATE TRIGGER IF NOT EXISTS).
+    CREATE TRIGGER IF NOT EXISTS rag_chunks_fts_ai
+      AFTER INSERT ON rag_chunks BEGIN
+        INSERT INTO rag_chunks_fts(rowid, text, heading_path)
+        VALUES (new.rowid, new.text, new.heading_path);
+      END;
+    CREATE TRIGGER IF NOT EXISTS rag_chunks_fts_ad
+      AFTER DELETE ON rag_chunks BEGIN
+        INSERT INTO rag_chunks_fts(rag_chunks_fts, rowid, text, heading_path)
+        VALUES ('delete', old.rowid, old.text, old.heading_path);
+      END;
+    CREATE TRIGGER IF NOT EXISTS rag_chunks_fts_au
+      AFTER UPDATE ON rag_chunks BEGIN
+        INSERT INTO rag_chunks_fts(rag_chunks_fts, rowid, text, heading_path)
+        VALUES ('delete', old.rowid, old.text, old.heading_path);
+        INSERT INTO rag_chunks_fts(rowid, text, heading_path)
+        VALUES (new.rowid, new.text, new.heading_path);
+      END;
+
+    -- Per-message retrieval record. results_json holds the ranked chunk_ids
+    -- + per-leg scores; the persisted rows let Activity Timeline + the
+    -- Reviewer agent reconstruct exactly what context the assistant saw.
+    CREATE TABLE IF NOT EXISTS rag_retrievals (
+      id              TEXT PRIMARY KEY,
+      message_id      TEXT NOT NULL,
+      conversation_id TEXT NOT NULL,
+      query_text      TEXT NOT NULL,
+      query_kind      TEXT NOT NULL,
+      scopes_json     TEXT NOT NULL,
+      results_json    TEXT NOT NULL,
+      duration_ms     INTEGER,
+      created_at      INTEGER NOT NULL,
+      correlation_id  TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_rag_retrievals_message
+      ON rag_retrievals(message_id);
+    CREATE INDEX IF NOT EXISTS idx_rag_retrievals_conversation
+      ON rag_retrievals(conversation_id, created_at DESC);
   `)
+
+  // The sqlite-vec virtual table is created separately and is gated on the
+  // extension being available. When sqlite-vec failed to load, RAG vector
+  // search is disabled — the rest of the RAG schema still works for lexical-
+  // only retrieval (FTS5 is built into SQLite). The vec0 dimension matches
+  // the v1 default embedder (bge-small / MiniLM, both 384-dim). Swapping to
+  // a different embedder dimension is a future migration (drop+rebuild),
+  // documented in LAMPREY_RAG_PLAN §2.3.
+  if (isVecAvailable()) {
+    try {
+      db.exec(`
+        CREATE VIRTUAL TABLE IF NOT EXISTS rag_chunk_vec USING vec0(
+          chunk_rowid INTEGER PRIMARY KEY,
+          embedding   FLOAT[384]
+        );
+      `)
+    } catch (err) {
+      console.warn('[db] rag_chunk_vec creation failed (continuing without vec):', err)
+    }
+  }
 }
 
 export function closeDb(): void {

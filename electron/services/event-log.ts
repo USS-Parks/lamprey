@@ -65,7 +65,24 @@ export const EVENT_TYPES = [
   'project.created',
   'project.archived',
   'project.pinned',
-  'project.deleted'
+  'project.deleted',
+
+  // RAG collections (R1 of the LAMPREY_RAG_PLAN). Discrete user actions on
+  // the collection table. Document / chunk / ingest / query / retrieval /
+  // rerank / model-download event types land in later R-prompts alongside
+  // their producers.
+  'rag.collection.created',
+  'rag.collection.updated',
+  'rag.collection.deleted',
+
+  // RAG embedder download lifecycle (R2). Emitted by the embeddings service
+  // on first activation of a model id — the underlying transformers.js
+  // pipeline fetches weights from HF once and caches them in
+  // userData/models/transformers/. Per-byte progress isn't surfaced by
+  // transformers.js; v1 emits started + completed only.
+  'rag.model.download.started',
+  'rag.model.download.completed',
+  'rag.model.download.failed'
 ] as const
 
 export type EventType = (typeof EVENT_TYPES)[number]

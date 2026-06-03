@@ -39,7 +39,13 @@ const TYPE_LABELS: Record<EventType, string> = {
   'project.created': 'Project created',
   'project.archived': 'Project archived',
   'project.pinned': 'Project pinned',
-  'project.deleted': 'Project deleted'
+  'project.deleted': 'Project deleted',
+  'rag.collection.created': 'Collection created',
+  'rag.collection.updated': 'Collection updated',
+  'rag.collection.deleted': 'Collection removed',
+  'rag.model.download.started': 'Embedder downloading',
+  'rag.model.download.completed': 'Embedder ready',
+  'rag.model.download.failed': 'Embedder download failed'
 }
 
 export function eventTypeLabel(type: EventType): string {
@@ -120,6 +126,22 @@ export function eventSubtitle(event: EventRecord, maxChars = 120): string | null
       const name = typeof p.name === 'string' ? p.name : undefined
       const projectId = typeof p.projectId === 'string' ? p.projectId : undefined
       s = name ?? projectId ?? null
+      break
+    }
+    case 'rag.collection.created':
+    case 'rag.collection.updated':
+    case 'rag.collection.deleted': {
+      const name = typeof p.name === 'string' ? p.name : undefined
+      const embedderId = typeof p.embedderId === 'string' ? p.embedderId : undefined
+      s = name && embedderId ? `${name} · ${embedderId}` : (name ?? null)
+      break
+    }
+    case 'rag.model.download.started':
+    case 'rag.model.download.completed':
+    case 'rag.model.download.failed': {
+      const name = typeof p.name === 'string' ? p.name : undefined
+      const embedderId = typeof p.embedderId === 'string' ? p.embedderId : undefined
+      s = name ?? embedderId ?? null
       break
     }
     case 'chat.cancelled':

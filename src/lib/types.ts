@@ -534,6 +534,12 @@ export type EventType =
   | 'project.archived'
   | 'project.pinned'
   | 'project.deleted'
+  | 'rag.collection.created'
+  | 'rag.collection.updated'
+  | 'rag.collection.deleted'
+  | 'rag.model.download.started'
+  | 'rag.model.download.completed'
+  | 'rag.model.download.failed'
 
 export interface EventRecord {
   id: string
@@ -579,4 +585,99 @@ export interface EventTimelineFilter {
   correlationId?: string
   automationId?: string
   limit?: number
+}
+
+// ──────────────────── RAG (Local Retrieval) ────────────────────
+//
+// Renderer mirrors of the rag store + IPC payloads. The full schema lives in
+// `electron/services/database.ts`; see PLANNING/LAMPREY_RAG_PLAN.md §2.2 for
+// the design rationale. Most of the placeholders below get expanded in later
+// R-prompts (R2 = EmbedderInfo, R5 = IngestProgressEvent, R7 = RetrievalResult).
+
+/** One user-facing grouping of indexed documents (e.g. "Project docs"). */
+export interface RagCollection {
+  id: string
+  name: string
+  description?: string
+  /** Which embeddings model produced the vectors in this collection. */
+  embedderId: string
+  chunkSize: number
+  chunkOverlap: number
+  workspacePath?: string
+  projectId?: string
+  createdAt: number
+  updatedAt: number
+}
+
+export type RagDocumentStatus =
+  | 'queued'
+  | 'loading'
+  | 'chunking'
+  | 'embedding'
+  | 'ready'
+  | 'error'
+  | 'stale'
+
+export type RagDocumentSourceKind =
+  | 'file'
+  | 'paste'
+  | 'workspace'
+  | 'skill'
+  | 'memory'
+  | 'planning'
+
+export interface RagDocument {
+  id: string
+  collectionId: string
+  sourceKind: RagDocumentSourceKind
+  sourcePath?: string
+  displayName: string
+  mime?: string
+  bytes?: number
+  hashSha256: string
+  mtime?: number
+  status: RagDocumentStatus
+  statusDetail?: string
+  chunkCount: number
+  ingestedAt?: number
+  updatedAt: number
+}
+
+/** Subset of rag_chunks columns useful for renderer-side rendering. */
+export interface RagChunk {
+  id: string
+  documentId: string
+  collectionId: string
+  chunkIndex: number
+  text: string
+  headingPath?: string
+  page?: number
+  lineStart?: number
+  lineEnd?: number
+}
+
+/** Placeholder — expanded in R7 (hybrid retrieval). */
+export interface RetrievalResult {
+  retrievalId: string
+  chunks: RagChunk[]
+}
+
+/** Placeholder — expanded in R2 (embeddings service). */
+export interface EmbedderInfo {
+  id: string
+  name: string
+  dimensions: number
+  approxBytes: number
+  license?: string
+}
+
+/** Placeholder — expanded in R5 (ingest orchestrator). */
+export interface IngestProgressEvent {
+  jobId: string
+  documentId: string
+  displayName: string
+  phase: RagDocumentStatus
+  progress: number
+  chunkCount?: number
+  error?: string
 }

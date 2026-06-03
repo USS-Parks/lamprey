@@ -29,6 +29,7 @@ import { registerImageToolsHandlers } from './image-tools'
 import { registerPlanHandlers } from './plan'
 import { registerGitHubHandlers } from './github'
 import { registerEventsHandlers } from './events'
+import { registerRagHandlers } from './rag'
 
 export function registerAllIpcHandlers(): void {
   registerChatHandlers()
@@ -57,4 +58,5 @@ export function registerAllIpcHandlers(): void {
   registerPlanHandlers()
   registerGitHubHandlers()
   registerEventsHandlers()
+  registerRagHandlers()
 }

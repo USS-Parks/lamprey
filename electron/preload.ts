@@ -533,6 +533,44 @@ const api = {
     timeline: (filter: unknown) => ipcRenderer.invoke('events:timeline', filter)
   },
 
+  // Local RAG (Lamprey RAG Plan, R1+). R1 ships collection CRUD; R2 adds the
+  // embedder catalogue + active-id surface. Document / query / attachment
+  // namespaces arrive in R5-R12. `embed()` is intentionally NOT exposed —
+  // raw embedding access would let a renderer DoS the worker.
+  rag: {
+    status: () => ipcRenderer.invoke('rag:status'),
+    collection: {
+      list: () => ipcRenderer.invoke('rag:collection:list'),
+      create: (input: {
+        name: string
+        description?: string
+        embedderId: string
+        chunkSize?: number
+        chunkOverlap?: number
+        workspacePath?: string
+        projectId?: string
+      }) => ipcRenderer.invoke('rag:collection:create', input),
+      update: (
+        id: string,
+        patch: {
+          name?: string
+          description?: string
+          embedderId?: string
+          chunkSize?: number
+          chunkOverlap?: number
+          workspacePath?: string
+          projectId?: string
+        }
+      ) => ipcRenderer.invoke('rag:collection:update', id, patch),
+      delete: (id: string) => ipcRenderer.invoke('rag:collection:delete', id)
+    },
+    embedder: {
+      catalog: () => ipcRenderer.invoke('rag:embedder:catalog'),
+      active: () => ipcRenderer.invoke('rag:embedder:active'),
+      setActive: (id: string) => ipcRenderer.invoke('rag:embedder:setActive', id)
+    }
+  },
+
   app: {
     onError: (cb: (e: { message: string }) => void) =>
       ipcRenderer.on('app:error', (_, e) => cb(e)),
