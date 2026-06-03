@@ -70,6 +70,12 @@ function App(): React.ReactElement {
   const [chatWorkspaceWidth, setChatWorkspaceWidth] = useState(0)
 
   useEffect(() => {
+    // The main app — and the chatWorkspaceRef div with it — doesn't render
+    // until needsApiKey resolves out of `null`. Without this guard + dep,
+    // the effect ran once at first commit (loading screen, ref=null), bailed,
+    // and never re-ran when the main app actually mounted — so width stayed
+    // 0 and the gutter check kept the card permanently hidden.
+    if (needsApiKey === null) return
     const node = chatWorkspaceRef.current
     if (!node || typeof ResizeObserver === 'undefined') return
     setChatWorkspaceWidth(node.getBoundingClientRect().width)
@@ -80,13 +86,13 @@ function App(): React.ReactElement {
     })
     ro.observe(node)
     return () => ro.disconnect()
-  }, [])
+  }, [needsApiKey])
 
   // Minimum chat dialogue width preserved beside the floating card. The
   // inner reading column is `max-w-4xl px-6` (896 px); we don't require
   // that full width to be intact — the card may compress the chat as long
   // as message bubbles and the composer keep working room.
-  const CHAT_MIN_WIDTH = 540
+  const CHAT_MIN_WIDTH = 360
   const CHAT_WORKSPACE_PADDING_X = 16 // p-2 left + right inside the chat surround
   const ENV_CARD_RESERVED = ENV_CARD_WIDTH + ENV_CARD_GAP
   const chatHasRoomForEnvCard =
