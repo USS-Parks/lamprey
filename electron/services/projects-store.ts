@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto'
 import { getDb } from './database'
+import { recordEvent, type EventType } from './event-log'
 
 export interface ProjectRow {
   id: string
@@ -70,6 +71,7 @@ export function createProject(input: { name: string; path?: string | null }): Pr
   db.prepare(
     'INSERT INTO projects (id, name, path, pinned, archived, created_at, last_activity_at) VALUES (?, ?, ?, 0, 0, ?, ?)'
   ).run(id, input.name, input.path ?? null, now, now)
+  emitProjectEvent('project.created', id, { name: input.name, path: input.path ?? null })
   return {
     id,
     name: input.name,
@@ -84,23 +86,54 @@ export function createProject(input: { name: string; path?: string | null }): Pr
 export function renameProject(id: string, name: string): void {
   const db = getDb()
   db.prepare('UPDATE projects SET name = ? WHERE id = ?').run(name, id)
+  // Renames are noisy bookkeeping (the model can call them mid-turn) and
+  // intentionally do NOT emit an event.
 }
 
 export function setProjectPinned(id: string, pinned: boolean): void {
   const db = getDb()
   db.prepare('UPDATE projects SET pinned = ? WHERE id = ?').run(pinned ? 1 : 0, id)
+  emitProjectEvent('project.pinned', id, { pinned })
 }
 
 export function setProjectArchived(id: string, archived: boolean): void {
   const db = getDb()
   db.prepare('UPDATE projects SET archived = ? WHERE id = ?').run(archived ? 1 : 0, id)
+  emitProjectEvent('project.archived', id, { archived })
 }
 
 export function deleteProject(id: string): void {
   const db = getDb()
   // Detach conversations from the project rather than deleting them.
-  db.prepare('UPDATE conversations SET project_id = NULL WHERE project_id = ?').run(id)
+  const detachResult = db
+    .prepare('UPDATE conversations SET project_id = NULL WHERE project_id = ?')
+    .run(id)
   db.prepare('DELETE FROM projects WHERE id = ?').run(id)
+  emitProjectEvent('project.deleted', id, {
+    detachedConversations: detachResult.changes
+  })
+}
+
+function emitProjectEvent(
+  type: EventType,
+  projectId: string,
+  extra: Record<string, unknown>
+): void {
+  try {
+    recordEvent({
+      type,
+      actorKind: 'user',
+      projectId,
+      entityKind: 'project',
+      entityId: projectId,
+      payload: {
+        projectId,
+        ...extra
+      }
+    })
+  } catch (err) {
+    console.error(`[projects-store] ${type} event failed:`, err)
+  }
 }
 
 export function touchProject(id: string): void {

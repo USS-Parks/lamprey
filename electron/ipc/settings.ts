@@ -10,6 +10,7 @@ import {
   validateProviderKeyDetailed,
   type ProviderId
 } from '../services/providers/registry'
+import { recordEvent } from '../services/event-log'
 
 const getSettingsPath = () => join(app.getPath('userData'), 'settings.json')
 
@@ -73,6 +74,7 @@ export function registerSettingsHandlers(): void {
       const current = readSettings()
       const updated = { ...current, ...partial }
       writeSettings(updated)
+      emitSettingsUpdated(current, updated, partial)
       return { success: true, data: null }
     } catch (err: any) {
       return { success: false, error: err.message }
@@ -213,4 +215,66 @@ export function registerSettingsHandlers(): void {
       return { success: false, error: err.message }
     }
   })
+}
+
+// Settings keys that can carry credentials. Even though `settings:set` is
+// keys-only on the event row, names like `apiKey` are still suggestive — flag
+// them explicitly so a future log reader knows the change is sensitive
+// without having to read the value (we never log the value either way).
+const SENSITIVE_SETTING_KEYS = new Set(['apiKey'])
+
+/**
+ * Emit a `settings.updated` event recording ONLY the names of the keys that
+ * changed. Values never leave this function — even non-sensitive keys are
+ * stripped because settings.json can grow new credential-shaped fields that
+ * the spine writer is unaware of.
+ *
+ * Comparison is shallow (top-level keys) because that's the granularity
+ * `settings:set` operates at. A change inside `modelConfig['x'].temperature`
+ * still produces one `modelConfig` entry — good enough for an audit trail of
+ * "this is the moment something model-config-shaped moved" without
+ * micro-diffing the JSON.
+ */
+function emitSettingsUpdated(
+  before: Record<string, unknown>,
+  after: Record<string, unknown>,
+  partial: unknown
+): void {
+  try {
+    const changedKeys: string[] = []
+    const allKeys = new Set([...Object.keys(before), ...Object.keys(after)])
+    for (const k of allKeys) {
+      const a = (before as Record<string, unknown>)[k]
+      const b = (after as Record<string, unknown>)[k]
+      if (!shallowEqual(a, b)) changedKeys.push(k)
+    }
+    if (changedKeys.length === 0) return
+    const sensitiveChanged = changedKeys.filter((k) => SENSITIVE_SETTING_KEYS.has(k))
+    recordEvent({
+      type: 'settings.updated',
+      actorKind: 'user',
+      payload: {
+        changedKeys,
+        sensitiveChanged,
+        partialKeys:
+          partial && typeof partial === 'object'
+            ? Object.keys(partial as Record<string, unknown>)
+            : undefined
+      }
+    })
+  } catch (err) {
+    console.error('[settings] settings.updated event failed:', err)
+  }
+}
+
+function shallowEqual(a: unknown, b: unknown): boolean {
+  if (Object.is(a, b)) return true
+  if (a === null || b === null) return false
+  if (typeof a !== typeof b) return false
+  if (typeof a !== 'object') return false
+  try {
+    return JSON.stringify(a) === JSON.stringify(b)
+  } catch {
+    return false
+  }
 }

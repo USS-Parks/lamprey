@@ -103,23 +103,27 @@ toolRegistry.registerNative(
       for (let i = 0; i < result.results.length; i++) {
         const r = result.results[i]
         const startedAt = Date.now() - r.elapsedMs
-        toolRegistry.recordCallStart({
-          id: r.callId,
-          toolId: `${MULTI_AGENT_TOOL_ID}:${r.role}`,
-          name: `${MULTI_AGENT_TOOL_ID}:${r.role}`,
-          conversationId: ctx.conversationId,
-          args: { role: r.role, taskIndex: i },
-          startedAt,
-          status: 'running',
-          parentCallId
-        })
+        toolRegistry.recordCallStart(
+          {
+            id: r.callId,
+            toolId: `${MULTI_AGENT_TOOL_ID}:${r.role}`,
+            name: `${MULTI_AGENT_TOOL_ID}:${r.role}`,
+            conversationId: ctx.conversationId,
+            args: { role: r.role, taskIndex: i },
+            startedAt,
+            status: 'running',
+            parentCallId
+          },
+          ctx.correlationId
+        )
         const auditStatus = r.error ? 'error' : 'done'
         toolRegistry.recordCallEnd(r.callId, {
           status: auditStatus,
           result: auditStatus === 'error' ? undefined : r.output ?? undefined,
           error: r.error,
           finishedAt: startedAt + r.elapsedMs,
-          parentCallId
+          parentCallId,
+          correlationId: ctx.correlationId
         })
       }
     }

@@ -2,8 +2,10 @@
 // exact numbers, `a,b,c` lists, `a-b` ranges, and `*/N` step. Does NOT
 // support names (mon, tue), `?`, or 6-field/7-field cron — keep it simple.
 
+import { randomUUID } from 'crypto'
 import { listAutomations, recordRun } from './automations-store'
 import { chatOnce } from './providers/registry'
+import { boundedJsonPreview, recordEvent } from './event-log'
 
 type FieldSet = Set<number>
 
@@ -87,14 +89,96 @@ async function runOne(autoId: string): Promise<void> {
   const a = list.find((x) => x.id === autoId)
   if (!a) return
   const model = a.model || 'deepseek-chat'
+  // Per-run correlation id so the model.request.* events emitted from within
+  // chatOnce join the automation.started/completed event-log row group. Each
+  // run is its own logical "turn" — they do NOT share an id across cron firings.
+  const correlationId = randomUUID()
+  const startedAt = Date.now()
+  emitAutomationEvent('automation.started', {
+    automationId: a.id,
+    label: a.label,
+    cron: a.cron,
+    model,
+    correlationId,
+    startedAt
+  })
   try {
     const reply = await chatOnce(
       [{ role: 'user', content: a.prompt }] as any,
-      model
+      model,
+      undefined,
+      // chatOnce will emit model.request.started/completed/failed tagged with
+      // this correlationId, so an automation run reconstructs as
+      // automation.started → model.request.* → automation.completed.
+      { correlationId, purpose: 'other', role: 'automation' }
     )
     recordRun(a.id, reply.slice(0, 4000))
+    emitAutomationEvent('automation.completed', {
+      automationId: a.id,
+      label: a.label,
+      cron: a.cron,
+      model,
+      correlationId,
+      startedAt,
+      durationMs: Date.now() - startedAt,
+      replyPreview: reply
+    })
   } catch (err: any) {
     recordRun(a.id, `[error] ${err?.message ?? 'unknown'}`)
+    emitAutomationEvent('automation.failed', {
+      automationId: a.id,
+      label: a.label,
+      cron: a.cron,
+      model,
+      correlationId,
+      startedAt,
+      durationMs: Date.now() - startedAt,
+      error: err?.message ?? 'unknown',
+      errorClass: err?.name
+    })
+  }
+}
+
+interface AutomationEventDetail {
+  automationId: string
+  label?: string
+  cron?: string
+  model: string
+  correlationId: string
+  startedAt: number
+  durationMs?: number
+  replyPreview?: string
+  error?: string
+  errorClass?: string
+}
+
+function emitAutomationEvent(
+  type: 'automation.started' | 'automation.completed' | 'automation.failed',
+  detail: AutomationEventDetail
+): void {
+  try {
+    recordEvent({
+      type,
+      actorKind: 'system',
+      severity: type === 'automation.failed' ? 'error' : 'info',
+      automationId: detail.automationId,
+      correlationId: detail.correlationId,
+      entityKind: 'automation',
+      entityId: detail.automationId,
+      payload: {
+        automationId: detail.automationId,
+        label: detail.label,
+        cron: detail.cron,
+        model: detail.model,
+        startedAt: detail.startedAt,
+        durationMs: detail.durationMs,
+        replyPreview: boundedJsonPreview(detail.replyPreview),
+        errorPreview: boundedJsonPreview(detail.error),
+        errorClass: detail.errorClass
+      }
+    })
+  } catch (err) {
+    console.error(`[automations] ${type} event failed:`, err)
   }
 }
 

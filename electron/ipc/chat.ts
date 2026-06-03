@@ -2,7 +2,13 @@ import { ipcMain, app } from 'electron'
 import { randomUUID } from 'crypto'
 import { readFileSync, existsSync } from 'fs'
 import { join } from 'path'
-import { chatOnce, chatStream, resolveModel } from '../services/providers/registry'
+import {
+  chatOnce,
+  chatStream,
+  resolveModel,
+  type ModelRequestAudit
+} from '../services/providers/registry'
+import { boundedJsonPreview, recordEvent } from '../services/event-log'
 import * as convStore from '../services/conversation-store'
 import * as memStore from '../services/memory-store'
 import { buildSystemPrompt } from '../services/system-prompt-builder'
@@ -120,7 +126,16 @@ export function resolveComposerGate(mode: AgenticComposerMode, round: number): b
   return shouldComposeFinalResponse(round)
 }
 
-const activeAbortControllers = new Map<string, AbortController>()
+// A chat turn's runtime context. `chat:send` opens the entry, `chat:cancel`
+// reads it to find the correlationId for the chat.cancelled event, and the
+// catch in chat:send tears it down. The correlationId is generated here and
+// threaded through every downstream producer.
+interface ActiveRun {
+  controller: AbortController
+  correlationId: string
+  startedAt: number
+}
+const activeAbortControllers = new Map<string, ActiveRun>()
 
 // Tool definitions (memory_add + MCP tools) come from toolRegistry.
 // Approval gating is owned by permissionsService — both live in services/.
@@ -135,6 +150,13 @@ export function registerChatHandlers(): void {
   ipcMain.handle('chat:send', async (_event, request) => {
     const { content, model, activeSkillIds, agentMode: requestedAgentMode } = request
     let { conversationId } = request
+
+    // Hoisted so the catch block can reference it when an exception fires
+    // before the regular `activeAbortControllers.set` runs. Generated here
+    // (rather than after that .set) so the chat.error event always carries a
+    // correlationId, even when the user typed into a conversation that
+    // failed to materialise.
+    const correlationId = randomUUID()
 
     try {
       if (conversationId === 'new' || !conversationId) {
@@ -250,7 +272,15 @@ export function registerChatHandlers(): void {
       }
 
       const abortController = new AbortController()
-      activeAbortControllers.set(conversationId, abortController)
+      // Stash the abort controller + the correlationId generated above so
+      // chat:cancel can find them. Every downstream producer takes this id so
+      // the whole run is one row-group in the event log. Pre-Prompt-3 events
+      // landed without one.
+      activeAbortControllers.set(conversationId, {
+        controller: abortController,
+        correlationId,
+        startedAt: Date.now()
+      })
 
       // Workspace pinned at the start of the round so the in-flight tool
       // loop sees one consistent cwd even if the user retargets the folder
@@ -306,6 +336,7 @@ export function registerChatHandlers(): void {
 
         await runAgentPipeline({
           conversationId,
+          correlationId,
           roster: coderRoster,
           userContent: content,
           systemPrompt: coderSystemPrompt,
@@ -317,7 +348,11 @@ export function registerChatHandlers(): void {
             // chatOnce takes (messages, modelId, signal); sub-agents are
             // one-shot reasoning calls — per-model temperature/topP from
             // modelConfig doesn't apply here.
-            const text = await chatOnce(subMessages, modelId, subSignal)
+            const text = await chatOnce(subMessages, modelId, subSignal, {
+              correlationId,
+              conversationId,
+              purpose: 'sub-agent'
+            })
             return typeof text === 'string' ? text : String(text)
           },
           coderRunner: async ({ messages, model: coderModel, tools: coderTools, signal: coderSignal }) =>
@@ -331,7 +366,8 @@ export function registerChatHandlers(): void {
               0,
               coderModelParams,
               agentic.composer,
-              /* suppressDoneEvent */ true
+              /* suppressDoneEvent */ true,
+              correlationId
             )
         })
       } else {
@@ -353,7 +389,9 @@ export function registerChatHandlers(): void {
           abortController.signal,
           0,
           modelParams,
-          agentic.composer
+          agentic.composer,
+          /* suppressDoneEvent */ false,
+          correlationId
         )
       }
 
@@ -363,15 +401,47 @@ export function registerChatHandlers(): void {
       activeAbortControllers.delete(conversationId)
       emitPhase(conversationId, 'error')
       emitChatEvent('chat:error', { conversationId, error: err.message })
+      // Mirror into the event spine so the timeline reader sees the failure
+      // alongside any model/tool/agent events that completed before the throw.
+      try {
+        recordEvent({
+          type: 'chat.error',
+          actorKind: 'system',
+          severity: 'error',
+          conversationId,
+          correlationId,
+          payload: {
+            errorPreview: boundedJsonPreview(err?.message),
+            errorClass: err?.name
+          }
+        })
+      } catch (e) {
+        console.error('[chat] chat.error event failed:', e)
+      }
       return { success: false, error: err.message }
     }
   })
 
   ipcMain.handle('chat:cancel', async (_event, conversationId) => {
-    const controller = activeAbortControllers.get(conversationId)
-    if (controller) {
-      controller.abort()
+    const run = activeAbortControllers.get(conversationId)
+    if (run) {
+      run.controller.abort()
       activeAbortControllers.delete(conversationId)
+      try {
+        recordEvent({
+          type: 'chat.cancelled',
+          actorKind: 'user',
+          severity: 'warning',
+          conversationId,
+          correlationId: run.correlationId,
+          payload: {
+            cancelledAt: Date.now(),
+            elapsedMs: Date.now() - run.startedAt
+          }
+        })
+      } catch (err) {
+        console.error('[chat] chat.cancelled event failed:', err)
+      }
     }
     return { success: true, data: null }
   })
@@ -425,7 +495,8 @@ export async function runChatRound(
   round: number,
   params?: ModelParams,
   composerMode: AgenticComposerMode = 'auto',
-  suppressDoneEvent: boolean = false
+  suppressDoneEvent: boolean = false,
+  correlationId?: string
 ): Promise<RunChatRoundResult> {
   if (round >= MAX_TOOL_ROUNDS) {
     emitPhase(conversationId, 'error')
@@ -438,6 +509,10 @@ export async function runChatRound(
 
   const descriptor = resolveModel(model)
   const effectiveTools = descriptor.supportsTools ? tools : undefined
+
+  const audit: ModelRequestAudit | undefined = correlationId
+    ? { correlationId, conversationId, purpose: 'main' }
+    : undefined
 
   return new Promise<RunChatRoundResult>((resolve, reject) => {
     chatStream(
@@ -465,7 +540,10 @@ export async function runChatRound(
                   summary,
                   model,
                   signal,
-                  runner: chatOnce
+                  // chatOnce now takes an optional audit context; the composer
+                  // passes it through transparently when callers supply one.
+                  runner: (msgs, modelId, sig) =>
+                    chatOnce(msgs, modelId, sig, audit && { ...audit, purpose: 'composer' })
                 })
                 if (composed) {
                   finalContent = composed
@@ -526,7 +604,14 @@ export async function runChatRound(
             if (win.kind === 'parallel') {
               const settled = await Promise.all(
                 win.indices.map((idx) =>
-                  resolveSingleToolCall(toolCalls[idx], conversationId, model, workspacePath, signal)
+                  resolveSingleToolCall(
+                    toolCalls[idx],
+                    conversationId,
+                    model,
+                    workspacePath,
+                    signal,
+                    correlationId
+                  )
                 )
               )
               for (let i = 0; i < win.indices.length; i++) {
@@ -538,7 +623,8 @@ export async function runChatRound(
                 conversationId,
                 model,
                 workspacePath,
-                signal
+                signal,
+                correlationId
               )
             }
           }
@@ -569,7 +655,8 @@ export async function runChatRound(
               round + 1,
               params,
               composerMode,
-              suppressDoneEvent
+              suppressDoneEvent,
+              correlationId
             )
             resolve(next)
           } catch (err) {
@@ -579,11 +666,34 @@ export async function runChatRound(
         onError: (error) => {
           emitPhase(conversationId, 'error')
           emitChatEvent('chat:error', { conversationId, error })
+          // Mirror provider-side stream errors into the spine. `model.request.failed`
+          // is already emitted from inside chatStream for the underlying API
+          // failure; this `chat.error` row pins the orchestration-layer
+          // outcome so the chat-turn timeline reads cleanly even when the
+          // provider stream short-circuits before any tool round runs.
+          if (correlationId) {
+            try {
+              recordEvent({
+                type: 'chat.error',
+                actorKind: 'system',
+                severity: 'error',
+                conversationId,
+                correlationId,
+                payload: {
+                  errorPreview: boundedJsonPreview(error),
+                  source: 'stream'
+                }
+              })
+            } catch (e) {
+              console.error('[chat] chat.error event failed:', e)
+            }
+          }
           reject(new Error(error))
         }
       },
       signal,
-      params
+      params,
+      audit
     )
   })
 }
@@ -598,7 +708,8 @@ async function resolveSingleToolCall(
   conversationId: string,
   model: string,
   workspacePath: string,
-  signal: AbortSignal
+  signal: AbortSignal,
+  correlationId?: string
 ): Promise<ResolvedToolCall> {
   const toolName = tc.function.name
   let args: Record<string, unknown> = {}
@@ -623,15 +734,18 @@ async function resolveSingleToolCall(
     args
   })
 
-  toolRegistry.recordCallStart({
-    id: tc.id,
-    toolId: toolName,
-    name: toolName,
-    conversationId,
-    args,
-    startedAt: startTime,
-    status: 'running'
-  })
+  toolRegistry.recordCallStart(
+    {
+      id: tc.id,
+      toolId: toolName,
+      name: toolName,
+      conversationId,
+      args,
+      startedAt: startTime,
+      status: 'running'
+    },
+    correlationId
+  )
 
   let result: string
   let explicitStatus: 'done' | 'error' | 'denied' | undefined
@@ -651,7 +765,8 @@ async function resolveSingleToolCall(
           providerKind: descriptor.providerKind,
           risks: descriptor.risks,
           args,
-          conversationId
+          conversationId,
+          correlationId
         })
       : { decision: 'allow' as const, source: 'none' }
   const approvalDecision = approvalOutcome.decision
@@ -671,7 +786,8 @@ async function resolveSingleToolCall(
         workspacePath,
         model,
         signal,
-        callId: tc.id
+        callId: tc.id,
+        correlationId
       })
     )
     result = dispatched.result
@@ -706,7 +822,8 @@ async function resolveSingleToolCall(
     result: auditStatus === 'error' ? undefined : result,
     error: auditStatus === 'error' ? result : undefined,
     finishedAt,
-    approvalSource
+    approvalSource,
+    correlationId
   })
   emitChatEvent('chat:tool-call-result', {
     callId: tc.id,

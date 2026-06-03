@@ -5,6 +5,11 @@ import * as convStore from './conversation-store'
 import { emitChatEvent, type AgentPipelineRole } from './chat-events'
 import { MODEL_CATALOG } from './providers/registry'
 import {
+  boundedJsonPreview,
+  recordEvent,
+  type EventType
+} from './event-log'
+import {
   executeMultiAgentRun,
   type SubAgentRunner
 } from './multi-agent-run-tool'
@@ -134,6 +139,12 @@ export interface CoderRoundRunner {
 
 export interface RunAgentPipelineOptions {
   conversationId: string
+  /**
+   * Chat-turn correlation id from `chat:send`. Threaded into every
+   * `agent.stage.*` event so the pipeline run can be reconstructed by one
+   * id alongside the model / approval / tool rows from the same turn.
+   */
+  correlationId?: string
   roster: AgentRoster
   userContent: string
   // The exact shape `buildSystemPrompt` would return for a single-mode
@@ -203,9 +214,58 @@ function takeOutput(result: { results: { output: string | null; error?: string }
 export async function runAgentPipeline(opts: RunAgentPipelineOptions): Promise<void> {
   const emitter = opts.emitter ?? defaultEmitter
   const { conversationId, roster, signal } = opts
+  const correlationId = opts.correlationId
+
+  // Per-stage start timestamps so the done/error event can carry an accurate
+  // durationMs. Keyed by role for the rare case where a stage retries.
+  const stageStartedAt: Partial<Record<AgentPipelineRole, number>> = {}
+  function emitStageEvent(
+    type: EventType,
+    role: AgentPipelineRole,
+    model: string,
+    extra: Record<string, unknown> = {}
+  ): void {
+    try {
+      recordEvent({
+        type,
+        actorKind: 'agent',
+        severity: type === 'agent.stage.failed' ? 'error' : 'info',
+        conversationId,
+        correlationId,
+        entityKind: 'agent-stage',
+        entityId: role,
+        payload: {
+          role,
+          model,
+          ...extra
+        }
+      })
+    } catch (err) {
+      console.error(`[agent-pipeline] ${type} event failed:`, err)
+    }
+  }
+  function stageStarted(role: AgentPipelineRole, model: string): void {
+    stageStartedAt[role] = Date.now()
+    emitStageEvent('agent.stage.started', role, model)
+  }
+  function stageDone(role: AgentPipelineRole, model: string, output: string): void {
+    const startedAt = stageStartedAt[role]
+    emitStageEvent('agent.stage.completed', role, model, {
+      durationMs: startedAt !== undefined ? Date.now() - startedAt : undefined,
+      outputPreview: boundedJsonPreview(output)
+    })
+  }
+  function stageFailed(role: AgentPipelineRole, model: string, error: string): void {
+    const startedAt = stageStartedAt[role]
+    emitStageEvent('agent.stage.failed', role, model, {
+      durationMs: startedAt !== undefined ? Date.now() - startedAt : undefined,
+      errorPreview: boundedJsonPreview(error)
+    })
+  }
 
   // PLANNER ------------------------------------------------------------
   emitter.status({ conversationId, role: 'planner', model: roster.planner, state: 'running' })
+  stageStarted('planner', roster.planner)
   // Declared without an initializer because both error paths in the
   // try/catch below `return` before any read; TS' flow analysis confirms
   // assignment-before-use at the line that reads planText (the rewritten
@@ -237,6 +297,7 @@ export async function runAgentPipeline(opts: RunAgentPipelineOptions): Promise<v
         state: 'error',
         output: taken.error
       })
+      stageFailed('planner', roster.planner, taken.error)
       emitter.error({ conversationId, error: `Planner failed: ${taken.error}` })
       return
     }
@@ -248,6 +309,7 @@ export async function runAgentPipeline(opts: RunAgentPipelineOptions): Promise<v
       state: 'done',
       output: planText
     })
+    stageDone('planner', roster.planner, planText)
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     emitter.status({
@@ -257,6 +319,7 @@ export async function runAgentPipeline(opts: RunAgentPipelineOptions): Promise<v
       state: 'error',
       output: message
     })
+    stageFailed('planner', roster.planner, message)
     emitter.error({ conversationId, error: `Planner threw: ${message}` })
     return
   }
@@ -268,6 +331,7 @@ export async function runAgentPipeline(opts: RunAgentPipelineOptions): Promise<v
 
   // CODER --------------------------------------------------------------
   emitter.status({ conversationId, role: 'coder', model: roster.coder, state: 'running' })
+  stageStarted('coder', roster.coder)
   // Build the Coder's message stack: original system prompt, prior conversation,
   // and the latest user turn rewritten to carry the plan inline.
   const coderMessages: ChatCompletionMessageParam[] = [
@@ -297,6 +361,7 @@ export async function runAgentPipeline(opts: RunAgentPipelineOptions): Promise<v
       state: 'error',
       output: message
     })
+    stageFailed('coder', roster.coder, message)
     emitter.error({ conversationId, error: `Coder failed: ${message}` })
     return
   }
@@ -308,6 +373,7 @@ export async function runAgentPipeline(opts: RunAgentPipelineOptions): Promise<v
       state: 'error',
       output: 'Coder returned no assistant message'
     })
+    stageFailed('coder', roster.coder, 'Coder runner returned null')
     emitter.error({
       conversationId,
       error: 'Coder runner returned null (max tool rounds hit or run aborted)'
@@ -315,6 +381,13 @@ export async function runAgentPipeline(opts: RunAgentPipelineOptions): Promise<v
     return
   }
   emitter.status({ conversationId, role: 'coder', model: roster.coder, state: 'done' })
+  stageDone(
+    'coder',
+    roster.coder,
+    typeof (coderMessage.message as { content?: unknown }).content === 'string'
+      ? ((coderMessage.message as { content: string }).content)
+      : ''
+  )
 
   if (signal.aborted) {
     // Coder finished but we were cancelled before Reviewer; emit the
@@ -327,6 +400,7 @@ export async function runAgentPipeline(opts: RunAgentPipelineOptions): Promise<v
   // Emit reviewer:running BEFORE chat:done so the renderer's useChat
   // onDone handler sees an in-flight stage and skips clearRun().
   emitter.status({ conversationId, role: 'reviewer', model: roster.reviewer, state: 'running' })
+  stageStarted('reviewer', roster.reviewer)
   emitter.done({ conversationId, message: coderMessage.message })
 
   // Bounded review context: the conversation's own summary already does the
@@ -378,6 +452,7 @@ export async function runAgentPipeline(opts: RunAgentPipelineOptions): Promise<v
         state: 'error',
         output: taken.error
       })
+      stageFailed('reviewer', roster.reviewer, taken.error)
       // Reviewer error does not abort the pipeline — the Coder's reply is
       // already in front of the user. Surface the review failure as the
       // run-banner state and stop.
@@ -397,6 +472,7 @@ export async function runAgentPipeline(opts: RunAgentPipelineOptions): Promise<v
       state: 'done',
       output: taken.output
     })
+    stageDone('reviewer', roster.reviewer, taken.output)
     emitter.done({ conversationId, message: reviewerMessage })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
@@ -407,6 +483,7 @@ export async function runAgentPipeline(opts: RunAgentPipelineOptions): Promise<v
       state: 'error',
       output: message
     })
+    stageFailed('reviewer', roster.reviewer, message)
     // No chat:error here — the user already has the Coder's reply on
     // screen. The error state lives in the banner row.
   }

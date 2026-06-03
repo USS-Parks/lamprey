@@ -8,6 +8,11 @@ import {
   upsertPolicy,
   type PolicyDecision
 } from './permission-policies-store'
+import {
+  recordEvent,
+  type EventActorKind,
+  type EventType
+} from './event-log'
 import { getActiveWorkspace } from './workspace-state'
 
 // Permission and approval service. Driven by descriptor risk metadata; works
@@ -34,6 +39,12 @@ export interface ToolApprovalRequest {
   risks: ToolRisk[]
   args: Record<string, unknown>
   conversationId?: string
+  /**
+   * Chat-turn correlation id from `chat:send`. Threaded into the approval
+   * event so a single run can be reconstructed across approval / model /
+   * tool / agent rows.
+   */
+  correlationId?: string
 }
 
 export interface ToolApprovalResponse {
@@ -118,10 +129,16 @@ class PermissionsService {
       workspacePath
     })
     if (persisted) {
-      return { decision: persisted.decision, source: `policy:${persisted.policyId}` }
+      const outcome: ApprovalOutcome = {
+        decision: persisted.decision,
+        source: `policy:${persisted.policyId}`
+      }
+      emitApprovalEvent(req, outcome, workspacePath, persisted.policyId)
+      return outcome
     }
 
     const userOutcome = await this.askUser(req, workspacePath)
+    emitApprovalEvent(req, userOutcome, workspacePath)
     return userOutcome
   }
 
@@ -329,3 +346,51 @@ class PermissionsService {
 }
 
 export const permissionsService = new PermissionsService()
+
+/**
+ * Mirror an approval outcome into the event spine. Every decision path is
+ * recorded — policy match, modal answer, no-window default-deny, and the 30s
+ * auto-deny timeout — so the audit timeline shows why a tool ran or didn't.
+ *
+ * Actor mapping:
+ *   - modal           → `user`   (a human pressed the button)
+ *   - policy:<id>     → `system` (a persisted policy was the deciding voice)
+ *   - auto-deny-timeout, no-window → `system`
+ *
+ * Failures here are swallowed: the approval decision itself is the
+ * load-bearing side-effect, and event-log already owns its memory fallback.
+ */
+function emitApprovalEvent(
+  req: ToolApprovalRequest,
+  outcome: ApprovalOutcome,
+  workspacePath: string | undefined,
+  policyId?: string
+): void {
+  try {
+    const type: EventType =
+      outcome.decision === 'allow' ? 'tool.call.approved' : 'tool.call.denied'
+    const actorKind: EventActorKind = outcome.source === 'modal' ? 'user' : 'system'
+    recordEvent({
+      type,
+      actorKind,
+      severity: type === 'tool.call.denied' ? 'warning' : 'info',
+      conversationId: req.conversationId,
+      correlationId: req.correlationId,
+      workspacePath,
+      toolCallId: req.callId,
+      entityKind: 'tool',
+      entityId: req.toolId,
+      payload: {
+        toolId: req.toolId,
+        name: req.name,
+        providerKind: req.providerKind,
+        serverId: req.serverId,
+        risks: req.risks,
+        source: outcome.source,
+        policyId
+      }
+    })
+  } catch (err) {
+    console.error('[permissions-store] approval event failed:', err)
+  }
+}

@@ -8,6 +8,12 @@ import {
   updateToolCall
 } from './tool-calls-store'
 import {
+  boundedJsonPreview,
+  recordEvent,
+  type EventActorKind,
+  type EventType
+} from './event-log'
+import {
   executeShellCommand,
   formatShellResultForModel,
   type ShellArgs
@@ -109,6 +115,21 @@ export interface LampreyToolCall {
   parentCallId?: string
 }
 
+/**
+ * Did this tool-call deny come from the tool itself rather than from the
+ * permissions gate? When true, recordCallEnd emits a `tool.call.denied` event
+ * (no other producer covered it); when false, the permissions service already
+ * recorded the decision and we skip the event to avoid duplicates.
+ *
+ *   'modal' / 'policy:*' / 'auto-deny-timeout' / 'no-window' → gate emitted; skip.
+ *   undefined / 'none' / 'self'                              → self-deny; emit.
+ */
+export function isSelfDenialSource(source: string | undefined): boolean {
+  if (!source) return true
+  if (source === 'none' || source === 'self') return true
+  return false
+}
+
 export interface ToolExecutionContext {
   conversationId?: string
   /** Active workspace root for this call. Workspace-relative native tools
@@ -128,6 +149,10 @@ export interface ToolExecutionContext {
    *  row per sub-agent) use this as the children's `parentCallId`. Empty
    *  for inline calls that don't carry one. */
   callId?: string
+  /** Chat-turn correlation id (from chat:send). Native handlers that emit
+   *  their own audit/event rows (multi_agent_run, future retrieval) pass
+   *  it through so the timeline groups everything from one run. */
+  correlationId?: string
 }
 
 /**
@@ -260,11 +285,43 @@ class ToolRegistry {
     }))
   }
 
-  recordCallStart(call: Omit<LampreyToolCall, 'finishedAt' | 'durationMs'>): void {
+  recordCallStart(
+    call: Omit<LampreyToolCall, 'finishedAt' | 'durationMs'>,
+    correlationId?: string
+  ): void {
     try {
       insertToolCall({ ...call })
     } catch (err) {
       console.error('[tool-registry] recordCallStart persist failed:', err)
+    }
+    // Mirror the lifecycle into the event spine. The structured tool_calls row
+    // is the authoritative record; the event row is the cross-system timeline
+    // entry so chat/approval/automation context can be reconstructed in order.
+    // Failures here must never fail the call — event-log has its own fallback.
+    try {
+      const descriptor = this.getById(call.toolId)
+      recordEvent({
+        type: 'tool.call.started',
+        actorKind: 'model',
+        conversationId: call.conversationId,
+        correlationId,
+        toolCallId: call.id,
+        entityKind: 'tool',
+        entityId: call.toolId,
+        payload: {
+          toolId: call.toolId,
+          name: call.name,
+          providerKind: descriptor?.providerKind,
+          providerId: descriptor?.providerId,
+          risks: descriptor?.risks,
+          requiresApproval: descriptor?.requiresApproval,
+          startedAt: call.startedAt,
+          argsPreview: boundedJsonPreview(call.args),
+          parentCallId: call.parentCallId
+        }
+      })
+    } catch (err) {
+      console.error('[tool-registry] tool.call.started event failed:', err)
     }
   }
 
@@ -277,14 +334,24 @@ class ToolRegistry {
       finishedAt?: number
       approvalSource?: string
       parentCallId?: string
+      /**
+       * Audit-only: chat-turn correlation id threaded through from chat:send.
+       * Not persisted to `tool_calls` — it just rides into the terminal event
+       * row so the timeline reader can group everything from one run.
+       */
+      correlationId?: string
     }
   ): void {
     const finishedAt = patch.finishedAt ?? Date.now()
+    let durationMs: number | undefined
+    let conversationId: string | undefined
+    let toolId: string | undefined
     try {
       const existing = getToolCall(callId)
       const startedAt = existing?.startedAt
-      const durationMs =
-        startedAt !== undefined ? Math.max(0, finishedAt - startedAt) : undefined
+      durationMs = startedAt !== undefined ? Math.max(0, finishedAt - startedAt) : undefined
+      conversationId = existing?.conversationId
+      toolId = existing?.toolId
       updateToolCall(callId, {
         status: patch.status,
         result: patch.result,
@@ -296,6 +363,54 @@ class ToolRegistry {
       })
     } catch (err) {
       console.error('[tool-registry] recordCallEnd persist failed:', err)
+    }
+    // Lifecycle terminal event. Map status → event type:
+    //   done   → tool.call.completed
+    //   error  → tool.call.failed
+    //   denied → tool.call.denied, but ONLY when the deny did NOT come from
+    //            the permissions gate (it owns those events). approvalSource
+    //            values 'modal' / 'policy:*' / 'auto-deny-timeout' / 'no-window'
+    //            mean the gate already emitted; 'none' / 'self' / undefined
+    //            mean the tool denied itself and we should record it here.
+    // pending / approved / running are intermediate transitions — no event.
+    try {
+      const lifecycleType: EventType | null =
+        patch.status === 'done'
+          ? 'tool.call.completed'
+          : patch.status === 'error'
+          ? 'tool.call.failed'
+          : patch.status === 'denied' && isSelfDenialSource(patch.approvalSource)
+          ? 'tool.call.denied'
+          : null
+      if (lifecycleType) {
+        const actorKind: EventActorKind =
+          lifecycleType === 'tool.call.failed' ? 'tool' : 'tool'
+        recordEvent({
+          type: lifecycleType,
+          actorKind,
+          severity:
+            lifecycleType === 'tool.call.failed'
+              ? 'error'
+              : lifecycleType === 'tool.call.denied'
+              ? 'warning'
+              : 'info',
+          conversationId,
+          correlationId: patch.correlationId,
+          toolCallId: callId,
+          entityKind: 'tool',
+          entityId: toolId,
+          payload: {
+            status: patch.status,
+            durationMs,
+            finishedAt,
+            approvalSource: patch.approvalSource ?? 'none',
+            resultPreview: boundedJsonPreview(patch.result),
+            errorPreview: boundedJsonPreview(patch.error)
+          }
+        })
+      }
+    } catch (err) {
+      console.error('[tool-registry] tool.call lifecycle event failed:', err)
     }
   }
 

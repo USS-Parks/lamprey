@@ -1,6 +1,7 @@
 import { ipcMain } from 'electron'
 import * as path from 'path'
 import { runGit } from '../services/git-runner'
+import { boundedJsonPreview, recordEvent } from '../services/event-log'
 
 interface WorktreeEntry {
   path: string
@@ -140,13 +141,53 @@ export function registerWorktreeHandlers(): void {
   ipcMain.handle(
     'worktree:create',
     async (_e, args: WorktreeCreateInput) => {
+      const startedAt = Date.now()
       try {
         const plan = planWorktreeCreate(args)
-        if (!plan.ok) return { success: false, error: plan.error }
+        if (!plan.ok) {
+          emitWorktreeEvent('worktree.created', {
+            ok: false,
+            path: typeof args?.path === 'string' ? args.path : undefined,
+            branch: typeof args?.branch === 'string' ? args.branch : undefined,
+            cwd: typeof args?.cwd === 'string' ? args.cwd : undefined,
+            error: plan.error,
+            durationMs: Date.now() - startedAt,
+            rejectedAt: 'plan'
+          })
+          return { success: false, error: plan.error }
+        }
         const res = await runGit(plan.value.gitArgs, plan.value.cwd)
-        if (res.code !== 0) return { success: false, error: res.stderr.trim() }
+        if (res.code !== 0) {
+          const errText = res.stderr.trim()
+          emitWorktreeEvent('worktree.created', {
+            ok: false,
+            path: plan.value.wtPath,
+            branch: args.branch,
+            cwd: plan.value.cwd,
+            gitCode: res.code,
+            error: errText,
+            durationMs: Date.now() - startedAt
+          })
+          return { success: false, error: errText }
+        }
+        emitWorktreeEvent('worktree.created', {
+          ok: true,
+          path: plan.value.wtPath,
+          branch: args.branch,
+          cwd: plan.value.cwd,
+          durationMs: Date.now() - startedAt
+        })
         return { success: true, data: { path: plan.value.wtPath, branch: args.branch } }
       } catch (err: any) {
+        emitWorktreeEvent('worktree.created', {
+          ok: false,
+          path: typeof args?.path === 'string' ? args.path : undefined,
+          branch: typeof args?.branch === 'string' ? args.branch : undefined,
+          cwd: typeof args?.cwd === 'string' ? args.cwd : undefined,
+          error: err?.message ?? 'create failed',
+          durationMs: Date.now() - startedAt,
+          rejectedAt: 'throw'
+        })
         return { success: false, error: err?.message ?? 'create failed' }
       }
     }
@@ -155,15 +196,96 @@ export function registerWorktreeHandlers(): void {
   ipcMain.handle(
     'worktree:remove',
     async (_e, args: WorktreeRemoveInput) => {
+      const startedAt = Date.now()
       try {
         const plan = planWorktreeRemove(args)
-        if (!plan.ok) return { success: false, error: plan.error }
+        if (!plan.ok) {
+          emitWorktreeEvent('worktree.removed', {
+            ok: false,
+            path: typeof args?.path === 'string' ? args.path : undefined,
+            cwd: typeof args?.cwd === 'string' ? args.cwd : undefined,
+            force: !!args?.force,
+            error: plan.error,
+            durationMs: Date.now() - startedAt,
+            rejectedAt: 'plan'
+          })
+          return { success: false, error: plan.error }
+        }
         const res = await runGit(plan.value.gitArgs, plan.value.cwd)
-        if (res.code !== 0) return { success: false, error: res.stderr.trim() }
+        if (res.code !== 0) {
+          const errText = res.stderr.trim()
+          emitWorktreeEvent('worktree.removed', {
+            ok: false,
+            path: args.path,
+            cwd: plan.value.cwd,
+            force: !!args.force,
+            gitCode: res.code,
+            error: errText,
+            durationMs: Date.now() - startedAt
+          })
+          return { success: false, error: errText }
+        }
+        emitWorktreeEvent('worktree.removed', {
+          ok: true,
+          path: args.path,
+          cwd: plan.value.cwd,
+          force: !!args.force,
+          durationMs: Date.now() - startedAt
+        })
         return { success: true, data: true }
       } catch (err: any) {
+        emitWorktreeEvent('worktree.removed', {
+          ok: false,
+          path: typeof args?.path === 'string' ? args.path : undefined,
+          cwd: typeof args?.cwd === 'string' ? args.cwd : undefined,
+          force: !!args?.force,
+          error: err?.message ?? 'remove failed',
+          durationMs: Date.now() - startedAt,
+          rejectedAt: 'throw'
+        })
         return { success: false, error: err?.message ?? 'remove failed' }
       }
     }
   )
+}
+
+interface WorktreeEventDetail {
+  ok: boolean
+  path: string | undefined
+  branch?: string
+  cwd: string | undefined
+  force?: boolean
+  gitCode?: number
+  error?: string
+  durationMs: number
+  rejectedAt?: 'plan' | 'throw'
+}
+
+function emitWorktreeEvent(
+  type: 'worktree.created' | 'worktree.removed',
+  detail: WorktreeEventDetail
+): void {
+  try {
+    recordEvent({
+      type,
+      actorKind: 'user',
+      severity: detail.ok ? 'info' : 'error',
+      workspacePath: detail.cwd,
+      entityKind: 'worktree',
+      entityId: detail.path,
+      payload: {
+        ok: detail.ok,
+        path: detail.path,
+        branch: detail.branch,
+        cwd: detail.cwd,
+        force: detail.force,
+        gitCode: detail.gitCode,
+        durationMs: detail.durationMs,
+        rejectedAt: detail.rejectedAt,
+        errorPreview: boundedJsonPreview(detail.error)
+      }
+    })
+  } catch (err) {
+    console.error(`[worktree] ${type} event failed:`, err)
+  }
 }

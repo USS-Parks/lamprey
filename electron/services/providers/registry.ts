@@ -4,6 +4,7 @@ import type {
   ChatCompletionTool
 } from 'openai/resources/chat/completions'
 import { getKey } from '../keychain'
+import { boundedJsonPreview, recordEvent } from '../event-log'
 
 export type ProviderId = 'deepseek' | 'google' | 'dashscope' | 'openrouter'
 
@@ -257,6 +258,24 @@ export interface ChatStreamParams {
   temperature?: number
   topP?: number
   maxTokens?: number | null
+}
+
+/**
+ * Audit context optionally passed by the orchestrator (chat:send, agent
+ * pipeline, automations) so chatStream / chatOnce can emit `model.request.*`
+ * events linked to the right correlation id. When omitted, the provider
+ * helpers run silent — same behavior as before Prompt 3 — so tests and
+ * stand-alone callers don't need to plumb anything.
+ */
+export interface ModelRequestAudit {
+  correlationId?: string
+  conversationId?: string
+  /** Optional label for the role making the call (planner/coder/reviewer/
+   *  composer/title-gen). Goes in the event payload, not the actor field. */
+  role?: string
+  /** Distinguish completion turns from incidental composer/title helpers in
+   *  the timeline. Default 'main'. */
+  purpose?: 'main' | 'composer' | 'title' | 'pipeline' | 'sub-agent' | 'other'
 }
 
 export interface ChatStreamCallbacks {
@@ -515,18 +534,43 @@ export async function verifyCatalog(): Promise<CatalogVerificationReport> {
 export async function chatOnce(
   messages: ChatCompletionMessageParam[],
   modelId: string,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  audit?: ModelRequestAudit
 ): Promise<string> {
   const desc = resolveModel(modelId)
   const client = getClientForProvider(desc.provider)
-  const response = await client.chat.completions.create(
-    {
-      model: desc.apiModelId,
-      messages
-    },
-    signal ? { signal } : undefined
-  )
-  return response.choices[0]?.message?.content || ''
+  const startedAt = Date.now()
+  emitModelRequestStarted(desc, audit, { streaming: false, toolCount: 0 })
+  try {
+    const response = await client.chat.completions.create(
+      {
+        model: desc.apiModelId,
+        messages
+      },
+      signal ? { signal } : undefined
+    )
+    const content = response.choices[0]?.message?.content || ''
+    const finishReason = response.choices[0]?.finish_reason ?? undefined
+    emitModelRequestCompleted(desc, audit, {
+      streaming: false,
+      toolCount: 0,
+      retryCount: 0,
+      durationMs: Date.now() - startedAt,
+      finishReason,
+      cancelled: signal?.aborted ?? false
+    })
+    return content
+  } catch (err) {
+    emitModelRequestFailed(desc, audit, {
+      streaming: false,
+      toolCount: 0,
+      retryCount: 0,
+      durationMs: Date.now() - startedAt,
+      cancelled: signal?.aborted ?? false,
+      error: err
+    })
+    throw err
+  }
 }
 
 export async function chatStream(
@@ -535,11 +579,19 @@ export async function chatStream(
   tools: ChatCompletionTool[] | undefined,
   callbacks: ChatStreamCallbacks,
   signal?: AbortSignal,
-  params?: ChatStreamParams
+  params?: ChatStreamParams,
+  audit?: ModelRequestAudit
 ): Promise<void> {
   const desc = resolveModel(modelId)
   const client = getClientForProvider(desc.provider)
   const usableTools = desc.supportsTools && tools && tools.length > 0 ? tools : undefined
+  const offeredToolCount = usableTools?.length ?? 0
+
+  const startedAt = Date.now()
+  emitModelRequestStarted(desc, audit, {
+    streaming: true,
+    toolCount: offeredToolCount
+  })
 
   let fullContent = ''
   const toolCallsAccumulator: Map<number, ToolCallAccumulator> = new Map()
@@ -564,6 +616,14 @@ export async function chatStream(
       for await (const chunk of stream) {
         if (signal?.aborted) {
           callbacks.onDone(fullContent + ' [cancelled]')
+          emitModelRequestCompleted(desc, audit, {
+            streaming: true,
+            toolCount: offeredToolCount,
+            retryCount: retries,
+            durationMs: Date.now() - startedAt,
+            cancelled: true,
+            emittedToolCallCount: toolCallsAccumulator.size
+          })
           return
         }
 
@@ -597,15 +657,40 @@ export async function chatStream(
         : undefined
 
       callbacks.onDone(fullContent, toolCalls)
+      emitModelRequestCompleted(desc, audit, {
+        streaming: true,
+        toolCount: offeredToolCount,
+        retryCount: retries,
+        durationMs: Date.now() - startedAt,
+        cancelled: false,
+        emittedToolCallCount: toolCalls?.length ?? 0
+      })
       return
     } catch (err: any) {
       if (signal?.aborted) {
         callbacks.onDone(fullContent + ' [cancelled]')
+        emitModelRequestCompleted(desc, audit, {
+          streaming: true,
+          toolCount: offeredToolCount,
+          retryCount: retries,
+          durationMs: Date.now() - startedAt,
+          cancelled: true,
+          emittedToolCallCount: toolCallsAccumulator.size
+        })
         return
       }
 
       if (err?.status === 401 || err?.status === 403) {
         callbacks.onError(`Invalid ${PROVIDERS[desc.provider].label} API key`)
+        emitModelRequestFailed(desc, audit, {
+          streaming: true,
+          toolCount: offeredToolCount,
+          retryCount: retries,
+          durationMs: Date.now() - startedAt,
+          cancelled: false,
+          error: err,
+          httpStatus: err?.status
+        })
         return
       }
 
@@ -624,7 +709,150 @@ export async function chatStream(
       }
 
       callbacks.onError(err?.message || 'Unknown error')
+      emitModelRequestFailed(desc, audit, {
+        streaming: true,
+        toolCount: offeredToolCount,
+        retryCount: retries,
+        durationMs: Date.now() - startedAt,
+        cancelled: false,
+        error: err,
+        httpStatus: err?.status
+      })
       return
     }
+  }
+}
+
+// ──────────────────── model-request audit helpers ────────────────────
+
+// Producers for `model.request.*` events. The handlers above call these at
+// every terminal point — clean completion, signal-cancelled mid-stream,
+// non-retryable error, retries-exhausted error. The wrapper try/catches keep
+// the chat path resilient: any event-log failure must not poison the
+// response we hand back to chat.ts.
+
+interface ModelRequestStartedOptions {
+  streaming: boolean
+  toolCount: number
+}
+
+function emitModelRequestStarted(
+  desc: ModelDescriptor,
+  audit: ModelRequestAudit | undefined,
+  opts: ModelRequestStartedOptions
+): void {
+  if (!audit) return
+  try {
+    recordEvent({
+      type: 'model.request.started',
+      actorKind: 'system',
+      conversationId: audit.conversationId,
+      correlationId: audit.correlationId,
+      entityKind: 'model',
+      entityId: desc.id,
+      payload: {
+        provider: desc.provider,
+        model: desc.id,
+        apiModelId: desc.apiModelId,
+        streaming: opts.streaming,
+        toolCount: opts.toolCount,
+        role: audit.role,
+        purpose: audit.purpose ?? 'main'
+      }
+    })
+  } catch (err) {
+    console.error('[providers] model.request.started event failed:', err)
+  }
+}
+
+interface ModelRequestCompletedOptions {
+  streaming: boolean
+  toolCount: number
+  retryCount: number
+  durationMs: number
+  cancelled: boolean
+  finishReason?: string
+  emittedToolCallCount?: number
+}
+
+function emitModelRequestCompleted(
+  desc: ModelDescriptor,
+  audit: ModelRequestAudit | undefined,
+  opts: ModelRequestCompletedOptions
+): void {
+  if (!audit) return
+  try {
+    recordEvent({
+      type: 'model.request.completed',
+      actorKind: 'model',
+      severity: opts.cancelled ? 'warning' : 'info',
+      conversationId: audit.conversationId,
+      correlationId: audit.correlationId,
+      entityKind: 'model',
+      entityId: desc.id,
+      payload: {
+        provider: desc.provider,
+        model: desc.id,
+        apiModelId: desc.apiModelId,
+        streaming: opts.streaming,
+        toolCount: opts.toolCount,
+        emittedToolCallCount: opts.emittedToolCallCount ?? 0,
+        retryCount: opts.retryCount,
+        durationMs: opts.durationMs,
+        cancelled: opts.cancelled,
+        finishReason: opts.finishReason,
+        role: audit.role,
+        purpose: audit.purpose ?? 'main'
+      }
+    })
+  } catch (err) {
+    console.error('[providers] model.request.completed event failed:', err)
+  }
+}
+
+interface ModelRequestFailedOptions {
+  streaming: boolean
+  toolCount: number
+  retryCount: number
+  durationMs: number
+  cancelled: boolean
+  error: unknown
+  httpStatus?: number
+}
+
+function emitModelRequestFailed(
+  desc: ModelDescriptor,
+  audit: ModelRequestAudit | undefined,
+  opts: ModelRequestFailedOptions
+): void {
+  if (!audit) return
+  try {
+    const err = opts.error as { message?: string; name?: string } | undefined
+    recordEvent({
+      type: 'model.request.failed',
+      actorKind: 'model',
+      severity: 'error',
+      conversationId: audit.conversationId,
+      correlationId: audit.correlationId,
+      entityKind: 'model',
+      entityId: desc.id,
+      payload: {
+        provider: desc.provider,
+        model: desc.id,
+        apiModelId: desc.apiModelId,
+        streaming: opts.streaming,
+        toolCount: opts.toolCount,
+        retryCount: opts.retryCount,
+        durationMs: opts.durationMs,
+        httpStatus: opts.httpStatus,
+        cancelled: opts.cancelled,
+        errorClass: err?.name,
+        errorPreview: boundedJsonPreview(err?.message),
+        role: audit.role,
+        purpose: audit.purpose ?? 'main'
+      }
+    })
+  } catch (e) {
+    console.error('[providers] model.request.failed event failed:', e)
   }
 }

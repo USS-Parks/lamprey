@@ -14,6 +14,7 @@ import { ImageGenSettings } from './ImageGenSettings'
 import { PermissionsSettings } from './PermissionsSettings'
 import { PlanGoalSettings } from './PlanGoalSettings'
 import { GitHubSettings } from './GitHubSettings'
+import { ActivityTimeline } from '@/components/activity/ActivityTimeline'
 import { useUiStore } from '@/stores/ui-store'
 
 interface SettingsDialogProps {
@@ -35,7 +36,8 @@ const TABS = [
   { id: 'permissions', label: 'Permissions' },
   { id: 'planGoal', label: 'Plans & Goals' },
   { id: 'hooks', label: 'Hooks' },
-  { id: 'automations', label: 'Automations' }
+  { id: 'automations', label: 'Automations' },
+  { id: 'activity', label: 'Activity' }
 ] as const
 
 type TabId = (typeof TABS)[number]['id']
@@ -94,6 +96,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
             {activeTab === 'planGoal' && <PlanGoalSettings />}
             {activeTab === 'hooks' && <HooksSettings />}
             {activeTab === 'automations' && <AutomationsSettings />}
+            {activeTab === 'activity' && <ActivityTimeline />}
           </div>
         </div>
       </div>

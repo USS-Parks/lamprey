@@ -490,3 +490,93 @@ export interface SourceItem {
   // Removal handler differs per kind; callers wire to the owning store.
   onRemove?: () => void
 }
+
+// ──────────────────── Event spine (Data Spine Prompt 5) ────────────────────
+//
+// Renderer-side mirror of `electron/services/event-log.EventRecord`. The
+// renderer can't import from `electron/*` (the two tsconfig roots don't reach
+// across), so the shape is duplicated here the same way LampreyToolCall is.
+// Keep both definitions in lock-step: a drift between them is a bug.
+
+export type EventSeverity = 'info' | 'warning' | 'error'
+
+/** Provenance of the JSON payload column. See electron/services/event-log.ts. */
+export type EventRedaction = 'metadata' | 'preview' | 'redacted'
+
+export type EventActorKind = 'user' | 'system' | 'agent' | 'model' | 'tool'
+
+export type EventType =
+  | 'tool.call.started'
+  | 'tool.call.approved'
+  | 'tool.call.denied'
+  | 'tool.call.completed'
+  | 'tool.call.failed'
+  | 'agent.stage.started'
+  | 'agent.stage.completed'
+  | 'agent.stage.failed'
+  | 'model.request.started'
+  | 'model.request.completed'
+  | 'model.request.failed'
+  | 'chat.cancelled'
+  | 'chat.error'
+  | 'workspace.changed'
+  | 'worktree.created'
+  | 'worktree.removed'
+  | 'automation.started'
+  | 'automation.completed'
+  | 'automation.failed'
+  | 'security.decision'
+  | 'permission.policy.created'
+  | 'permission.policy.updated'
+  | 'permission.policy.deleted'
+  | 'settings.updated'
+  | 'project.created'
+  | 'project.archived'
+  | 'project.pinned'
+  | 'project.deleted'
+
+export interface EventRecord {
+  id: string
+  type: EventType
+  createdAt: number
+  severity: EventSeverity
+  conversationId?: string
+  projectId?: string
+  workspacePath?: string
+  automationId?: string
+  toolCallId?: string
+  parentEventId?: string
+  correlationId?: string
+  actorKind: EventActorKind
+  actorId?: string
+  entityKind?: string
+  entityId?: string
+  payload: Record<string, unknown>
+  redaction: EventRedaction
+}
+
+/** Filter shape for `window.api.events.list`. */
+export interface EventListFilter {
+  type?: EventType | EventType[]
+  severity?: EventSeverity | EventSeverity[]
+  conversationId?: string
+  projectId?: string
+  workspacePath?: string
+  automationId?: string
+  toolCallId?: string
+  correlationId?: string
+  sinceMs?: number
+  untilMs?: number
+  limit?: number
+  order?: 'asc' | 'desc'
+}
+
+/** Scope shape for `window.api.events.timeline` (exactly one scope required). */
+export interface EventTimelineFilter {
+  conversationId?: string
+  projectId?: string
+  workspacePath?: string
+  correlationId?: string
+  automationId?: string
+  limit?: number
+}

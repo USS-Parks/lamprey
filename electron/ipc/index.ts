@@ -28,6 +28,7 @@ import { registerCurrentInfoHandlers } from './current-info'
 import { registerImageToolsHandlers } from './image-tools'
 import { registerPlanHandlers } from './plan'
 import { registerGitHubHandlers } from './github'
+import { registerEventsHandlers } from './events'
 
 export function registerAllIpcHandlers(): void {
   registerChatHandlers()
@@ -55,4 +56,5 @@ export function registerAllIpcHandlers(): void {
   registerImageToolsHandlers()
   registerPlanHandlers()
   registerGitHubHandlers()
+  registerEventsHandlers()
 }

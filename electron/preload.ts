@@ -515,6 +515,16 @@ const api = {
     openInBrowser: (url: string) => ipcRenderer.invoke('github:openInBrowser', url)
   },
 
+  // Read-only access to the event spine. There is no `record` here — the
+  // renderer must NOT be able to write into the audit log; producers live in
+  // main-process services so the spine reflects what the harness actually did,
+  // not what an arbitrary renderer claims it did.
+  events: {
+    list: (filter?: unknown) => ipcRenderer.invoke('events:list', filter ?? {}),
+    get: (id: string) => ipcRenderer.invoke('events:get', id),
+    timeline: (filter: unknown) => ipcRenderer.invoke('events:timeline', filter)
+  },
+
   app: {
     onError: (cb: (e: { message: string }) => void) =>
       ipcRenderer.on('app:error', (_, e) => cb(e)),

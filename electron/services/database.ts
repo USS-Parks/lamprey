@@ -162,6 +162,45 @@ function initSchema(db: Database.Database): void {
 
     CREATE INDEX IF NOT EXISTS idx_goals_conversation
       ON goals(conversation_id, updated_at DESC);
+
+    -- Append-only event spine. Cross-system audit/timeline complement to the
+    -- structured domain tables (tool_calls, permission_policies, automations).
+    -- Writers go through electron/services/event-log.ts which owns JSON
+    -- serialization, payload size caps, and metadata-only redaction. The table
+    -- itself is intentionally permissive — strict CHECK constraints would force
+    -- migrations every time we add an event category.
+    CREATE TABLE IF NOT EXISTS events (
+      id TEXT PRIMARY KEY,
+      type TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      severity TEXT NOT NULL DEFAULT 'info',
+      conversation_id TEXT,
+      project_id TEXT,
+      workspace_path TEXT,
+      automation_id TEXT,
+      tool_call_id TEXT,
+      parent_event_id TEXT,
+      correlation_id TEXT,
+      actor_kind TEXT NOT NULL,
+      actor_id TEXT,
+      entity_kind TEXT,
+      entity_id TEXT,
+      payload_json TEXT NOT NULL,
+      redaction TEXT NOT NULL DEFAULT 'metadata'
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_events_recent
+      ON events(created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_events_conversation
+      ON events(conversation_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_events_project
+      ON events(project_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_events_workspace
+      ON events(workspace_path, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_events_correlation
+      ON events(correlation_id, created_at ASC);
+    CREATE INDEX IF NOT EXISTS idx_events_type
+      ON events(type, created_at DESC);
   `)
 
   // Migrations for older DBs that predate kind/worktree_path/project_id columns.
