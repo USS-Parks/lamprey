@@ -1,5 +1,21 @@
 # Lamprey Harness Dev Log
 
+## Audit-remediation Prompt 12 — CI: macOS smoke + coverage baseline (2026-06-02)
+
+Closes CI-2 from `REPO_AUDIT.md`. The build matrix ran Windows + Linux only — a macOS regression (Windows-only API, path-separator bug, native module ABI mismatch) could slip through silently. And there was no coverage data in CI, so a refactor that quietly stopped exercising a service had no automated tripwire. Both gaps land in one workflow PR.
+
+**macOS smoke job (`.github/workflows/build.yml`).** New `build-macos` job on `runs-on: macos-latest`. Steps: checkout → Node 22 → `npm ci` → tsc.node + tsc.web → `npm run build` (just `electron-vite build`, producing `out/main` + `out/renderer`) → `smoke:bundle` → `smoke:renderer`. Env carries `CSC_IDENTITY_AUTO_DISCOVERY: 'false'` so any future step that does invoke electron-builder doesn't hang hunting for a missing signing identity. The job deliberately does NOT run `electron-builder --mac` — that requires a real Apple Developer cert + notarization secrets, which we don't have in CI. The build smoke catches the regression class we care about; full installer packaging stays a release-runner concern, and that intent is documented in the workflow's header comment.
+
+**Coverage baseline (`vitest.config.ts`).** Added `@vitest/coverage-v8` (devDep). Coverage block: provider v8, reporters `text` + `text-summary` + `html` + `lcov`. `include` covers `electron/**/*.ts` + `src/**/*.{ts,tsx}`; `exclude` strips tests, declarations, bundlers' entry points (`electron/preload.ts`, `electron/main.ts`, `electron/ipc/index.ts`), `out/`, `dist/`, `scripts/`, `resources/`, `node_modules/`. The renderer's `src/components/**` mostly shows 0% because vitest's env is `node` — jsdom-backed render tests are Prompt 5's scope and intentionally carry-forward.
+
+**Coverage thresholds (regression guard, NOT quality target).** Captured baseline on the post-rebase HEAD: **statements 15.63% (1,625 / 10,394) · branches 14.58% (1,019 / 6,986) · functions 11.85% (272 / 2,295) · lines 16.01% (1,466 / 9,152)**. Threshold = floor(observed) − 2pp per metric, applied globally: `statements: 13, branches: 12, functions: 9, lines: 14`. The threshold catches "someone deleted a major test file" or "a refactor stopped exercising a service" — it does NOT push every PR to push the number up. Lifting the floor is a separate, intentional doc-only commit. Source comment in `vitest.config.ts` records both the baseline and the convention.
+
+**CI coverage step (`.github/workflows/ci.yml`).** The existing `test` job now runs `npm test -- --coverage`. The text reporter prints the table in the CI log so reviewers see the numbers without downloading anything; the thresholds gate failure. Added an `upload-artifact` step that pushes the `coverage/` directory (which contains the HTML + LCOV reports) with a 14-day retention so coverage walkthroughs in PR review are one click away.
+
+**Verification.** `tsc --noEmit -p tsconfig.node.json` + `-p tsconfig.web.json` both clean. `npm run lint` — 0 errors (213 pre-existing warnings; baseline). `npx vitest run --coverage` — **34 files / 498 passed + 2 skipped**, thresholds pass with margin (the baseline is the source of the floor, so the very first run is the "just barely above" case by design). Local bundle smokes deliberately skipped per the Prompt 12 spec — the macOS smoke is verified by CI on the macos-latest runner; first push to main exercises it for real.
+
+**Sprint complete.** Prompts 9 → 12 of the audit-remediation roster are now landed. The remaining roster (Prompts 1–8 + the agentMode-adjacent prompts already completed) covers the lower-severity findings and the hygiene/test-foundation prerequisites; the highest-impact security + correctness gaps from `REPO_AUDIT.md` are closed. Carry-forward gaps from this prompt: renderer-side jsdom render tests (Prompt 5), `AgentRunBanner.test.tsx` (deferred to P5), and DNS rebinding TOCTOU in `safeFetch` (Prompt 9 known gap, still open).
+
 ## Audit-remediation Prompt 11 (review followup) — Coder identity, status filtering, dispatch tests (v0.1.28, 2026-06-02)
 
 Three review findings against the original Prompt 11 commit (`4aa64bd`) closed in one followup PR. Same scope (QUAL-1); deeper correctness.

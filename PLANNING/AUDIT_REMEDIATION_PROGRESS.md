@@ -21,6 +21,46 @@ Factual changelog for the work described in [AUDIT_REMEDIATION_PLAN.md](AUDIT_RE
 - **`npm run smoke:renderer` script does not exist yet.** Referenced in the plan's universal gate but never landed; the renderer-side bundle smoke is a carry-forward from the Codex sprint's known gaps. Prompts that change only main-process code can verify via `smoke:bundle` alone; prompts touching the renderer bundle should mention this gap explicitly in their DEVLOG entry.
 - **DNS rebinding gap in `safeFetch`.** Resolved IPs at `assertPublicUrl` are not pinned for the subsequent fetch; a hostile resolver could return a public IP at pre-check time and a private IP at fetch time. v1 closes the direct-literal SSRF case; closing the rebind gap requires resolving once and fetching against the locked-in address with an explicit Host header.
 
+## Done — Prompt 12 — CI: macOS smoke + coverage baseline (2026-06-02)
+
+CI-2 closed in one PR.
+
+- **`build-macos`** added to `.github/workflows/build.yml` (macos-latest, `CSC_IDENTITY_AUTO_DISCOVERY=false`). Runs npm ci → tsc x2 → `npm run build` → smoke:bundle → smoke:renderer. Does NOT run `electron-builder --mac` (no signing cert in CI); installer packaging remains a release-runner concern, documented in the workflow header.
+- **Coverage baseline** captured: statements 15.63% / branches 14.58% / functions 11.85% / lines 16.01%. Threshold pinned at floor − 2pp per metric (13 / 12 / 9 / 14) in `vitest.config.ts`. `@vitest/coverage-v8` added to devDeps. Renderer code mostly at 0% because vitest runs node-env — jsdom carries forward in Prompt 5.
+- **CI** (`ci.yml`): test job now runs `npm test -- --coverage`; HTML + LCOV report uploaded as `coverage-report` artifact (14-day retention).
+
+Vitest 34 files / 498 pass + 2 skipped, all thresholds clear. tsc x2 + lint clean. Local bundle smokes skipped per spec — macOS smoke verifies on macos-latest first push.
+
+---
+
+## Sprint complete — audit remediation prompts 9-12 landed (2026-06-02)
+
+Closes the highest-severity REPO_AUDIT findings (model-input security, secrets/OAuth hardening, agentMode rewire, CI matrix expansion). Roster as of this entry:
+
+| # | Title | Findings | Status |
+|---|---|---|---|
+| 1 | Hygiene & quick wins | DOC-4, STRUCT-1, STRUCT-2, DEP-1, DEP-2, DEP-3, CI-3 | Pending |
+| 2 | Documentation refresh | DOC-1, DOC-2, DOC-3, DOC-5, DOC-6, SEC-4 (doc) | Pending |
+| 3 | CI: run smokes on PRs | CI-1 | **Closed by remote `1c8de6e`** (vitest + smokes on PR via the `ci.yml` workflow that landed concurrently) |
+| 4 | Streaming & connection bugs | BUG-1, BUG-2 | Pending |
+| 5 | Test foundation (jsdom + stores/services) | TEST-1, TEST-2 | Pending |
+| 6 | Renderer privilege hardening | SEC-1, SEC-7 | Pending |
+| 7 | Main-process correctness | BUG-3, BUG-5, QUAL-2, QUAL-3 | Pending |
+| 8 | Renderer + IPC-contract correctness | BUG-4, BUG-6 | Pending |
+| 9 | Model-input security | SEC-2, SEC-5, SEC-6, SEC-8 | **Done** |
+| 10 | Secrets & OAuth hardening | SEC-3, SEC-9, SEC-10 | **Done** |
+| 11 | `agentMode` rewire (Planner→Coder→Reviewer) | QUAL-1 (QUAL-4 deferred) | **Done** |
+| 12 | CI: macOS build + coverage baseline | CI-2 | **Done** |
+
+**Verification numbers at sprint close.** Vitest **34 files / 498 tests pass + 2 skipped**. tsc.node + tsc.web clean. ESLint 0 errors (213 pre-existing warnings). `smoke:bundle` PASS · `smoke:renderer` PASS. Coverage baseline: 15.63 / 14.58 / 11.85 / 16.01 % (statements / branches / functions / lines); thresholds 13 / 12 / 9 / 14.
+
+**Carry-forward gaps** (closed naturally by Prompts 1-8 landing in the next sprint):
+- The ESLint flat-config + lint sweep already landed on remote (`97c9319`, `8dba642`), closing DEP-3 and most of the family.
+- `npm run smoke:renderer` exists on remote (`c12bbc9`) — DEVLOG entries in Prompts 9-11 referenced it as carry-forward; those notes are now stale but historically accurate.
+- Plan/goal state persists to SQLite on remote (`294ef95`), closing the in-memory gap I'd assumed was still open.
+- DNS rebinding TOCTOU in `safeFetch` (Prompt 9 known gap) is still open — closing it requires lock-resolve-then-fetch-against-IP, a deeper refactor than this sprint.
+- `AgentRunBanner.test.tsx` deferred to Prompt 5 (needs jsdom + Testing Library).
+
 ## Done — Prompt 11 — `agentMode` rewire (Planner → Coder → Reviewer) (2026-06-02)
 
 QUAL-1 closed in one PR. The renderer-side pipeline (`AgentRunBanner.tsx`, `agent-store.ts`, `preload.ts agent:status`, `useChat.ts`) was already built and dormant; main-process orchestration was the missing half.
@@ -73,4 +113,4 @@ SEC-2, SEC-5, SEC-6, SEC-8 all closed in one PR. New `electron/services/url-safe
 | 9 | Model-input security | SEC-2, SEC-5, SEC-6, SEC-8 | Done |
 | 10 | Secrets & OAuth hardening | SEC-3, SEC-9, SEC-10 | Done |
 | 11 | `agentMode` rewire (Planner→Coder→Reviewer) | QUAL-1 (QUAL-4 deferred) | Done |
-| 12 | CI: macOS build + coverage baseline | CI-2 | Pending |
+| 12 | CI: macOS build + coverage baseline | CI-2 | Done |

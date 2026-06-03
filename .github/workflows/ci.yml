@@ -63,5 +63,17 @@ jobs:
       - name: Install Electron binary
         run: node node_modules/electron/install.js
 
-      - name: Unit + integration tests
-        run: npm test
+      - name: Unit + integration tests (with coverage)
+        # `--coverage` prints the table in the CI log AND enforces the
+        # thresholds pinned in vitest.config.ts (Prompt 12: floor =
+        # baseline minus 2pp per metric — a regression guard, not a
+        # quality target).
+        run: npm test -- --coverage
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v6
+        with:
+          name: coverage-report
+          path: coverage/
+          if-no-files-found: warn
+          retention-days: 14

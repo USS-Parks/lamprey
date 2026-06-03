@@ -128,3 +128,49 @@ jobs:
   # Run locally with `npm run build:mac` after setting:
   #   APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID, CSC_LINK, CSC_KEY_PASSWORD
   # See https://www.electron.build/code-signing for the full setup.
+  #
+  # CI runs an UNSIGNED smoke job on every push/tag so macOS regressions
+  # (Windows-only APIs, path separators, native module ABI) are caught
+  # without holding the CI on the signing identity. Full installer
+  # packaging (`electron-builder --mac`) is deliberately not invoked —
+  # the build + smokes prove the bundle is sound; signing is a release-
+  # runner concern.
+  build-macos:
+    runs-on: macos-latest
+    env:
+      # Tell electron-builder not to hunt for a signing identity that
+      # isn't there. The smoke jobs below don't run electron-builder, but
+      # this protects any future step that does.
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Use Node.js 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check (main)
+        run: npx tsc --noEmit -p tsconfig.node.json
+
+      - name: Type check (renderer)
+        run: npx tsc --noEmit -p tsconfig.web.json
+
+      - name: Build main + renderer bundles
+        # electron-vite build produces out/main + out/renderer. Skipping
+        # electron-builder --mac because we have no signing identity in
+        # CI — the build smoke catches the regression class we care
+        # about (Windows-only APIs, path separators, native ABI) without
+        # needing a packaged .app/.dmg.
+        run: npm run build
+
+      - name: Headless smoke of main bundle
+        run: npm run smoke:bundle
+
+      - name: Integrity smoke of renderer bundle
+        run: npm run smoke:renderer
