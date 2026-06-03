@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import { Sidebar } from '@/components/layout/Sidebar'
 import { Titlebar, SecondaryToolbar } from '@/components/layout/Titlebar'
 import { ChatView } from '@/components/chat/ChatView'
@@ -12,7 +12,13 @@ import { SettingsDialog } from '@/components/settings/SettingsDialog'
 import { ToolApprovalModal } from '@/components/tools/ToolApprovalModal'
 import { MemoryModal } from '@/components/memory/MemoryModal'
 import { ToastContainer } from '@/components/ui/Toast'
-import { FloatingEnvironmentCard } from '@/components/workspace/FloatingEnvironmentCard'
+import {
+  FloatingEnvironmentCard,
+  ENV_CARD_WIDTH,
+  ENV_CARD_GAP,
+  ENV_CARD_TRANSITION_MS
+} from '@/components/workspace/FloatingEnvironmentCard'
+import { usePrefersReducedMotion } from '@/hooks/usePrefersReducedMotion'
 import { useChatStore } from '@/stores/chat-store'
 import { useModelStore } from '@/stores/model-store'
 import { useSettingsStore } from '@/stores/settings-store'
@@ -53,6 +59,47 @@ function App(): React.ReactElement {
   const activeTool = useUiStore((s) => s.activeTool)
   const artifactsPlaceholderUrl = useThemedIcon(artifactsPlaceholderLight, artifactsPlaceholderDark)
   const isNarrow = useMediaQuery(NARROW_VIEWPORT_QUERY)
+  const reducedMotion = usePrefersReducedMotion()
+
+  // Track the chat workspace column's measured width so the Environment
+  // card only shows when there's enough horizontal room for the chat
+  // dialogue to keep a comfortable minimum AND a full-width card next to
+  // it. ResizeObserver re-fires on sidebar resize / window resize / DPI
+  // change without us wiring a window listener.
+  const chatWorkspaceRef = useRef<HTMLDivElement>(null)
+  const [chatWorkspaceWidth, setChatWorkspaceWidth] = useState(0)
+
+  useEffect(() => {
+    const node = chatWorkspaceRef.current
+    if (!node || typeof ResizeObserver === 'undefined') return
+    setChatWorkspaceWidth(node.getBoundingClientRect().width)
+    const ro = new ResizeObserver((entries) => {
+      const entry = entries[0]
+      if (!entry) return
+      setChatWorkspaceWidth(entry.contentRect.width)
+    })
+    ro.observe(node)
+    return () => ro.disconnect()
+  }, [])
+
+  // Minimum chat dialogue width preserved beside the floating card. The
+  // inner reading column is `max-w-4xl px-6` (896 px); we don't require
+  // that full width to be intact — the card may compress the chat as long
+  // as message bubbles and the composer keep working room.
+  const CHAT_MIN_WIDTH = 540
+  const CHAT_WORKSPACE_PADDING_X = 16 // p-2 left + right inside the chat surround
+  const ENV_CARD_RESERVED = ENV_CARD_WIDTH + ENV_CARD_GAP
+  const chatHasRoomForEnvCard =
+    chatWorkspaceWidth >= CHAT_MIN_WIDTH + ENV_CARD_RESERVED + CHAT_WORKSPACE_PADDING_X
+  // Single boolean the card animates around. Includes every "we don't
+  // float in this mode" exclusion: narrow drawer mode, expanded right
+  // panel (the docked EnvironmentPanel owns Environment then), and not
+  // enough horizontal gutter for the card to live beside the chat.
+  const shouldShowEnvCard = !isNarrow && rightPanelCollapsed && chatHasRoomForEnvCard
+  const chatPaddingRight = shouldShowEnvCard ? 8 + ENV_CARD_RESERVED : 8
+  const chatPaddingTransition = reducedMotion
+    ? 'none'
+    : `padding-right ${ENV_CARD_TRANSITION_MS}ms cubic-bezier(0.2, 0.8, 0.2, 1)`
 
   const handleRightResizeStart = useCallback(
     (e: React.MouseEvent) => {
@@ -210,11 +257,28 @@ function App(): React.ReactElement {
       <div className="flex flex-1 overflow-hidden">
         <Sidebar />
 
-        <div className="flex flex-1 flex-col">
+        <div ref={chatWorkspaceRef} className="flex flex-1 flex-col">
           <SecurityBanner />
           <UpdateBanner />
-          <div className="flex flex-1 overflow-hidden bg-[var(--bg-secondary)] p-2">
+          {/* The chat workspace surround. `position: relative` anchors the
+              floating Environment card as an absolutely-positioned child,
+              not a viewport overlay — so the card lives inside the chat
+              workspace's right gutter rather than on top of chat content.
+              Right padding animates open/closed around the card width so
+              ChatView's flex-1 child shrinks/grows in lockstep with the
+              card's entry/exit. */}
+          <div
+            className="relative flex flex-1 overflow-hidden bg-[var(--bg-secondary)]"
+            style={{
+              paddingTop: 8,
+              paddingLeft: 8,
+              paddingBottom: 8,
+              paddingRight: chatPaddingRight,
+              transition: chatPaddingTransition
+            }}
+          >
             <ChatView />
+            <FloatingEnvironmentCard visible={shouldShowEnvCard} />
           </div>
         </div>
 
@@ -318,16 +382,6 @@ function App(): React.ReactElement {
 
       <QuickOpenPalette />
       <WorktreeManagerModal />
-
-      {/* Floating Environment card only shows when the right panel is
-          collapsed to its rail. Expanding the panel (home pills, any tool,
-          artifacts) hides the card seamlessly — the panel itself surfaces
-          environment info from then on. Also hidden on narrow viewports
-          where there's no real estate to float a 360px card. */}
-      <FloatingEnvironmentCard
-        hidden={!rightPanelCollapsed || isNarrow}
-        rightInset={isNarrow ? 16 : 32}
-      />
 
       <ToastContainer />
     </div>

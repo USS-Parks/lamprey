@@ -1,11 +1,71 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useUiStore } from '@/stores/ui-store'
 import { useAgentStore } from '@/stores/agent-store'
 import { useEnvironment } from '@/hooks/useEnvironment'
 import { useSources } from '@/hooks/useSources'
+import { usePrefersReducedMotion } from '@/hooks/usePrefersReducedMotion'
 import { toast } from '@/stores/toast-store'
 import { WorkModePopover } from './WorkModePopover'
 import { BranchPickerPopover } from './BranchPickerPopover'
+
+// Stable dimensions exported so App.tsx can reserve matching gutter space
+// and decide whether there's enough room to render the card at all.
+export const ENV_CARD_WIDTH = 360
+export const ENV_CARD_GAP = 16
+export const ENV_CARD_TOP_OFFSET = 8
+export const ENV_CARD_RIGHT_OFFSET = 8
+export const ENV_CARD_TRANSITION_MS = 220
+
+type CardState = 'hidden' | 'entering' | 'visible' | 'exiting'
+
+// Drives a four-phase transition so the card can play an enter or exit
+// animation around React's mount/unmount. The component returns null while
+// state === 'hidden', so the DOM is only present while the card is meant
+// to be seen or animating.
+function useCardState(visible: boolean, durationMs: number): CardState {
+  const [state, setState] = useState<CardState>(visible ? 'visible' : 'hidden')
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const rafRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    if (timeoutRef.current) clearTimeout(timeoutRef.current)
+    if (rafRef.current) cancelAnimationFrame(rafRef.current)
+
+    if (visible) {
+      // hidden | exiting | entering → entering, then a paint later → visible.
+      // The double-RAF gives the browser one frame to commit the entering
+      // styles (opacity 0, translated) before we flip to visible — otherwise
+      // the CSS transition has no "from" frame to interpolate from.
+      setState((prev) => (prev === 'visible' ? 'visible' : 'entering'))
+      rafRef.current = requestAnimationFrame(() => {
+        rafRef.current = requestAnimationFrame(() => {
+          rafRef.current = null
+          setState('visible')
+        })
+      })
+    } else {
+      // visible | entering | exiting → exiting now, → hidden after the
+      // transition completes. We leave it mounted during exiting so the
+      // CSS transition has somewhere to run.
+      setState((prev) => (prev === 'hidden' ? 'hidden' : 'exiting'))
+      if (durationMs <= 0) {
+        setState('hidden')
+      } else {
+        timeoutRef.current = setTimeout(() => {
+          timeoutRef.current = null
+          setState('hidden')
+        }, durationMs)
+      }
+    }
+
+    return () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current)
+      if (rafRef.current) cancelAnimationFrame(rafRef.current)
+    }
+  }, [visible, durationMs])
+
+  return state
+}
 
 function GearGlyph(): React.ReactElement {
   return (
@@ -168,25 +228,24 @@ function CardRow({
 }
 
 interface FloatingEnvironmentCardProps {
-  // Pass true when the docked panel is showing a non-environment tool — the
-  // card hides itself in that case (decided behavior).
-  hidden?: boolean
-  // Pixel inset from the viewport's right edge. App.tsx passes the right
-  // panel's effective width here so the card sits over the chat column, not
-  // hidden behind the docked panel's vertical strip.
-  rightInset?: number
+  // The parent (App.tsx) computes this from: not narrow viewport, right
+  // panel collapsed, and workspace wide enough to fit the card without
+  // overlapping the chat dialogue. We never make this decision here —
+  // the card just animates in / out around the boolean.
+  visible: boolean
 }
 
 export function FloatingEnvironmentCard({
-  hidden,
-  rightInset = 0
+  visible
 }: FloatingEnvironmentCardProps): React.ReactElement | null {
   const openSettings = useUiStore((s) => s.openSettings)
   const setActiveTool = useUiStore((s) => s.setActiveTool)
   const agentMode = useAgentStore((s) => s.mode)
   const { snapshot, refresh } = useEnvironment()
   const { sources, groups } = useSources()
+  const reduced = usePrefersReducedMotion()
 
+  const containerRef = useRef<HTMLDivElement>(null)
   const workModeRef = useRef<HTMLButtonElement>(null)
   const branchRef = useRef<HTMLButtonElement>(null)
   const [workModeOpen, setWorkModeOpen] = useState(false)
@@ -194,7 +253,23 @@ export function FloatingEnvironmentCard({
   const [committing, setCommitting] = useState(false)
   const [headerCollapsed, setHeaderCollapsed] = useState(false)
 
-  if (hidden) return null
+  const duration = reduced ? 0 : ENV_CARD_TRANSITION_MS
+  const state = useCardState(visible, duration)
+
+  // When the card starts exiting, drop focus out of it so screen readers
+  // and keyboard users aren't trapped inside a region that's about to
+  // disappear. Popovers anchored to card rows close for the same reason.
+  useEffect(() => {
+    if (state !== 'exiting') return
+    setWorkModeOpen(false)
+    setBranchOpen(false)
+    const active = document.activeElement
+    if (active instanceof HTMLElement && containerRef.current?.contains(active)) {
+      active.blur()
+    }
+  }, [state])
+
+  if (state === 'hidden') return null
 
   const handleCommitOrPush = async () => {
     if (committing) return
@@ -235,13 +310,37 @@ export function FloatingEnvironmentCard({
     : 'Commit or push'
   const workModeLabel = agentMode === 'multi' ? 'Pipeline' : 'Local'
 
+  const settled = state === 'visible'
+  const interactive = settled
+  const easing = 'cubic-bezier(0.2, 0.8, 0.2, 1)'
+
+  const motionStyle: React.CSSProperties = reduced
+    ? {
+        opacity: settled ? 1 : 0,
+        transition: `opacity 80ms linear`
+      }
+    : {
+        opacity: settled ? 1 : 0,
+        transform: settled ? 'translateX(0) scale(1)' : 'translateX(12px) scale(0.98)',
+        transformOrigin: 'top right',
+        transition: `opacity ${duration}ms ${easing}, transform ${duration}ms ${easing}`
+      }
+
   return (
     <>
       <div
-        className="pointer-events-auto fixed z-40 w-[360px] rounded-xl border border-[var(--border)] bg-[var(--bg-secondary)] p-1.5 shadow-xl"
-        style={{ top: 56, right: rightInset + 16 }}
+        ref={containerRef}
+        className="pointer-events-auto absolute rounded-xl border border-[var(--border)] bg-[var(--bg-secondary)] p-1.5 shadow-xl"
+        style={{
+          top: ENV_CARD_TOP_OFFSET,
+          right: ENV_CARD_RIGHT_OFFSET,
+          width: ENV_CARD_WIDTH,
+          pointerEvents: interactive ? 'auto' : 'none',
+          ...motionStyle
+        }}
         role="region"
         aria-label="Environment"
+        aria-hidden={interactive ? undefined : true}
       >
         {/* Header */}
         <div className="flex items-center gap-2 px-2 py-1.5">
