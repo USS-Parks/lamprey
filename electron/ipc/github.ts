@@ -1,7 +1,7 @@
 import { ipcMain, dialog, shell, BrowserWindow } from 'electron'
 import { app } from 'electron'
 import { existsSync, readFileSync, writeFileSync } from 'fs'
-import { join } from 'path'
+import { join, resolve } from 'path'
 import * as github from '../services/github-service'
 import * as keychain from '../services/keychain'
 import * as repoStore from '../services/github-repo-store'
@@ -73,8 +73,31 @@ function enrichRepoWithLocalPath(repo: GitHubRepository): GitHubRepository {
   return link?.localPath ? { ...repo, localPath: link.localPath } : repo
 }
 
+// Phase 3b: throttle the token-rejected emit so a burst of 401s (e.g. a
+// failed page-load that fans out N requests) shows the prompt once. Reset
+// when the user reconnects.
+let tokenRejectedLatchAt: number | null = null
+const TOKEN_REJECTED_THROTTLE_MS = 60_000
+
+function emitTokenRejected(): void {
+  const now = Date.now()
+  if (tokenRejectedLatchAt && now - tokenRejectedLatchAt < TOKEN_REJECTED_THROTTLE_MS) return
+  tokenRejectedLatchAt = now
+  for (const win of BrowserWindow.getAllWindows()) {
+    try {
+      if (!win.isDestroyed()) win.webContents.send('github:tokenRejected')
+    } catch {
+      /* window closed */
+    }
+  }
+}
+
 export function registerGitHubHandlers(): void {
-  github.configureGitHubService({ readMode, writeMode })
+  github.configureGitHubService({
+    readMode,
+    writeMode,
+    onTokenRejected: emitTokenRejected
+  })
 
   // -------------------------------------------------------------------------
   // OAuth client + mode management (renderer never sees the secret).
@@ -99,6 +122,17 @@ export function registerGitHubHandlers(): void {
         keychain.hasKey(github.KEYCHAIN.oauthClientId) &&
           keychain.hasKey(github.KEYCHAIN.oauthClientSecret)
       )
+    } catch (err: any) {
+      return failure(err?.message ?? 'Probe failed')
+    }
+  })
+
+  // Whether the build was produced with bundled OAuth App credentials
+  // (LAMPREY_GITHUB_CLIENT_ID + SECRET env vars set at electron-vite
+  // build time). Returns only a boolean — never the values themselves.
+  ipcMain.handle('github:hasBundledClient', async () => {
+    try {
+      return envelope(github.isBundledClientAvailable())
     } catch (err: any) {
       return failure(err?.message ?? 'Probe failed')
     }
@@ -132,6 +166,7 @@ export function registerGitHubHandlers(): void {
   ipcMain.handle('github:connect', async () => {
     try {
       const result = await github.startOAuthLogin()
+      tokenRejectedLatchAt = null // fresh token; let the next 401 fire
       return envelope(result)
     } catch (err: any) {
       // Token-exchange / OAuth errors come back as Error.message; we already
@@ -143,6 +178,7 @@ export function registerGitHubHandlers(): void {
   ipcMain.handle('github:disconnect', async () => {
     try {
       github.disconnect()
+      tokenRejectedLatchAt = null
       return envelope(null)
     } catch (err: any) {
       return failure(err?.message ?? 'Disconnect failed')
@@ -215,6 +251,32 @@ export function registerGitHubHandlers(): void {
       return failure(err?.message ?? 'Clone failed')
     }
   })
+
+  // Phase 3d: resolve <baseDir>/<repo-name> using Node's path module so
+  // the renderer doesn't have to platform-sniff the path separator.
+  // Validates that repoName is a simple slug — refuses anything that
+  // could path-traverse out of baseDir (e.g. "..", "a/b").
+  ipcMain.handle(
+    'github:resolveCloneTarget',
+    async (_e, args: { baseDir: string; repoName: string }) => {
+      try {
+        if (!args?.baseDir || typeof args.baseDir !== 'string') {
+          return failure('baseDir required')
+        }
+        if (!github.isValidSlug(args.repoName)) {
+          return failure(`Invalid repoName: ${args.repoName}`)
+        }
+        // Already-pointed-at-the-repo cases: don't double-nest.
+        const trimmedBase = args.baseDir.replace(/[\\/]+$/, '')
+        const targetPath = trimmedBase.endsWith(args.repoName)
+          ? trimmedBase
+          : resolve(trimmedBase, args.repoName)
+        return envelope({ targetPath })
+      } catch (err: any) {
+        return failure(err?.message ?? 'Resolve failed')
+      }
+    }
+  )
 
   // -------------------------------------------------------------------------
   // Project ↔ repo association

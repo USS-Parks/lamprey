@@ -20,6 +20,8 @@ export function GitHubSettings(): React.ReactElement {
   const { status, loadingStatus, refreshStatus, refreshRepos, repos, loadingRepos } =
     useGitHubStore()
   const [hasClient, setHasClient] = useState<boolean | null>(null)
+  const [hasBundled, setHasBundled] = useState<boolean | null>(null)
+  const [showAdvanced, setShowAdvanced] = useState(false)
   const [clientId, setClientId] = useState('')
   const [clientSecret, setClientSecret] = useState('')
   const [showSecret, setShowSecret] = useState(false)
@@ -31,6 +33,9 @@ export function GitHubSettings(): React.ReactElement {
     void refreshStatus()
     void window.api?.github?.hasOAuthClient().then((res) => {
       if (res.success) setHasClient(res.data)
+    })
+    void window.api?.github?.hasBundledClient().then((res) => {
+      if (res.success) setHasBundled(res.data)
     })
   }, [refreshStatus])
 
@@ -107,7 +112,23 @@ export function GitHubSettings(): React.ReactElement {
   return (
     <div className="space-y-5">
       <div>
-        <h3 className="font-mono text-sm font-semibold text-[var(--text-primary)]">GitHub</h3>
+        <div className="flex items-baseline justify-between gap-3">
+          <h3 className="font-mono text-sm font-semibold text-[var(--text-primary)]">GitHub</h3>
+          <a
+            href="https://github.com/USS-Parks/lamprey/blob/main/docs/github-setup.md"
+            onClick={(e) => {
+              e.preventDefault()
+              void githubClient
+                .openInBrowser('https://github.com/USS-Parks/lamprey/blob/main/docs/github-setup.md')
+                .catch(() => {
+                  /* gating handles the toast */
+                })
+            }}
+            className="font-mono text-[11px] text-[var(--accent)] hover:underline"
+          >
+            Setup guide →
+          </a>
+        </div>
         <p className="mt-1 text-[13px] leading-relaxed text-[var(--text-muted)]">
           Connect a GitHub account so Lamprey can list repos, clone, push branches with
           token-authenticated git, and open pull requests. Tokens are stored encrypted in
@@ -128,113 +149,139 @@ export function GitHubSettings(): React.ReactElement {
 
       {status?.connected ? null : (
         <div className="space-y-3 rounded border border-[var(--border)] bg-[var(--bg-primary)] p-3">
-          <div>
-            <div className="font-mono text-[12px] font-semibold text-[var(--text-primary)]">
-              OAuth client credentials
-            </div>
-            <p className="mt-1 text-[12px] leading-relaxed text-[var(--text-muted)]">
-              Create an OAuth App at{' '}
-              <a
-                href="https://github.com/settings/developers"
-                onClick={(e) => {
-                  e.preventDefault()
-                  void githubClient.openInBrowser('https://github.com/settings/developers').catch(() => {
-                    /* gating handles the toast */
-                  })
-                  // openInBrowser only allows github.com/* — anything else is
-                  // a no-op. The developers settings page IS github.com, so
-                  // it goes through.
-                }}
-                className="text-[var(--accent)] hover:underline"
-              >
-                github.com/settings/developers
-              </a>
-              . Set the callback URL to{' '}
-              <code className="font-mono">http://localhost:9876/callback</code>, then paste the
-              client ID + secret below.
-            </p>
-          </div>
-          {hasClient && !editingClient ? (
-            <div className="flex items-center gap-3">
-              <span className="font-mono text-[12px] text-[var(--text-secondary)]">
-                Client credentials saved.
-              </span>
-              <button
-                type="button"
-                onClick={() => setEditingClient(true)}
-                className="rounded border border-[var(--border)] bg-transparent px-3 py-1 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]"
-              >
-                Replace
-              </button>
-            </div>
+          {/*
+            Primary action defaults to the bundled Lamprey OAuth App when
+            the build provided one (LAMPREY_GITHUB_CLIENT_ID + SECRET env
+            vars at build time). The BYO + gh-cli paths stay accessible
+            behind a disclosure so contributor builds (no bundled creds)
+            and power users (their own OAuth App) still have a path.
+          */}
+          {hasBundled ? (
+            <ConnectWithBundled
+              connecting={connecting}
+              onConnect={() => void handleConnect()}
+              onUseGhCli={() => void handleUseGhCli()}
+              advancedOpen={showAdvanced}
+              onToggleAdvanced={() => setShowAdvanced((v) => !v)}
+            />
           ) : (
-            <div className="space-y-2">
-              <input
-                type="text"
-                value={clientId}
-                onChange={(e) => setClientId(e.target.value)}
-                placeholder="OAuth App Client ID (Iv1.xxxxx)"
-                className="w-full rounded border border-[var(--border)] bg-[var(--bg-secondary)] px-2 py-1.5 font-mono text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
-              />
-              <div className="flex gap-2">
-                <input
-                  type={showSecret ? 'text' : 'password'}
-                  value={clientSecret}
-                  onChange={(e) => setClientSecret(e.target.value)}
-                  placeholder="OAuth App Client Secret"
-                  className="flex-1 rounded border border-[var(--border)] bg-[var(--bg-secondary)] px-2 py-1.5 font-mono text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowSecret((v) => !v)}
-                  className="rounded border border-[var(--border)] bg-transparent px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-                >
-                  {showSecret ? 'Hide' : 'Show'}
-                </button>
+            <div className="text-[12px] text-[var(--text-muted)]">
+              This build does not bundle Lamprey's OAuth App credentials. Use one
+              of the manual paths below.
+            </div>
+          )}
+
+          {(showAdvanced || !hasBundled) && (
+            <div className={hasBundled ? 'space-y-3 border-t border-[var(--border)] pt-3' : 'space-y-3'}>
+              <div>
+                <div className="font-mono text-[12px] font-semibold text-[var(--text-primary)]">
+                  Bring your own OAuth App
+                </div>
+                <p className="mt-1 text-[12px] leading-relaxed text-[var(--text-muted)]">
+                  Register one at{' '}
+                  <a
+                    href="https://github.com/settings/developers"
+                    onClick={(e) => {
+                      e.preventDefault()
+                      void githubClient
+                        .openInBrowser('https://github.com/settings/developers')
+                        .catch(() => {
+                          /* gating handles the toast */
+                        })
+                    }}
+                    className="text-[var(--accent)] hover:underline"
+                  >
+                    github.com/settings/developers
+                  </a>
+                  . Callback URL: <code className="font-mono">http://localhost:9876/callback</code>.
+                  Paste the client ID + secret below.
+                </p>
               </div>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => void handleSaveClient()}
-                  disabled={savingClient || !clientId.trim() || !clientSecret.trim()}
-                  className="rounded bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-40"
-                >
-                  Save client
-                </button>
-                {hasClient && (
+              {hasClient && !editingClient ? (
+                <div className="flex items-center gap-3">
+                  <span className="font-mono text-[12px] text-[var(--text-secondary)]">
+                    Client credentials saved.
+                  </span>
                   <button
                     type="button"
-                    onClick={() => {
-                      setEditingClient(false)
-                      setClientId('')
-                      setClientSecret('')
-                    }}
-                    className="rounded border border-[var(--border)] bg-transparent px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                    onClick={() => setEditingClient(true)}
+                    className="rounded border border-[var(--border)] bg-transparent px-3 py-1 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]"
                   >
-                    Cancel
+                    Replace
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <input
+                    type="text"
+                    value={clientId}
+                    onChange={(e) => setClientId(e.target.value)}
+                    placeholder="OAuth App Client ID (Iv1.xxxxx)"
+                    className="w-full rounded border border-[var(--border)] bg-[var(--bg-secondary)] px-2 py-1.5 font-mono text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+                  />
+                  <div className="flex gap-2">
+                    <input
+                      type={showSecret ? 'text' : 'password'}
+                      value={clientSecret}
+                      onChange={(e) => setClientSecret(e.target.value)}
+                      placeholder="OAuth App Client Secret"
+                      className="flex-1 rounded border border-[var(--border)] bg-[var(--bg-secondary)] px-2 py-1.5 font-mono text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowSecret((v) => !v)}
+                      className="rounded border border-[var(--border)] bg-transparent px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                    >
+                      {showSecret ? 'Hide' : 'Show'}
+                    </button>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void handleSaveClient()}
+                      disabled={savingClient || !clientId.trim() || !clientSecret.trim()}
+                      className="rounded bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-40"
+                    >
+                      Save client
+                    </button>
+                    {hasClient && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingClient(false)
+                          setClientId('')
+                          setClientSecret('')
+                        }}
+                        className="rounded border border-[var(--border)] bg-transparent px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                      >
+                        Cancel
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+              <div className="flex flex-wrap gap-2 border-t border-[var(--border)] pt-3">
+                <button
+                  type="button"
+                  onClick={() => void handleConnect()}
+                  disabled={connecting || !hasClient}
+                  className="rounded bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-40"
+                  title={hasClient ? 'Open browser to GitHub authorize page' : 'Save OAuth client credentials first'}
+                >
+                  {connecting ? 'Waiting for browser…' : 'Connect with your OAuth App'}
+                </button>
+                {!hasBundled && (
+                  <button
+                    type="button"
+                    onClick={() => void handleUseGhCli()}
+                    className="rounded border border-[var(--border)] bg-transparent px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]"
+                  >
+                    Use local `gh` CLI
                   </button>
                 )}
               </div>
             </div>
           )}
-          <div className="flex flex-wrap gap-2 border-t border-[var(--border)] pt-3">
-            <button
-              type="button"
-              onClick={() => void handleConnect()}
-              disabled={connecting || !hasClient}
-              className="rounded bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-40"
-              title={hasClient ? 'Open browser to GitHub authorize page' : 'Save OAuth client credentials first'}
-            >
-              {connecting ? 'Waiting for browser…' : 'Connect via OAuth'}
-            </button>
-            <button
-              type="button"
-              onClick={() => void handleUseGhCli()}
-              className="rounded border border-[var(--border)] bg-transparent px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]"
-            >
-              Use local `gh` CLI
-            </button>
-          </div>
         </div>
       )}
 
@@ -348,6 +395,61 @@ function RepoCounter({ repos, loading, onRefresh }: RepoCounterProps): React.Rea
           className="rounded border border-[var(--border)] bg-transparent px-3 py-1 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)] disabled:opacity-40"
         >
           Refresh repo list
+        </button>
+      </div>
+    </div>
+  )
+}
+
+interface ConnectWithBundledProps {
+  connecting: boolean
+  onConnect: () => void
+  onUseGhCli: () => void
+  advancedOpen: boolean
+  onToggleAdvanced: () => void
+}
+
+function ConnectWithBundled({
+  connecting,
+  onConnect,
+  onUseGhCli,
+  advancedOpen,
+  onToggleAdvanced
+}: ConnectWithBundledProps): React.ReactElement {
+  return (
+    <div className="space-y-3">
+      <div>
+        <div className="font-mono text-[12px] font-semibold text-[var(--text-primary)]">
+          Connect with Lamprey
+        </div>
+        <p className="mt-1 text-[12px] leading-relaxed text-[var(--text-muted)]">
+          Authorize in your browser. Lamprey will ask for{' '}
+          <code className="font-mono">read:user</code> and{' '}
+          <code className="font-mono">repo</code> scope.
+        </p>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={onConnect}
+          disabled={connecting}
+          className="rounded bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-40"
+        >
+          {connecting ? 'Waiting for browser…' : 'Connect GitHub'}
+        </button>
+        <button
+          type="button"
+          onClick={onUseGhCli}
+          className="rounded border border-[var(--border)] bg-transparent px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]"
+        >
+          Use local `gh` CLI
+        </button>
+        <button
+          type="button"
+          onClick={onToggleAdvanced}
+          className="ml-auto rounded border border-transparent bg-transparent px-3 py-1.5 text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+        >
+          {advancedOpen ? 'Hide advanced ▴' : 'Advanced ▾'}
         </button>
       </div>
     </div>

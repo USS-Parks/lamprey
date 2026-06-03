@@ -480,7 +480,7 @@ export interface EnvironmentSnapshot {
 
 // Unified entry in the Environment card's Sources section, aggregated from
 // chat attachments, active skills, pinned memory, and connected MCP servers.
-export type SourceKind = 'file' | 'skill' | 'memory' | 'mcp'
+export type SourceKind = 'file' | 'skill' | 'memory' | 'mcp' | 'github'
 
 export interface SourceItem {
   id: string

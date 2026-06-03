@@ -121,6 +121,7 @@ import type {
 export const github = {
   status: (): Promise<IpcResponse<GitHubConnectionStatus>> => api.github.status(),
   hasOAuthClient: (): Promise<IpcResponse<boolean>> => api.github.hasOAuthClient(),
+  hasBundledClient: (): Promise<IpcResponse<boolean>> => api.github.hasBundledClient(),
   saveOAuthClient: (clientId: string, clientSecret: string): Promise<IpcResponse<null>> =>
     api.github.saveOAuthClient({ clientId, clientSecret }),
   setMode: (mode: 'oauth' | 'github_app' | 'gh-cli' | 'none'): Promise<IpcResponse<null>> =>
@@ -135,6 +136,11 @@ export const github = {
   pickCloneDir: (): Promise<IpcResponse<string | null>> => api.github.pickCloneDir(),
   clone: (owner: string, repo: string, targetDir: string): Promise<IpcResponse<{ localPath: string }>> =>
     api.github.clone({ owner, repo, targetDir }),
+  resolveCloneTarget: (
+    baseDir: string,
+    repoName: string
+  ): Promise<IpcResponse<{ targetPath: string }>> =>
+    api.github.resolveCloneTarget({ baseDir, repoName }),
   getProjectRepo: (projectId: string): Promise<IpcResponse<GitHubProjectRepoLink | null>> =>
     api.github.getProjectRepo({ projectId }),
   assignRepoToProject: (

@@ -129,6 +129,8 @@ Fire-and-forget. Context arrives as `LAMPREY_HOOK_*` env vars. Use for desktop n
 
 Optional: add `AGENTS.md` to your repo to give the assistant repo-specific context on every send.
 
+**Connect GitHub (optional).** Settings → GitHub → Connect to clone private repos, push branches, and open pull requests from inside Lamprey. See [docs/github-setup.md](docs/github-setup.md) for the three auth paths (bundled OAuth, BYO OAuth App, local `gh` CLI).
+
 ---
 
 ## Build from source

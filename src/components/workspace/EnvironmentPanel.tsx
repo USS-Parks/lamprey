@@ -12,7 +12,7 @@ import { PullRequestListPopover } from './PullRequestListPopover'
 import { useGitHubStore } from '@/stores/github-store'
 import { useChatStore } from '@/stores/chat-store'
 import { github as githubClient } from '@/lib/ipc-client'
-import type { GitHubProjectRepoLink } from '@/lib/github-types'
+import type { ConversationPullRequestLink, GitHubProjectRepoLink } from '@/lib/github-types'
 
 function ChevronDownGlyph(): React.ReactElement {
   return (
@@ -151,6 +151,22 @@ export function EnvironmentPanel(): React.ReactElement {
   const [pickerOpen, setPickerOpen] = useState(false)
   const [prDialogOpen, setPrDialogOpen] = useState(false)
   const [prListOpen, setPrListOpen] = useState(false)
+  const [linkedPrs, setLinkedPrs] = useState<ConversationPullRequestLink[]>([])
+
+  useEffect(() => {
+    if (!activeConversationId) {
+      setLinkedPrs([])
+      return
+    }
+    let cancelled = false
+    void githubClient.listConversationPullRequests(activeConversationId).then((res) => {
+      if (!cancelled) setLinkedPrs(res.success ? res.data : [])
+    })
+    return () => {
+      cancelled = true
+    }
+    // Refresh when the PR dialog closes (a new PR may have been created).
+  }, [activeConversationId, prDialogOpen])
 
   useEffect(() => {
     void refreshGithubStatus()
@@ -165,6 +181,49 @@ export function EnvironmentPanel(): React.ReactElement {
       setRepoLink(res.success ? res.data : null)
     })
   }, [projectId])
+
+  // Phase 2a: close the no-project dead-end. If the conversation has a cwd
+  // (which `useEnvironment()` already surfaces from the local git status),
+  // auto-ensure a project rooted at that cwd and assign this conversation
+  // to it before opening the picker. The user sees one fewer modal hop
+  // and never sees the old "Assign this conversation to a project first"
+  // dead-end toast.
+  const openRepoPicker = async (): Promise<void> => {
+    if (projectId) {
+      setPickerOpen(true)
+      return
+    }
+    if (!snapshot.cwd) {
+      toast.warning(
+        'Open a folder (Files → Workspace) before linking a GitHub repo — Lamprey needs a project root.'
+      )
+      return
+    }
+    if (!activeConversationId) {
+      toast.error('No active conversation. Start a chat first.')
+      return
+    }
+    const ensured = await window.api?.projects?.ensureForPath(snapshot.cwd)
+    if (!ensured?.success) {
+      toast.error(ensured?.error ?? 'Could not create project for current folder')
+      return
+    }
+    const assign = await window.api?.projects?.assignConversation(
+      activeConversationId,
+      ensured.data.id
+    )
+    if (!assign?.success) {
+      toast.error(assign?.error ?? 'Could not assign conversation to project')
+      return
+    }
+    // The picker reads projectId from the active conversation via the
+    // chat store. assignConversation IPC only mutates the DB row, not the
+    // in-memory conversations array, so we have to refresh the store
+    // before opening the picker — otherwise the picker would read a
+    // null projectId and the post-clone assignment would silently no-op.
+    await useChatStore.getState().loadConversations()
+    setPickerOpen(true)
+  }
 
   const handleCommitOrPush = async () => {
     if (committing || !window.api?.review) return
@@ -262,11 +321,7 @@ export function EnvironmentPanel(): React.ReactElement {
           ) : undefined
         }
         onClick={() => {
-          if (!projectId) {
-            toast.info('Assign this conversation to a project first to link a GitHub repo.')
-            return
-          }
-          setPickerOpen(true)
+          void openRepoPicker()
         }}
         title={
           repoLink
@@ -297,6 +352,26 @@ export function EnvironmentPanel(): React.ReactElement {
         />
       )}
 
+      {linkedPrs.length > 0 && (
+        <div className="mt-1">
+          <div className="px-3 pb-0.5 pt-1 text-[10px] uppercase tracking-wide text-[var(--text-muted)]">
+            Opened from this chat
+          </div>
+          {linkedPrs.map((pr) => (
+            <button
+              key={`${pr.fullName}#${pr.prNumber}`}
+              type="button"
+              onClick={() => void githubClient.openInBrowser(pr.htmlUrl)}
+              className="flex w-full items-center gap-2 px-3 py-1 text-left text-[12px] text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]"
+              title={pr.htmlUrl}
+            >
+              <span className="font-mono text-[var(--text-muted)]">#{pr.prNumber}</span>
+              <span className="min-w-0 flex-1 truncate">{pr.title}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
       <div className="my-2 border-t border-[var(--border)]" aria-hidden />
 
       <div className="px-3 pb-1 pt-1 text-[12px] font-medium text-[var(--text-secondary)]">
@@ -306,14 +381,15 @@ export function EnvironmentPanel(): React.ReactElement {
         <div className="px-3 pb-2 text-[12px] text-[var(--text-muted)]">No sources yet</div>
       ) : (
         <div className="flex flex-col gap-0.5">
-          {(['files', 'skills', 'memory', 'mcp'] as const).map((groupKey) => {
+          {(['files', 'skills', 'memory', 'mcp', 'github'] as const).map((groupKey) => {
             const group = groups[groupKey]
             if (group.length === 0) return null
             const labels = {
               files: 'Files',
               skills: 'Skills',
               memory: 'Memory',
-              mcp: 'MCP servers'
+              mcp: 'MCP servers',
+              github: 'GitHub'
             }
             return (
               <div key={groupKey}>

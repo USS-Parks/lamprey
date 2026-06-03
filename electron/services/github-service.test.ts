@@ -1,13 +1,17 @@
-import { describe, it, expect } from 'vitest'
+import { afterEach, describe, it, expect } from 'vitest'
 import {
   buildCreatePullRequestPayload,
   buildRequestHeaders,
   friendlyAuthHint,
+  getCallbackPortCandidates,
+  isBundledClientAvailable,
+  isPortInUseError,
   isValidBranchName,
   isValidSlug,
   parsePullRequest,
   parseRepoList,
-  planPushBranch
+  planPushBranch,
+  resolveOAuthCredentials
 } from './github-service'
 
 describe('isValidSlug', () => {
@@ -209,6 +213,122 @@ describe('planPushBranch', () => {
     expect(planPushBranch({ hasToken: true, mode: 'none', branchValid: true })).toMatchObject({
       kind: 'plain'
     })
+  })
+})
+
+describe('resolveOAuthCredentials', () => {
+  // Precedence: per-call override > user-saved BYO > bundled build-time.
+  // Each layer is independently testable so a Settings UI refactor that
+  // changes how creds are passed in can't quietly drop a layer.
+
+  it('returns "none" with null fields when every source is empty', () => {
+    expect(resolveOAuthCredentials({})).toEqual({
+      clientId: null,
+      clientSecret: null,
+      source: 'none'
+    })
+  })
+
+  it('picks the per-call override when both id and secret are supplied there', () => {
+    const out = resolveOAuthCredentials({
+      override: { clientId: 'override-id', clientSecret: 'override-secret' },
+      saved: { clientId: 'saved-id', clientSecret: 'saved-secret' },
+      bundled: { clientId: 'bundled-id', clientSecret: 'bundled-secret' }
+    })
+    expect(out).toEqual({
+      clientId: 'override-id',
+      clientSecret: 'override-secret',
+      source: 'override'
+    })
+  })
+
+  it('falls past override when override is partial (id only, secret only) and uses the next available layer', () => {
+    const partial = resolveOAuthCredentials({
+      override: { clientId: 'only-id' },
+      saved: { clientId: 'saved-id', clientSecret: 'saved-secret' }
+    })
+    expect(partial.source).toBe('saved')
+    expect(partial.clientId).toBe('saved-id')
+  })
+
+  it('picks saved when override is absent and saved has both fields', () => {
+    const out = resolveOAuthCredentials({
+      saved: { clientId: 'saved-id', clientSecret: 'saved-secret' },
+      bundled: { clientId: 'bundled-id', clientSecret: 'bundled-secret' }
+    })
+    expect(out.source).toBe('saved')
+  })
+
+  it('falls through saved when saved is partial (one null) and uses bundled', () => {
+    const out = resolveOAuthCredentials({
+      saved: { clientId: 'saved-id', clientSecret: null },
+      bundled: { clientId: 'bundled-id', clientSecret: 'bundled-secret' }
+    })
+    expect(out.source).toBe('bundled')
+    expect(out.clientId).toBe('bundled-id')
+  })
+
+  it('picks bundled when only bundled is present (contributor with bundled build, no saved creds)', () => {
+    expect(
+      resolveOAuthCredentials({
+        bundled: { clientId: 'bundled-id', clientSecret: 'bundled-secret' }
+      })
+    ).toEqual({
+      clientId: 'bundled-id',
+      clientSecret: 'bundled-secret',
+      source: 'bundled'
+    })
+  })
+})
+
+describe('isBundledClientAvailable', () => {
+  const originalId = process.env.LAMPREY_GITHUB_CLIENT_ID
+  const originalSecret = process.env.LAMPREY_GITHUB_CLIENT_SECRET
+
+  afterEach(() => {
+    if (originalId === undefined) delete process.env.LAMPREY_GITHUB_CLIENT_ID
+    else process.env.LAMPREY_GITHUB_CLIENT_ID = originalId
+    if (originalSecret === undefined) delete process.env.LAMPREY_GITHUB_CLIENT_SECRET
+    else process.env.LAMPREY_GITHUB_CLIENT_SECRET = originalSecret
+  })
+
+  it('is false when either env var is empty (contributor build with no bundled OAuth)', () => {
+    process.env.LAMPREY_GITHUB_CLIENT_ID = ''
+    process.env.LAMPREY_GITHUB_CLIENT_SECRET = ''
+    expect(isBundledClientAvailable()).toBe(false)
+    process.env.LAMPREY_GITHUB_CLIENT_ID = 'present'
+    process.env.LAMPREY_GITHUB_CLIENT_SECRET = ''
+    expect(isBundledClientAvailable()).toBe(false)
+    process.env.LAMPREY_GITHUB_CLIENT_ID = ''
+    process.env.LAMPREY_GITHUB_CLIENT_SECRET = 'present'
+    expect(isBundledClientAvailable()).toBe(false)
+  })
+
+  it('is true only when both env vars carry a value', () => {
+    process.env.LAMPREY_GITHUB_CLIENT_ID = 'Iv1.example'
+    process.env.LAMPREY_GITHUB_CLIENT_SECRET = 'secret-value'
+    expect(isBundledClientAvailable()).toBe(true)
+  })
+})
+
+describe('OAuth callback port fallback', () => {
+  it('exposes [9876, 9877, 9878] as the candidate ports', () => {
+    expect(getCallbackPortCandidates()).toEqual([9876, 9877, 9878])
+  })
+
+  it('identifies EADDRINUSE errors so the retry loop can advance past them', () => {
+    // Node's net error shape: { code: 'EADDRINUSE', ... }
+    expect(isPortInUseError({ code: 'EADDRINUSE' })).toBe(true)
+    const err = Object.assign(new Error('listen EADDRINUSE 0.0.0.0:9876'), { code: 'EADDRINUSE' })
+    expect(isPortInUseError(err)).toBe(true)
+  })
+
+  it('does NOT treat unrelated errors as retryable (EACCES, generic Error, falsy)', () => {
+    expect(isPortInUseError({ code: 'EACCES' })).toBe(false)
+    expect(isPortInUseError(new Error('boom'))).toBe(false)
+    expect(isPortInUseError(null)).toBe(false)
+    expect(isPortInUseError(undefined)).toBe(false)
+    expect(isPortInUseError('EADDRINUSE')).toBe(false) // string, not error
   })
 })
 

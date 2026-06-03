@@ -460,6 +460,7 @@ const api = {
     saveOAuthClient: (args: { clientId: string; clientSecret: string }) =>
       ipcRenderer.invoke('github:saveOAuthClient', args),
     hasOAuthClient: () => ipcRenderer.invoke('github:hasOAuthClient'),
+    hasBundledClient: () => ipcRenderer.invoke('github:hasBundledClient'),
     setMode: (mode: 'oauth' | 'github_app' | 'gh-cli' | 'none') =>
       ipcRenderer.invoke('github:setMode', mode),
     connect: () => ipcRenderer.invoke('github:connect'),
@@ -472,6 +473,8 @@ const api = {
     pickCloneDir: () => ipcRenderer.invoke('github:pickCloneDir'),
     clone: (args: { owner: string; repo: string; targetDir: string }) =>
       ipcRenderer.invoke('github:clone', args),
+    resolveCloneTarget: (args: { baseDir: string; repoName: string }) =>
+      ipcRenderer.invoke('github:resolveCloneTarget', args),
     getProjectRepo: (args: { projectId: string }) =>
       ipcRenderer.invoke('github:getProjectRepo', args),
     assignRepoToProject: (args: {
@@ -512,7 +515,12 @@ const api = {
       repo: string
       setUpstream?: boolean
     }) => ipcRenderer.invoke('github:pushBranch', args),
-    openInBrowser: (url: string) => ipcRenderer.invoke('github:openInBrowser', url)
+    openInBrowser: (url: string) => ipcRenderer.invoke('github:openInBrowser', url),
+    onTokenRejected: (cb: () => void): (() => void) => {
+      const handler = () => cb()
+      ipcRenderer.on('github:tokenRejected', handler)
+      return () => ipcRenderer.removeListener('github:tokenRejected', handler)
+    }
   },
 
   // Read-only access to the event spine. There is no `record` here — the

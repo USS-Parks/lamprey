@@ -2,7 +2,7 @@ import { shell } from 'electron'
 import { spawn } from 'child_process'
 import { createServer } from 'http'
 import * as keychain from './keychain'
-import { createOAuthSession, validateOAuthCallback } from './oauth-state'
+import { createOAuthSession, validateOAuthCallback, type OAuthSession } from './oauth-state'
 import { runGit } from './git-runner'
 import { buildAuthenticatedEnv } from './github-askpass'
 import type {
@@ -42,6 +42,13 @@ import type {
 
 const REDIRECT_PORT = 9876
 const REDIRECT_URI = `http://localhost:${REDIRECT_PORT}/callback`
+// Fallback ports if 9876 is already bound (a stale Lamprey OAuth attempt,
+// the Google MCP OAuth flow racing, or an unrelated dev server). For BYO
+// OAuth Apps the user must add http://localhost:{9877,9878}/callback to
+// the app's Authorization callback URLs — otherwise GitHub will reject
+// the redirect_uri at the authorize step. Documented in
+// docs/github-setup.md.
+const CALLBACK_PORTS = [9876, 9877, 9878] as const
 const DEFAULT_SCOPES = 'read:user repo'
 const GITHUB_API = 'https://api.github.com'
 
@@ -222,6 +229,11 @@ async function githubRequest<T>(
     const safeMsg = res.status === 401
       ? 'GitHub rejected the token (401). It may have been revoked or expired — reconnect from Settings.'
       : `GitHub API ${res.status}: ${text.slice(0, 400)}`
+    // Phase 3b: notify the IPC layer so the renderer can show an
+    // actionable reconnect prompt. Best-effort; never throws.
+    if (res.status === 401) {
+      try { deps.onTokenRejected?.() } catch { /* noop */ }
+    }
     throw new GitHubApiError(res.status, safeMsg, text)
   }
   if (res.status === 204) return undefined as unknown as T
@@ -236,6 +248,13 @@ export interface ServiceDeps {
   /** Returns the current configured mode. Implementations read settings.json. */
   readMode: () => GitHubAuthMode
   writeMode: (mode: GitHubAuthMode) => void
+  /**
+   * Phase 3b: called when a GitHub API request returns 401 (token rejected).
+   * The IPC layer wires this to a BrowserWindow.send so the renderer can
+   * show a reconnect prompt. Throttling is the deps' responsibility —
+   * the service emits unconditionally.
+   */
+  onTokenRejected?: () => void
 }
 
 let deps: ServiceDeps = {
@@ -243,7 +262,8 @@ let deps: ServiceDeps = {
   // time. The defaults keep the module importable in tests without booting
   // the settings file.
   readMode: () => (keychain.hasKey(KEYCHAIN.accessToken) ? 'oauth' : 'none'),
-  writeMode: () => undefined
+  writeMode: () => undefined,
+  onTokenRejected: () => undefined
 }
 
 export function configureGitHubService(next: ServiceDeps): void {
@@ -348,6 +368,71 @@ export async function getViewer(): Promise<GitHubViewer> {
 // OAuth flow (browser → loopback callback)
 // ---------------------------------------------------------------------------
 
+/**
+ * Pure: is this server-bind error EADDRINUSE? Used by the OAuth callback
+ * loop to decide whether to retry on the next port. Anything else (EACCES,
+ * config error, listener exploded mid-listen) is a hard fail.
+ */
+export function isPortInUseError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false
+  const code = (err as { code?: unknown }).code
+  return code === 'EADDRINUSE'
+}
+
+/** Pure: ordered list of callback ports to attempt. Exported for tests. */
+export function getCallbackPortCandidates(): readonly number[] {
+  return CALLBACK_PORTS
+}
+
+/**
+ * Probe whether a bundled OAuth App (client id + secret baked in at build
+ * time via electron.vite.config.ts `define`) is available. Does NOT leak
+ * either value — returns only a boolean for the UI to decide whether to
+ * default to "Connect with Lamprey" or to the BYO form.
+ */
+export function isBundledClientAvailable(): boolean {
+  return Boolean(
+    (process.env.LAMPREY_GITHUB_CLIENT_ID || '').length > 0 &&
+      (process.env.LAMPREY_GITHUB_CLIENT_SECRET || '').length > 0
+  )
+}
+
+/**
+ * Pure: resolve the (clientId, clientSecret) pair from three layered
+ * sources. Exported so the precedence chain can be tested without
+ * touching the keychain or the build env. The non-pure caller wraps this
+ * by reading the keychain + bundled env vars and threading them in here.
+ */
+export interface CredentialSources {
+  override?: { clientId?: string; clientSecret?: string }
+  saved?: { clientId: string | null; clientSecret: string | null }
+  bundled?: { clientId: string; clientSecret: string }
+}
+
+export interface ResolvedCredentials {
+  clientId: string | null
+  clientSecret: string | null
+  /** Which source supplied the credential, when found. Useful for logging
+   * and for the UI to surface which path the connection used. */
+  source: 'override' | 'saved' | 'bundled' | 'none'
+}
+
+export function resolveOAuthCredentials(sources: CredentialSources): ResolvedCredentials {
+  const o = sources.override ?? {}
+  if (o.clientId && o.clientSecret) {
+    return { clientId: o.clientId, clientSecret: o.clientSecret, source: 'override' }
+  }
+  const s = sources.saved ?? { clientId: null, clientSecret: null }
+  if (s.clientId && s.clientSecret) {
+    return { clientId: s.clientId, clientSecret: s.clientSecret, source: 'saved' }
+  }
+  const b = sources.bundled
+  if (b && b.clientId && b.clientSecret) {
+    return { clientId: b.clientId, clientSecret: b.clientSecret, source: 'bundled' }
+  }
+  return { clientId: null, clientSecret: null, source: 'none' }
+}
+
 export interface StartOAuthLoginInput {
   scopes?: string
   /** Override; defaults to the user's own OAuth app credentials in keychain. */
@@ -365,8 +450,29 @@ export interface OAuthLoginResult {
 }
 
 export async function startOAuthLogin(input: StartOAuthLoginInput = {}): Promise<OAuthLoginResult> {
-  const clientId = input.clientId ?? keychain.getKey(KEYCHAIN.oauthClientId)
-  const clientSecret = input.clientSecret ?? keychain.getKey(KEYCHAIN.oauthClientSecret)
+  // Credential precedence (see resolveOAuthCredentials docs): per-call
+  // override → user-saved BYO → bundled build-time default. Build-time
+  // default is the empty string when contributors / forks build without
+  // LAMPREY_GITHUB_CLIENT_ID/SECRET env vars; in that case we fall through
+  // to the error below that points the user at BYO setup.
+  const resolved = resolveOAuthCredentials({
+    override:
+      input.clientId && input.clientSecret
+        ? { clientId: input.clientId, clientSecret: input.clientSecret }
+        : undefined,
+    saved: {
+      clientId: keychain.getKey(KEYCHAIN.oauthClientId),
+      clientSecret: keychain.getKey(KEYCHAIN.oauthClientSecret)
+    },
+    bundled:
+      process.env.LAMPREY_GITHUB_CLIENT_ID && process.env.LAMPREY_GITHUB_CLIENT_SECRET
+        ? {
+            clientId: process.env.LAMPREY_GITHUB_CLIENT_ID,
+            clientSecret: process.env.LAMPREY_GITHUB_CLIENT_SECRET
+          }
+        : undefined
+  })
+  const { clientId, clientSecret } = resolved
   if (!clientId || !clientSecret) {
     throw new Error(
       'GitHub OAuth client credentials not configured. Create an OAuth App at ' +
@@ -374,10 +480,26 @@ export async function startOAuthLogin(input: StartOAuthLoginInput = {}): Promise
         `${REDIRECT_URI}, then save the client ID + secret in Settings → GitHub.`
     )
   }
-  const port = input.port ?? REDIRECT_PORT
-  const redirect = `http://localhost:${port}/callback`
+  // Non-secret breadcrumb so the dev console hints at which source served
+  // the flow (helpful when both BYO and bundled are present on the same
+  // box). Never logs the credential values themselves.
+  console.log('[github] oauth using', resolved.source, 'credentials')
+  // Phase 3a: port-collision recovery. Try CALLBACK_PORTS in order; if a
+  // port is held by another listener (stale Lamprey OAuth attempt, the
+  // Google MCP flow, an unrelated dev server) we move to the next.
+  // `input.port` (used by tests) pins to a single port and skips the
+  // fallback list.
+  const ports = input.port ? [input.port] : CALLBACK_PORTS
   const scopes = input.scopes ?? DEFAULT_SCOPES
   const session = createOAuthSession()
+  const open = input.openExternal ?? ((u: string) => shell.openExternal(u))
+
+  const bound = await tryBindCallbackServer(ports, session)
+  const { server, port } = bound
+  const redirect = `http://localhost:${port}/callback`
+
+  // We bound the server BEFORE opening the browser, so the redirect URL
+  // is guaranteed to match what we tell GitHub.
   const authUrl = new URL('https://github.com/login/oauth/authorize')
   authUrl.searchParams.set('client_id', clientId)
   authUrl.searchParams.set('redirect_uri', redirect)
@@ -385,15 +507,20 @@ export async function startOAuthLogin(input: StartOAuthLoginInput = {}): Promise
   authUrl.searchParams.set('state', session.state)
   authUrl.searchParams.set('allow_signup', 'false')
 
-  const open = input.openExternal ?? ((u: string) => shell.openExternal(u))
-
-  const code = await new Promise<string>((resolve, reject) => {
+  const code = await new Promise<string>((resolveCode, rejectCode) => {
     const timeout = setTimeout(() => {
       try { server.close() } catch { /* noop */ }
-      reject(new Error('GitHub OAuth timeout — no callback received within 2 minutes'))
+      rejectCode(new Error('GitHub OAuth timeout — no callback received within 2 minutes'))
     }, 120_000)
 
-    const server = createServer((req, res) => {
+    server.once('listening', () => {
+      // Already listening at this point (tryBindCallbackServer waited);
+      // this fires only if a future call re-listens, which we don't do.
+    })
+    // Wire the request handler (server was created with a noop handler
+    // by tryBindCallbackServer so the listen succeeded before we attach
+    // here — request can't arrive before the listen callback returns).
+    server.on('request', (req, res) => {
       const reqUrl = new URL(req.url ?? '/', `http://localhost:${port}`)
       const outcome = validateOAuthCallback(reqUrl, session)
 
@@ -402,7 +529,7 @@ export async function startOAuthLogin(input: StartOAuthLoginInput = {}): Promise
         res.end('<html><body><h2>Authorization denied.</h2><p>You can close this tab.</p></body></html>')
         clearTimeout(timeout)
         try { server.close() } catch { /* noop */ }
-        reject(new Error(`OAuth denied: ${outcome.reason}`))
+        rejectCode(new Error(`OAuth denied: ${outcome.reason}`))
         return
       }
       if (outcome.kind === 'state-mismatch') {
@@ -410,7 +537,7 @@ export async function startOAuthLogin(input: StartOAuthLoginInput = {}): Promise
         res.end('<html><body><h2>OAuth state mismatch.</h2><p>Close this tab and start the flow again from Lamprey.</p></body></html>')
         clearTimeout(timeout)
         try { server.close() } catch { /* noop */ }
-        reject(new Error(outcome.reason))
+        rejectCode(new Error(outcome.reason))
         return
       }
       if (outcome.kind === 'missing-code') {
@@ -422,19 +549,14 @@ export async function startOAuthLogin(input: StartOAuthLoginInput = {}): Promise
       res.end('<html><body><h2>Lamprey connected to GitHub.</h2><p>You can close this tab.</p></body></html>')
       clearTimeout(timeout)
       try { server.close() } catch { /* noop */ }
-      resolve(outcome.code)
+      resolveCode(outcome.code)
     })
 
-    server.on('error', (err) => {
+    // Open the browser AFTER attaching the request handler.
+    Promise.resolve(open(authUrl.toString())).catch((err) => {
       clearTimeout(timeout)
-      reject(new Error(`Failed to start OAuth callback server: ${err.message}`, { cause: err }))
-    })
-    server.listen(port, '127.0.0.1', () => {
-      Promise.resolve(open(authUrl.toString())).catch((err) => {
-        clearTimeout(timeout)
-        try { server.close() } catch { /* noop */ }
-        reject(new Error(`Failed to open browser for GitHub OAuth: ${(err as Error).message}`))
-      })
+      try { server.close() } catch { /* noop */ }
+      rejectCode(new Error(`Failed to open browser for GitHub OAuth: ${(err as Error).message}`))
     })
   })
 
@@ -849,6 +971,64 @@ export function friendlyAuthHint(stderr: string, mode: GitHubAuthMode): string |
     return 'Push rejected (non-fast-forward). Pull/rebase the latest base branch and retry.'
   }
   return undefined
+}
+
+/**
+ * Try to bind an HTTP server to `127.0.0.1:<port>` for each port in
+ * `ports` in order, returning the first one that succeeds. Refuses to
+ * accept anything other than EADDRINUSE as retryable — a permissions
+ * error (EACCES on a privileged port) or a Node-level failure is
+ * surfaced immediately so the user gets the real reason, not a
+ * misleading "tried 3 ports" message.
+ *
+ * The returned server is bound with a no-op `request` handler; the
+ * caller attaches a real handler via `server.on('request', ...)` AFTER
+ * receiving the server, so the request handler closes over the OAuth
+ * session that was just created.
+ */
+async function tryBindCallbackServer(
+  ports: readonly number[],
+  // The session is captured here only so the helper can produce a
+  // diagnostic error message including the state value if the caller
+  // wants it; we don't otherwise use it.
+  _session: OAuthSession
+): Promise<{ server: import('http').Server; port: number }> {
+  const errors: string[] = []
+  for (const port of ports) {
+    try {
+      const server = await new Promise<import('http').Server>((resolve, reject) => {
+        // Empty request handler — overwritten by caller via
+        // server.on('request', …) after we return.
+        const s = createServer(() => undefined)
+        const onError = (err: Error & { code?: string }) => {
+          s.removeListener('listening', onListening)
+          reject(err)
+        }
+        const onListening = () => {
+          s.removeListener('error', onError)
+          resolve(s)
+        }
+        s.once('error', onError)
+        s.once('listening', onListening)
+        s.listen(port, '127.0.0.1')
+      })
+      return { server, port }
+    } catch (err) {
+      if (isPortInUseError(err)) {
+        errors.push(`:${port} in use`)
+        continue
+      }
+      throw new Error(
+        `Failed to start OAuth callback server on port ${port}: ${(err as Error).message}`,
+        { cause: err }
+      )
+    }
+  }
+  throw new Error(
+    `All OAuth callback ports unavailable (${errors.join(', ')}). ` +
+      `Quit any other Lamprey instance and retry. If the problem persists, ` +
+      `kill the holding process or restart your machine.`
+  )
 }
 
 // ---------------------------------------------------------------------------

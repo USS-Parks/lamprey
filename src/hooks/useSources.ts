@@ -1,9 +1,11 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useChatStore } from '@/stores/chat-store'
 import { useSkillsStore } from '@/stores/skills-store'
 import { useMemoryStore } from '@/stores/memory-store'
 import { useMcpStore } from '@/stores/mcp-store'
+import { github as githubClient } from '@/lib/ipc-client'
 import type { SourceItem } from '@/lib/types'
+import type { GitHubProjectRepoLink } from '@/lib/github-types'
 
 interface UseSourcesResult {
   sources: SourceItem[]
@@ -12,6 +14,7 @@ interface UseSourcesResult {
     skills: SourceItem[]
     memory: SourceItem[]
     mcp: SourceItem[]
+    github: SourceItem[]
   }
 }
 
@@ -22,6 +25,7 @@ export function useSources(): UseSourcesResult {
   const attachments = useChatStore((s) => s.pendingAttachments)
   const removeAttachment = useChatStore((s) => s.removeAttachment)
   const activeConversationId = useChatStore((s) => s.activeConversationId)
+  const conversations = useChatStore((s) => s.conversations)
   const skills = useSkillsStore((s) => s.skills)
   const activeSkillIds = useSkillsStore((s) => s.activeSkillIds)
   const toggleSkill = useSkillsStore((s) => s.toggleSkill)
@@ -29,6 +33,27 @@ export function useSources(): UseSourcesResult {
   const memories = useMemoryStore((s) => s.memories)
   const toggleMemoryPin = useMemoryStore((s) => s.toggleMemoryPin)
   const servers = useMcpStore((s) => s.servers)
+
+  // GitHub repo linked to the active conversation's project. Fetched
+  // through IPC so we don't pull github-store as a dependency of every
+  // surface that uses sources. The lookup is cheap (sqlite single-row);
+  // we refresh when the project id changes.
+  const projectId =
+    conversations.find((c) => c.id === activeConversationId)?.projectId ?? null
+  const [githubLink, setGithubLink] = useState<GitHubProjectRepoLink | null>(null)
+  useEffect(() => {
+    if (!projectId) {
+      setGithubLink(null)
+      return
+    }
+    let cancelled = false
+    void githubClient.getProjectRepo(projectId).then((res) => {
+      if (!cancelled) setGithubLink(res.success ? res.data : null)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [projectId])
 
   return useMemo(() => {
     const files: SourceItem[] = attachments.map((file, idx) => ({
@@ -75,9 +100,31 @@ export function useSources(): UseSourcesResult {
         subtitle: server.transport.toUpperCase()
       }))
 
+    const githubItems: SourceItem[] = githubLink
+      ? [
+          {
+            id: `github:${githubLink.fullName}`,
+            kind: 'github' as const,
+            title: githubLink.fullName,
+            subtitle: `${githubLink.defaultBranch}${githubLink.localPath ? ' · cloned' : ''}`,
+            onRemove: projectId
+              ? () => {
+                  void githubClient.unlinkRepo(projectId).then(() => setGithubLink(null))
+                }
+              : undefined
+          }
+        ]
+      : []
+
     return {
-      sources: [...files, ...skillItems, ...memoryItems, ...mcpItems],
-      groups: { files, skills: skillItems, memory: memoryItems, mcp: mcpItems }
+      sources: [...files, ...skillItems, ...memoryItems, ...mcpItems, ...githubItems],
+      groups: {
+        files,
+        skills: skillItems,
+        memory: memoryItems,
+        mcp: mcpItems,
+        github: githubItems
+      }
     }
   }, [
     attachments,
@@ -89,6 +136,8 @@ export function useSources(): UseSourcesResult {
     memories,
     toggleMemoryPin,
     servers,
-    activeConversationId
+    activeConversationId,
+    githubLink,
+    projectId
   ])
 }

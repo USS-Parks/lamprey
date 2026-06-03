@@ -1,11 +1,19 @@
 import { useCallback, useEffect, useState } from 'react'
 import { toast } from '@/stores/toast-store'
+import { useUiStore } from '@/stores/ui-store'
 import { github as githubClient } from '@/lib/ipc-client'
 import type {
   GitHubCompareSummary,
   GitHubProjectRepoLink,
   GitHubPullRequest
 } from '@/lib/github-types'
+
+/** Phase 3c: pure helper. Does the push-failure hint match the auth-error
+ * shape we want to offer a Reconnect button for? */
+function looksLikeAuthFailure(hint: string | undefined): boolean {
+  if (!hint) return false
+  return /credentials|reconnect|authentication|403|401/i.test(hint)
+}
 
 interface PullRequestDialogProps {
   open: boolean
@@ -39,6 +47,7 @@ export function PullRequestDialog({
   const [comparing, setComparing] = useState(false)
   const [compareError, setCompareError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [pushError, setPushError] = useState<string | null>(null)
 
   const runCompare = useCallback(
     async (baseRef: string) => {
@@ -80,6 +89,7 @@ export function PullRequestDialog({
       return
     }
     setSubmitting(true)
+    setPushError(null)
     try {
       // Push the branch first. If origin/<branch> already exists and is in
       // sync, the push is a no-op; otherwise it's an upstream creation. The
@@ -92,11 +102,11 @@ export function PullRequestDialog({
         setUpstream: true
       })
       if (!push.success) {
-        toast.error(`Push failed: ${push.error}`)
+        setPushError(push.error)
         return
       }
       if (!push.data.pushed) {
-        toast.error(
+        setPushError(
           push.data.authHint ?? 'Push did not complete — see Settings → GitHub for credential status.'
         )
         return
@@ -216,6 +226,26 @@ export function PullRequestDialog({
             Open as draft
           </label>
         </div>
+
+        {pushError && (
+          <div className="border-t border-[var(--error)]/40 bg-[var(--error)]/10 px-4 py-2 text-[12px] text-[var(--error)]">
+            <div className="flex items-start gap-3">
+              <div className="flex-1">{pushError}</div>
+              {looksLikeAuthFailure(pushError) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose()
+                    useUiStore.getState().openSettings('github')
+                  }}
+                  className="shrink-0 rounded border border-[var(--error)]/40 bg-[var(--bg-secondary)] px-2 py-1 text-[11px] text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)]"
+                >
+                  Reconnect GitHub
+                </button>
+              )}
+            </div>
+          </div>
+        )}
 
         <div className="flex items-center justify-between border-t border-[var(--border)] px-4 py-2">
           <button

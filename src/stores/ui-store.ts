@@ -110,6 +110,7 @@ export type SettingsTabId =
   | 'agents'
   | 'agenticCoding'
   | 'api'
+  | 'github'
   | 'appearance'
   | 'mcp'
   | 'webTools'

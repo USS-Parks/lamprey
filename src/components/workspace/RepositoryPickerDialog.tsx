@@ -60,11 +60,15 @@ export function RepositoryPickerDialog({
       return
     }
     const baseDir = dirRes.data
-    // We let the dialog pick a parent directory; the actual clone goes into
-    // <baseDir>/<repo-name>. Git clone will create that subdir.
-    const targetDir = baseDir.endsWith(repo.name)
-      ? baseDir
-      : `${baseDir.replace(/[\\/]+$/, '')}${baseDir.includes('\\') ? '\\' : '/'}${repo.name}`
+    // Phase 3d: main-side path resolution (Node path.join) instead of
+    // sniffing the separator from the chosen baseDir. Removes the
+    // platform-guessing branch that broke on UNC paths.
+    const targetRes = await githubClient.resolveCloneTarget(baseDir, repo.name)
+    if (!targetRes.success) {
+      toast.error(`Could not resolve clone target: ${targetRes.error}`)
+      return
+    }
+    const targetDir = targetRes.data.targetPath
     setBusy(repo.fullName)
     try {
       toast.info(`Cloning ${repo.fullName}…`)
@@ -83,6 +87,22 @@ export function RepositoryPickerDialog({
         )
         if (!link.success) {
           toast.warning(`Cloned, but could not link to project: ${link.error}`)
+        }
+      }
+      // Phase 2c: switch the active workspace to the clone path so the next
+      // local git operation (status, branch picker, diff) targets the
+      // freshly-cloned repo, not whatever cwd the user had before. The
+      // confirm dialog keeps it opt-in; without it we'd surprise users
+      // who cloned a repo but wanted to keep their current workspace.
+      if (window.api?.files?.setWorkdir) {
+        const ok = window.confirm(
+          `Switch workspace to ${cloneRes.data.localPath}? Local git operations will target the cloned repo.`
+        )
+        if (ok) {
+          const setRes = await window.api.files.setWorkdir(cloneRes.data.localPath)
+          if (!setRes?.success) {
+            toast.warning(`Workspace switch failed: ${setRes?.error ?? 'unknown'}`)
+          }
         }
       }
       onSelected?.({ repo, localPath: cloneRes.data.localPath })
