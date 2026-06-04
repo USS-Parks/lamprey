@@ -10,6 +10,7 @@ import { useMediaQuery, NARROW_VIEWPORT_QUERY } from '@/hooks/useMediaQuery'
 import type { Conversation, Project } from '@/lib/types'
 import { PopoverMenu } from '@/components/ui/PopoverMenu'
 import { ActivityDashboard } from '@/components/activity/ActivityDashboard'
+import { SessionsSidebar } from '@/components/layout/SessionsSidebar'
 
 import newChatLight from '@assets/Lamprey New Chat Icon.png'
 import newChatDark from '@assets/Lamprey New Chat Icon Dark View.png'
@@ -482,6 +483,7 @@ export function Sidebar() {
   const searchRef = useRef<HTMLInputElement>(null)
   const [dragging, setDragging] = useState(false)
   const [filterVisible, setFilterVisible] = useState(false)
+  const [sessionsVisible, setSessionsVisible] = useState(false)
 
   const projects = useProjectsStore((s) => s.projects)
   const loadProjects = useProjectsStore((s) => s.loadProjects)
@@ -700,6 +702,8 @@ export function Sidebar() {
             handleNewChat={handleNewChat}
             handleSearchClick={handleSearchClick}
             openSettings={openSettings}
+            sessionsVisible={sessionsVisible}
+            setSessionsVisible={setSessionsVisible}
             filterVisible={filterVisible}
             setFilterVisible={setFilterVisible}
             searchQuery={searchQuery}
@@ -813,6 +817,8 @@ export function Sidebar() {
         handleNewChat={handleNewChat}
         handleSearchClick={handleSearchClick}
         openSettings={openSettings}
+        sessionsVisible={sessionsVisible}
+        setSessionsVisible={setSessionsVisible}
         filterVisible={filterVisible}
         setFilterVisible={setFilterVisible}
         searchQuery={searchQuery}
@@ -867,6 +873,8 @@ interface SidebarBodyProps {
   handleNewChat: () => Promise<void> | void
   handleSearchClick: () => void
   openSettings: (tab?: 'mcp' | 'automations') => void
+  sessionsVisible: boolean
+  setSessionsVisible: (visible: boolean) => void
   filterVisible: boolean
   setFilterVisible: (v: boolean) => void
   searchQuery: string
@@ -907,6 +915,8 @@ function SidebarBody(props: SidebarBodyProps) {
     handleNewChat,
     handleSearchClick,
     openSettings,
+    sessionsVisible,
+    setSessionsVisible,
     filterVisible,
     setFilterVisible,
     searchQuery,
@@ -982,12 +992,18 @@ function SidebarBody(props: SidebarBodyProps) {
           onClick={() => void handleNewChat()}
         />
         <div data-sidebar-search-row>
-          <NavRow icon={searchIcon} label="Search" shortcut="Ctrl+K" onClick={handleSearchClick} />
+          <NavRow icon={searchIcon} label="Search" onClick={handleSearchClick} />
         </div>
         <NavRow
           icon={pluginsIcon}
           label="Plugins"
           onClick={() => openSettings('mcp')}
+        />
+        <NavRow
+          iconNode={<ClockIcon size={22} />}
+          label="Sessions"
+          onClick={() => setSessionsVisible(!sessionsVisible)}
+          active={sessionsVisible}
         />
         <NavRow
           iconNode={<ClockIcon size={22} />}
@@ -1029,6 +1045,13 @@ function SidebarBody(props: SidebarBodyProps) {
       )}
 
       <ActivityDashboard />
+
+      {sessionsVisible ? (
+        <div className="mt-2 min-h-0 flex-1">
+          <SessionsSidebar embedded />
+        </div>
+      ) : (
+        <>
 
       <div className="mt-4 flex items-center justify-between px-3">
         <span className="text-[12px] font-medium uppercase tracking-wider text-[var(--text-muted)]">
@@ -1126,6 +1149,9 @@ function SidebarBody(props: SidebarBodyProps) {
           </p>
         )}
       </div>
+
+        </>
+      )}
 
       <div className="border-t border-[var(--border)] px-2 pb-2 pt-2">
         <NavRow

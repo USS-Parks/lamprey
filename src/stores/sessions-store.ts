@@ -25,6 +25,7 @@ export interface SessionSearchHit {
 }
 
 const PAGE_SIZE = 50
+const PIN_ORDER_KEY = 'lamprey.sessions.pinOrder'
 
 interface SessionsState {
   tab: SessionsTab
@@ -34,6 +35,8 @@ interface SessionsState {
   loading: boolean
   page: number
   hasMore: boolean
+  unreadAgentResults: Record<string, number>
+  pinOrder: string[]
 
   setTab: (tab: SessionsTab) => void
   setQuery: (query: string) => void
@@ -41,6 +44,11 @@ interface SessionsState {
   loadMore: () => Promise<void>
   archive: (id: string, archived: boolean) => Promise<void>
   setPinned: (id: string, pinned: boolean) => Promise<void>
+  duplicate: (id: string) => Promise<string | null>
+  deleteSession: (id: string) => Promise<void>
+  markUnreadAgentResult: (conversationId: string) => void
+  clearUnread: (conversationId: string) => void
+  reorderPinned: (orderedIds: string[]) => void
 }
 
 function getApi():
@@ -59,9 +67,45 @@ function getApi():
           limit?: number
         ) => Promise<{ success: boolean; data?: SessionSearchHit[]; error?: string }>
       }
+      conversation?: {
+        fork: (id: string) => Promise<{ success: boolean; data?: SessionEntry; error?: string }>
+        delete: (id: string) => Promise<{ success: boolean; error?: string }>
+      }
     }
   | null {
   return (window as any).api ?? null
+}
+
+function readPinOrder(): string[] {
+  if (typeof window === 'undefined') return []
+  try {
+    const raw = window.localStorage?.getItem(PIN_ORDER_KEY)
+    const parsed = raw ? JSON.parse(raw) : []
+    return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === 'string') : []
+  } catch {
+    return []
+  }
+}
+
+function writePinOrder(order: string[]): void {
+  try {
+    window.localStorage?.setItem(PIN_ORDER_KEY, JSON.stringify(order))
+  } catch {
+    // ignore unavailable storage
+  }
+}
+
+function applyPinnedOrder(entries: SessionEntry[], order: string[]): SessionEntry[] {
+  if (order.length === 0) return entries
+  const rank = new Map(order.map((id, index) => [id, index]))
+  return [...entries].sort((a, b) => {
+    const ar = rank.get(a.id)
+    const br = rank.get(b.id)
+    if (ar === undefined && br === undefined) return 0
+    if (ar === undefined) return 1
+    if (br === undefined) return -1
+    return ar - br
+  })
 }
 
 export const useSessionsStore = create<SessionsState>((set, get) => ({
@@ -72,6 +116,8 @@ export const useSessionsStore = create<SessionsState>((set, get) => ({
   loading: false,
   page: 0,
   hasMore: true,
+  unreadAgentResults: {},
+  pinOrder: readPinOrder(),
 
   setTab: (tab) => {
     if (get().tab === tab) return
@@ -95,12 +141,13 @@ export const useSessionsStore = create<SessionsState>((set, get) => ({
       set({ loading: false, entries: [], hasMore: false })
       return
     }
-    const entries = (res.data as SessionEntry[]) ?? []
+    const rawEntries = (res.data as SessionEntry[]) ?? []
+    const entries = tab === 'pinned' ? applyPinnedOrder(rawEntries, get().pinOrder) : rawEntries
     set({
       loading: false,
       entries,
       page: 1,
-      hasMore: entries.length === PAGE_SIZE
+      hasMore: rawEntries.length === PAGE_SIZE
     })
 
     // Run an FTS pass in parallel so the hit-snippet UI (renderer-side
@@ -132,12 +179,13 @@ export const useSessionsStore = create<SessionsState>((set, get) => ({
       set({ loading: false })
       return
     }
-    const next = (res.data as SessionEntry[]) ?? []
+    const rawNext = (res.data as SessionEntry[]) ?? []
+    const next = tab === 'pinned' ? applyPinnedOrder(rawNext, get().pinOrder) : rawNext
     set((state) => ({
       loading: false,
       entries: [...state.entries, ...next],
       page: state.page + 1,
-      hasMore: next.length === PAGE_SIZE
+      hasMore: rawNext.length === PAGE_SIZE
     }))
   },
 
@@ -161,5 +209,54 @@ export const useSessionsStore = create<SessionsState>((set, get) => ({
       return
     }
     await get().loadFirstPage()
+  },
+
+  duplicate: async (id) => {
+    const api = getApi()?.conversation
+    if (!api) return null
+    const res = await api.fork(id)
+    if (!res.success || !res.data) {
+      toast.error(`Failed to duplicate: ${res.error}`)
+      return null
+    }
+    await get().loadFirstPage()
+    return res.data.id
+  },
+
+  deleteSession: async (id) => {
+    const api = getApi()?.conversation
+    if (!api) return
+    const res = await api.delete(id)
+    if (!res.success) {
+      toast.error(`Failed to delete: ${res.error}`)
+      return
+    }
+    await get().loadFirstPage()
+  },
+
+  markUnreadAgentResult: (conversationId) => {
+    set((state) => ({
+      unreadAgentResults: {
+        ...state.unreadAgentResults,
+        [conversationId]: (state.unreadAgentResults[conversationId] ?? 0) + 1
+      }
+    }))
+  },
+
+  clearUnread: (conversationId) => {
+    set((state) => {
+      if (!state.unreadAgentResults[conversationId]) return state
+      const next = { ...state.unreadAgentResults }
+      delete next[conversationId]
+      return { unreadAgentResults: next }
+    })
+  },
+
+  reorderPinned: (orderedIds) => {
+    writePinOrder(orderedIds)
+    set((state) => ({
+      pinOrder: orderedIds,
+      entries: state.tab === 'pinned' ? applyPinnedOrder(state.entries, orderedIds) : state.entries
+    }))
   }
 }))
