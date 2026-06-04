@@ -26,6 +26,7 @@ const TYPE_LABELS: Record<EventType, string> = {
   'chat.cancelled': 'Chat cancelled',
   'chat.error': 'Chat error',
   'chat.chapter.marked': 'Chapter marked',
+  'chat.compressed': 'Context compressed',
   'workspace.changed': 'Workspace changed',
   'worktree.created': 'Worktree created',
   'worktree.removed': 'Worktree removed',

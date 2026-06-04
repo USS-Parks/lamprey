@@ -117,6 +117,17 @@ export interface ChapterMarkedPayload {
   }
 }
 
+/** Track 2 / E5 — context compression. Fires when the compressor folds the
+ *  oldest messages into a `<conversation_summary>` system message. The
+ *  renderer reloads the conversation's messages on receipt so the
+ *  CompressedRegionPill replaces the original turn cards. */
+export interface ChatCompressedPayload {
+  conversationId: string
+  summaryMessageId: string
+  compressedCount: number
+  reductionPct: number
+}
+
 export interface ChatEventMap {
   'chat:chunk': ChatChunkPayload
   'chat:done': ChatDonePayload
@@ -127,6 +138,7 @@ export interface ChatEventMap {
   'plan:updated': PlanUpdatedPayload
   'plan:mode-changed': PlanModeChangedPayload
   'chat:chapter-marked': ChapterMarkedPayload
+  'chat:compressed': ChatCompressedPayload
   'memory:added': MemoryAddedPayload
   'agent:status': AgentStatusPayload
 }

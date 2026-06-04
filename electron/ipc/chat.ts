@@ -17,6 +17,10 @@ import {
 } from '../services/conversation-store'
 import * as memStore from '../services/memory-store'
 import { createChapter } from '../services/chapters-store'
+import {
+  compressOldestMessages,
+  getEffectiveMessages
+} from '../services/context-compressor'
 import { buildSystemPrompt } from '../services/system-prompt-builder'
 import { resolveAgentDispatch, runAgentPipeline } from '../services/agent-pipeline'
 import { readAgentsMd } from '../services/agents-md-loader'
@@ -190,7 +194,32 @@ export function registerChatHandlers(): void {
 
       void fireHooks('promptSubmit', { conversationId, promptBody: content })
 
+      // Track 2 / E5 — auto context compression. Run BEFORE pulling
+      // history so the next turn's prompt sees the compressed view.
+      // The model's context window comes from the catalogue entry; an
+      // unknown model defaults to a conservative 128k cap. The compressor
+      // is a pure-SQL operation (no LLM call in v1), so the latency is
+      // negligible.
+      try {
+        const modelInfo = resolveModel(model)
+        const ctxWindow = modelInfo.contextWindow ?? 128_000
+        const r = compressOldestMessages(conversationId, ctxWindow)
+        if (r) {
+          emitChatEvent('chat:compressed', {
+            conversationId,
+            summaryMessageId: r.summaryMessageId,
+            compressedCount: r.compressedCount,
+            reductionPct: r.reductionPct
+          })
+        }
+      } catch (err) {
+        console.error('[chat] context compression failed:', err)
+      }
+
       const allMessages = convStore.getMessages(conversationId)
+      // The dispatcher uses the effective view (compressed messages
+      // hidden, summary inserted in their place) for the OpenAI API.
+      const promptHistory = getEffectiveMessages(conversationId)
       const memoryBlock = memStore.buildMemoryBlock()
 
       const settingsRaw = readSettingsJson()
@@ -238,7 +267,7 @@ export function registerChatHandlers(): void {
       // OpenAI-compatible function schemas.
       const tools: ChatCompletionTool[] = toolRegistry.getOpenAITools()
 
-      const apiMessages = buildApiMessagesFromStoredMessages(systemPrompt, allMessages)
+      const apiMessages = buildApiMessagesFromStoredMessages(systemPrompt, promptHistory)
 
       const abortController = new AbortController()
       // Stash the abort controller + the correlationId generated above so

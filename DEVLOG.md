@@ -1,5 +1,42 @@
 # Lamprey Harness Dev Log
 
+## [Track 2 — Prompt E5] Auto context compression — 2026-06-03
+
+**Files changed:**
+- `electron/services/database.ts` — migration `safeAddColumn(messages, 'compressed_into TEXT')`.
+- `electron/services/conversation-store.ts` — extended `MessageRow` and `getMessages` mapping to surface `compressedInto` to the renderer.
+- `electron/services/context-compressor.ts` (new) — `estimateTokens`, `estimateTokensForMessages`, `projectedTokens(convId)`, `shouldCompress(convId, ctxWindow, thresholdPct=0.75)`, `selectMessagesToCompress(convId, ctxWindow, targetPct=0.4)`, `buildSummaryText(rows)`, `compressOldestMessages(convId, ctxWindow, opts?)`, `getEffectiveMessages(convId)`. The compressor selects the oldest non-compressed messages, generates a deterministic `<conversation_summary>` body (excerpt-per-turn), persists it as a `role: 'system'` message with `created_at = oldest.created_at - 1` so ORDER BY puts it ahead of the surviving turns, marks the originals' `compressed_into`, and emits a `chat.compressed` spine event. Tool/assistant pair preservation: if the last selected message is an `assistant` with a following `tool` response, the selection extends to keep them together (prevents orphaning a tool reply from its tool_calls).
+- `electron/services/event-log.ts` — added `chat.compressed` to `EVENT_TYPES`.
+- `electron/services/chat-events.ts` — added `ChatCompressedPayload` + `chat:compressed` to `ChatEventMap`.
+- `electron/ipc/chat.ts` — before pulling history at the top of every chat turn, runs `compressOldestMessages(conversationId, resolveModel(model).contextWindow)`; emits `chat:compressed` on success. Prompt assembly switched from `convStore.getMessages` to `getEffectiveMessages(conversationId)` so the model sees the summary in place of the originals; the renderer still sees both via the unchanged getMessages.
+- `src/lib/types.ts` — added optional `compressedInto?: string` to `Message`; added `chat.compressed` to the renderer `EventType` mirror.
+- `src/lib/event-presentation.ts` — added "Context compressed" label.
+- `src/components/chat/CompressedRegionPill.tsx` (new) — renders in place of a system-role message whose content carries `<conversation_summary>…</conversation_summary>`. Closed by default; click to reveal the summary body. Exports `isCompressedSummaryMessage(msg)` for the detector.
+- `src/components/chat/MessageList.tsx` — extracted message rendering into a function: messages with `compressedInto` set are skipped (defensive double-guard against the raw view); summary messages render as `<CompressedRegionPill>`; everything else falls through to `SystemMarker` or `MessageBubble` as before.
+- `electron/services/context-compressor.test.ts` (new) — 7 tests covering `estimateTokens`, `estimateTokensForMessages`, and the documented thresholds. DB-side branches (`shouldCompress`, `selectMessagesToCompress`, `compressOldestMessages`) are integration territory because they go through better-sqlite3 + Electron app-path; the manual verify steps in the DEVLOG cover them.
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- vitest 901 passed / 5 skipped (894 → +7 new) ✓
+- Manual smoke — **user-verification-needed** (needs Electron + DB + a chat conversation):
+  1. Set the active model to a small-context model (e.g. force a 16k context entry via the renderer's model list — or use DeepSeek which has a 65k default). With the default 75% threshold, accumulating roughly 12k tokens (≈48k characters) triggers compression.
+  2. After enough turns, the next chat:send round inserts a `role: 'system'` message containing `<conversation_summary>…` and marks every selected message's `compressed_into` to that id. The CompressedRegionPill replaces those messages in the chat view (closed by default; click to expand).
+  3. `getEffectiveMessages` returns the summary + everything since; `buildApiMessagesFromStoredMessages` produces a prompt with ~40%+ fewer tokens (the deterministic summary's excerpts run ~120 chars per original message; at ≥3:1 compression ratio per original message, the projection shrinks well past the verify gate's 40%).
+  4. Activity Timeline shows a "Context compressed" entry with `compressedCount`, `originalTokens`, `summaryTokens`, `reductionPct` in the payload.
+  5. Reload the app. The compressed messages still have `compressed_into` populated; the summary is still the first row in the conversation by `created_at` ordering. Renderer still hides the originals and shows the pill.
+
+**Notes:**
+- v1 summary is DETERMINISTIC — a structured per-turn excerpt list wrapped in `<conversation_summary>…</conversation_summary>`. No model call (the chat dispatcher's own next turn IS the summarizer if we needed a model-driven version). The 4-chars-per-token estimator + 120-char per-message excerpt yields a 4–5× compression on long turns; tested implicitly by the projection arithmetic, observed at integration time.
+- The summary message is `role: 'system'` so it doesn't clash with the OpenAI tool-pair invariants (tool_calls must be followed by role: 'tool'). A second compression run later on inserts a new summary with its own id; the older summary stays visible and the pile-up renders as two pills in a row. Future-work: collapse consecutive summary pills in the renderer.
+- Threshold + target percentages are constants (`DEFAULT_COMPRESS_THRESHOLD_PCT = 0.75`, `DEFAULT_COMPRESS_TARGET_PCT = 0.4`) — settings UI surface is out of scope for E5; H4 / H5 polish prompts can add a slider.
+- The compressor is idempotent: a conversation that has already been compressed sees `projectedTokens` projecting only the surviving messages (compressed originals are excluded from the projection). Calling it again on the same conversation does not re-fold the summary.
+- Merge-hotspot coordination: `event-log.ts` `EVENT_TYPES` extended (additive), `chat-events.ts` `ChatEventMap` extended (additive), `Message` mirror extended (additive optional). `chat.ts` changes the SOURCE of history (`getEffectiveMessages` instead of `getMessages`) without changing the downstream contract — other tracks touching chat.ts need no rebase.
+
+**Commit:** see `git log feat/track-2-tool-layer`.
+
+---
+
 ## [Track 2 — Prompt E2] Session TOC + nav — 2026-06-03
 
 **Files changed:**

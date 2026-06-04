@@ -45,6 +45,12 @@ export const EVENT_TYPES = [
   // `session:markChapter` IPC. Plan §2 invariant 10.
   'chat.chapter.marked',
 
+  // Track 2 / E5 — auto context compression. Emitted by the compressor
+  // when a conversation's projected tokens trip the threshold and the
+  // oldest messages get folded into a summary. Payload carries the
+  // compressed count, original/summary token counts, and reduction %.
+  'chat.compressed',
+
   // Workspace + worktree (Prompt 4).
   'workspace.changed',
   'worktree.created',

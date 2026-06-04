@@ -24,6 +24,11 @@ export interface MessageRow {
   tool_calls: string | null
   draft: string | null
   created_at: number
+  /** Track 2 / E5 — when this message was folded into a summary by the
+   *  context compressor, this is the id of the summary message. NULL
+   *  for messages that have never been compressed (the default for
+   *  every row in a fresh conversation). */
+  compressed_into: string | null
 }
 
 export interface StoredToolCall {
@@ -238,6 +243,9 @@ export function getMessages(conversationId: string) {
       timestamp: row.created_at,
       model: row.model || undefined,
       toolCallId: row.tool_call_id || undefined,
+      // Track 2 / E5 — passed through to the renderer so the chat view
+      // can show a CompressedRegionPill where originals were folded.
+      compressedInto: row.compressed_into ?? undefined,
       toolCalls
     }
   })

@@ -10,6 +10,12 @@ export interface Message {
   // assistant body may be composer-generated while draft preserves the
   // model's raw post-tool reply.
   draft?: string
+  /** Track 2 / E5 — populated for messages that the auto context
+   *  compressor folded into a summary. The value is the id of the
+   *  summary message that replaced them in prompt assembly. Renderer
+   *  shows a CompressedRegionPill at the boundary instead of the
+   *  original message body. */
+  compressedInto?: string
 }
 
 export type ConversationKind = 'local' | 'cloud' | 'worktree'
@@ -557,6 +563,7 @@ export type EventType =
   | 'chat.cancelled'
   | 'chat.error'
   | 'chat.chapter.marked'
+  | 'chat.compressed'
   | 'workspace.changed'
   | 'worktree.created'
   | 'worktree.removed'

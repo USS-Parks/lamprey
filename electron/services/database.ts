@@ -274,6 +274,14 @@ function initSchema(db: Database.Database): void {
       ON chapters(anchor_message_id);
   `)
 
+  // Track 2 / E5 — auto context compression. When a turn's projected
+  // token count exceeds the model's context budget, the compressor
+  // selects the oldest messages, generates a structured summary, and
+  // persists it as a new message; the originals get `compressed_into`
+  // set to the summary message id. Prompt assembly then skips
+  // compressed messages and inserts the summary in their place.
+  safeAddColumn(db, 'messages', 'compressed_into TEXT')
+
   // Parent call id — set on synthetic rows spawned from another tool (e.g.
   // sub-agent calls under `multi_agent_run`). Null for top-level
   // model-initiated calls. Lets the audit log answer "which fanout was this

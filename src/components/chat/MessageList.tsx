@@ -11,6 +11,10 @@ import { StreamStatusLine } from './StreamStatusLine'
 import { CHAT_COLUMN_CLASS } from './ChatView'
 import { ChapterDivider } from './ChapterDivider'
 import { useChaptersStore, type Chapter } from '@/stores/chapters-store'
+import {
+  CompressedRegionPill,
+  isCompressedSummaryMessage
+} from './CompressedRegionPill'
 import thinkingLight from '@assets/Lamprey Thinking Icon.png'
 import thinkingDark from '@assets/Lamprey Thinking Icon Dark View.png'
 
@@ -114,18 +118,30 @@ export function MessageList({
           parent's flex context. */}
       <div className="flex w-full justify-center">
         <div className={CHAT_COLUMN_CLASS}>
-          {messages.map((msg, i) => (
-            <div key={msg.id} data-message-id={msg.id}>
-              {byBefore[i]?.map((c) => (
-                <ChapterDivider key={c.id} chapter={c} />
-              ))}
-              {msg.role === 'system' ? (
-                <SystemMarker content={msg.content} />
-              ) : (
-                <MessageBubble message={msg} />
-              )}
-            </div>
-          ))}
+          {messages.map((msg, i) => {
+            // Track 2 / E5 — messages that were folded into a summary
+            // by the compressor are not rendered here (the summary
+            // message replaces them). The renderer's effective view
+            // SHOULD already filter, but we double-guard to keep the
+            // pill from showing alongside its originals if the chat
+            // store ever ships the raw view.
+            if (msg.compressedInto) return null
+            const compressed = isCompressedSummaryMessage(msg)
+            return (
+              <div key={msg.id} data-message-id={msg.id}>
+                {byBefore[i]?.map((c) => (
+                  <ChapterDivider key={c.id} chapter={c} />
+                ))}
+                {compressed ? (
+                  <CompressedRegionPill message={msg} />
+                ) : msg.role === 'system' ? (
+                  <SystemMarker content={msg.content} />
+                ) : (
+                  <MessageBubble message={msg} />
+                )}
+              </div>
+            )
+          })}
           {afterAll.map((c) => (
             <ChapterDivider key={c.id} chapter={c} />
           ))}
