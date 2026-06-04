@@ -45,7 +45,6 @@ export function ToolApprovalModal({ request, onResolved, onAllowed }: ToolApprov
     }
     const timer = setTimeout(() => setCountdown((c) => c - 1), 1000)
     return () => clearTimeout(timer)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [countdown])
 
   const respond = (decision: ApprovalDecision, chosenScope: ApprovalScope) => {

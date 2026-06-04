@@ -581,7 +581,6 @@ export function Sidebar() {
       searchRef.current?.focus()
       searchRef.current?.select()
     })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchFocusToken])
 
   useEffect(() => {

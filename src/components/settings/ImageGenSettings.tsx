@@ -119,7 +119,6 @@ export function ImageGenSettings() {
 
   useEffect(() => {
     void refresh()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   if (!apiAvailable) {

@@ -90,7 +90,6 @@ export function InlineApprovalChip({
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoFocus, request.callId])
 
   const providerLabel =

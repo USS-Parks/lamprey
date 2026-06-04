@@ -26,7 +26,6 @@ export function ContextAttachBar({ conversationId }: ContextAttachBarProps) {
 
   useEffect(() => {
     void refresh()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversationId])
 
   const detach = async (a: RagAttachment): Promise<void> => {
