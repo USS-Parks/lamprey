@@ -1,5 +1,44 @@
 # Lamprey Harness Dev Log
 
+## [Fluidity — Prompt J7] Inline subagent rendering — 2026-06-04
+
+`multi_agent_run` tool calls now render in the transcript as a nested
+chevron group — one "Multi-agent run" header row with N indented
+per-agent rows below it. Each agent row expands to show its emitted text
+or error. Failures auto-expand; successes mount collapsed; user toggle
+wins.
+
+MultiAgentRunCard is now a thin adapter that parses the run result
+envelope into InlineAgentRow shape and delegates to AgentRunInlineGroup.
+AgentRunBanner stays put for the single-agent run-phase pill — its
+multi-agent branch will be reused for backgrounded `tasks:spawn` runs
+when the renderer can tell them apart from in-turn runs (currently the
+chat surface only sees the `multi_agent_run` tool path, which is always
+in-turn).
+
+**Files changed:**
+- `src/lib/agent-run-routing.ts` (new) — pure `routeAgentRun({runInBackground})`
+- `src/lib/agent-run-routing.test.ts` (new) — 2 cases
+- `src/components/chat/AgentRunInlineGroup.tsx` (new) — header + nested rows + per-row expand
+- `src/components/chat/MultiAgentRunCard.tsx` — gutted to a parse-and-delegate adapter
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- vitest ✓ (1235 passed / 16 skipped — +2 J7 tests)
+- user-verification-needed: invoke `multi_agent_run` with a 3-role pipeline → header row shows 3 agents + total elapsed; click expand → 3 indented chevron rows; expand row 2 → its output panel opens; collapse header → all rows hide; an errored agent's row auto-expands with the error tone.
+
+**Notes:** The runInBackground routing helper is in place for J7's
+"banner-only for background" half; the actual `tasks:spawn` background
+visualisation is unchanged in this prompt because no signal currently
+reaches the chat surface for those — they're tracked in `agent_runs`
+and surfaced via the activity dashboard. AgentRunBanner's existing
+single-agent pill is untouched.
+
+**Commit:** pending
+
+---
+
 ## [Fluidity — Prompt J6] Auto-collapse successful tool cards — 2026-06-04
 
 ToolUseCard now derives an auto-expand state from `status` + `risks`:
