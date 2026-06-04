@@ -19,6 +19,10 @@ files:
 
 asarUnpack:
   - "**/*.node"
+  # Bundled ripgrep used by grep_workspace + glob_workspace. Windows can't
+  # spawn an executable that lives inside an .asar archive; unpacking puts
+  # the binary on disk under app.asar.unpacked/ where spawn() can find it.
+  - "**/@vscode/ripgrep-*/**"
 
 extraResources:
   - from: resources/vendor
