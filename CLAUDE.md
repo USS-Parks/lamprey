@@ -13,13 +13,9 @@ Electron desktop **multi-agent coding harness** (React 19, TypeScript, electron-
 ## Current State
 - **Prompts 1–20 + 21 + multi-provider revision**: complete (see `memory/project_build_status.md` for per-prompt commit SHAs).
 - **RAG add-on (R1–R14)**: complete, audited, hardened (see DEVLOG 2026-06-03 audit entry).
-- **Parity Phase — Three concurrent tracks underway** (started 2026-06-03):
-  - **Active plan**: `PLANNING/LAMPREY_PARITY_PLAN.md` — 36 prompts, three tracks + Integration Phase, each track running in its own git worktree session.
-  - **Track 1** (8 prompts, A1→B5): Runtime foundation — subagent runner, workflow runner, journaling + resume, model-tier routing.
-  - **Track 2** (9 prompts, C1→E4): Tool layer + continuity — lazy tool schemas, hooks-into-dispatch, plan mode, slash commands, chapters, compression, async event bridge, spawn-task.
-  - **Track 3** (13 prompts, D1→D4): Memory + verification + scheduling — typed memory + index, FTS session search, preview tools, monitor + bg shell, PR depth, cron UI, self-paced loop, push notifications + cross-session messaging, headless CLI, memory consolidation.
-  - **Integration Phase** (6 prompts, H1→H6): runs in a single session after all three tracks merge — activity dashboard, workflow palette, sessions sidebar, hook editor, plan-mode UX, status line + AskUserQuestion UI.
-- Read `DEVLOG.md` for detailed build history before making changes. Read `PLANNING/LAMPREY_PARITY_PLAN.md` §0 before starting any track session.
+- **Parity Phase (36 prompts + Integration H1–H6)**: complete — see `PLANNING/LAMPREY_PARITY_PLAN.md` and the H1–H6 wrap-up entry in `DEVLOG.md` (2026-06-04).
+- **Fluidity Phase (J1–J11)**: complete (2026-06-04) — micro-interaction parity with Claude Code. Merged to `main` as commit `2691730`. See `PLANNING/LAMPREY_FLUIDITY_PLAN.md` and the per-prompt + phase-complete entries in `DEVLOG.md`. Eleven prompts shipped on `feat/fluidity-phase`: ESC + ↑ history, Shift+Tab mode cycle, @file mention, # memory shortcut, inline approval chips, tool-card auto-collapse, inline subagents, status-line context%, notification consolidation, path:line autolinking, right-panel default-collapsed.
+- Read `DEVLOG.md` for detailed build history before making changes. Both parity + fluidity plans are now reference-only — there is no active plan at the moment.
 
 ## Build & Run
 ```bash
@@ -54,8 +50,8 @@ npx electron-vite build
 - `react-markdown` v10 requires `pre` passthrough override to prevent double-wrapping CodeBlock components
 
 ## Execution Rules
-1. **Active plan is `PLANNING/LAMPREY_PARITY_PLAN.md`** (original `LAMPREY_HARNESS_FINAL.md` + RAG roster are complete and now reference-only). New sessions on this repo must read §0 of the parity plan before doing anything; it covers track selection, verify gates, cross-track wait protocol, and commit discipline.
-2. Each prompt in a track must pass its verify gate (both tsc configs + relevant tests + smoke checks) before being marked `[x]` and committed.
-3. Log each prompt's work in `DEVLOG.md` per the format in `PLANNING/LAMPREY_PARITY_PLAN.md` §0 Step 4.
-4. Never push to GitHub directly — user reviews and pushes.
-5. Parallel track sessions MUST run in separate git worktrees (per `feedback_parallel_session_worktree` memory). Coordinate the three merge-hotspot files (`tool-registry.ts`, `chat.ts`, `system-prompt-builder.ts`) per the parity plan §8 protocol.
+1. **All shipped plans (`PLANNING/LAMPREY_HARNESS_FINAL.md`, the RAG roster, `LAMPREY_PARITY_PLAN.md`, and `LAMPREY_FLUIDITY_PLAN.md`) are reference-only.** When the user starts a new plan, treat its §0 (or equivalent) as the source of truth for verify gates + commit discipline.
+2. Each prompt in any active plan must pass its verify gate (both tsc configs + relevant tests + smoke checks) before being marked `[x]` and committed.
+3. Log each prompt's work in `DEVLOG.md` per the format in the active plan's §0 Step 4.
+4. **Push policy:** the user is the reviewer + pusher. When they explicitly ask to push (any phrasing — "push", "push to main", "push it now"), execute on the first try; the request itself satisfies the review step (see `feedback_push_when_told` memory). Do NOT volunteer pushes the user didn't ask for, and never `--force` without an explicit force-push instruction.
+5. Parallel track sessions MUST run in separate git worktrees (per `feedback_parallel_session_worktree` memory). For multi-track plans, coordinate any cross-track merge-hotspot files per the active plan's protocol section.

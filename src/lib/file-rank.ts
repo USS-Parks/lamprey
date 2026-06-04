@@ -78,7 +78,7 @@ export function detectAtMention(
   while (i >= 0 && /[\w./\\:-]/.test(text[i])) i--
   if (i < 0 || text[i] !== '@') return null
   // Word-boundary check: @ must be at start or follow whitespace/punctuation.
-  if (i > 0 && !/[\s({\[]/.test(text[i - 1])) return null
+  if (i > 0 && !/[\s({[]/.test(text[i - 1])) return null
   if (isInsideCodeContext(text, i)) return null
   return {
     token: text.slice(i + 1, caret),
