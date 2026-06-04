@@ -1,5 +1,59 @@
 # Lamprey Harness Dev Log
 
+## [Fluidity Phase Complete] — 2026-06-04
+
+**Prompts completed:** J1 ESC + ↑ history, J2 Shift+Tab mode cycle, J3 @file
+mention, J4 # memory shortcut, J5 inline approval chips, J6 tool-card
+collapse, J7 inline subagents, J8 status-line context%, J9 notification
+consolidation, J10 path:line autolinking, J11 right-panel default-collapsed.
+
+**Phase verify:**
+- tsc node ✓
+- tsc web ✓
+- vitest ✓ (98 files / 1271 tests passed, 16 skipped — +103 tests added across the phase)
+- user-verification-needed: full end-to-end smoke per §3 of `PLANNING/LAMPREY_FLUIDITY_PLAN.md` completion criteria: launch Electron, open a fresh conversation, exercise: ESC cancels a stream; ↑ recalls a prior prompt; Shift+Tab cycles permission + plan mode; @chat autocompletes to a file; # opens MemoryEditor with seed; an approval renders inline as a chip; a completed tool collapses; a multi-agent run renders inline-nested; status line shows context% turning amber past 70%; a wake-up fires as an inline transcript row; a `src/foo.ts:42` reference in assistant output is clickable; right panel is collapsed by default and auto-opens on artifact emission.
+
+**Notes:** Lamprey now matches Claude Code on conversational fluidity —
+single moving surface, keyboard-first reflexes, transcript-as-source-of-truth.
+Functional parity (Tracks 1–3 + H1–H6) was already in place; this phase
+closes the remaining "feel" gap. Eleven commits on `feat/fluidity-phase`.
+
+**Commit range:** 525d5f8..<final-J11-sha> (run `git log feat/fluidity-phase` for the full set).
+
+---
+
+## [Fluidity — Prompt J11] Right panel default collapsed + auto-open triggers — 2026-06-04
+
+The right panel now defaults to collapsed for new conversations and
+remembers each existing conversation's last expand/collapse state across
+reloads (per-conv map in ui-store, persisted to localStorage). Two
+events fire an auto-open: an artifact emit (`__openArtifact`) and an
+activeTool change. Each trigger key gets one auto-open per conversation;
+if the user collapses while a trigger is active, that key is marked
+dismissed and the same trigger won't re-open until a different one fires.
+
+**Files changed:**
+- `src/lib/right-panel-state.ts` (new) — pure `tryAutoOpen` / `applyUserToggle` state machine
+- `src/lib/right-panel-state.test.ts` (new) — 11 cases (defaults, re-open guard, manual toggle)
+- `src/stores/ui-store.ts` — per-conv state map + `hydrateRightPanelForConv` + `autoOpenRightPanel`
+- `src/App.tsx` — fire auto-open on artifact/activeTool, hydrate on conv switch
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- vitest ✓ (1271 passed / 16 skipped — +11 J11 tests)
+- user-verification-needed: in Electron, create a new conversation → right panel collapsed (chat takes full width); fire `__openArtifact` → panel opens; collapse it → stays collapsed even on a subsequent same-artifact emit; emit a DIFFERENT artifact → panel re-opens; switch to a previously-expanded conv → panel restores expanded.
+
+**Notes:** Per-conv state is JSON-serialized into a single localStorage
+key so the map shape can evolve without migration headaches. The legacy
+global `RIGHT_COLLAPSED_KEY` is mirrored for components that read the
+flag directly, but the per-conv map is the source of truth from this
+prompt onward.
+
+**Commit:** pending
+
+---
+
 ## [Fluidity — Prompt J10] path:line autolinking — 2026-06-04
 
 Bare `path/file.ext` and `path/file.ext:42` references in assistant

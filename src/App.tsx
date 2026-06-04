@@ -153,11 +153,25 @@ function App(): React.ReactElement {
   useKeyboardShortcuts()
   useShellSignals()
 
-  const handleArtifactOpen = useCallback((type: string, source: string) => {
-    setArtifactType(type)
-    setArtifactSource(source)
-    setArtifactOpen(true)
-  }, [])
+  const autoOpenRightPanel = useUiStore((s) => s.autoOpenRightPanel)
+  const hydrateRightPanelForConv = useUiStore((s) => s.hydrateRightPanelForConv)
+  const activeConversationId = useChatStore((s) => s.activeConversationId)
+
+  const handleArtifactOpen = useCallback(
+    (type: string, source: string) => {
+      setArtifactType(type)
+      setArtifactSource(source)
+      setArtifactOpen(true)
+      // Fluidity J11: artifact emit is a trigger that should auto-open
+      // the right panel. The trigger key combines type + source so two
+      // different artifacts each get one auto-open attempt.
+      const convId = useChatStore.getState().activeConversationId
+      if (convId) {
+        autoOpenRightPanel(convId, `artifact:${type}:${source}`)
+      }
+    },
+    [autoOpenRightPanel]
+  )
 
   useEffect(() => {
     ;(window as unknown as Record<string, unknown>).__openArtifact = handleArtifactOpen
@@ -174,6 +188,22 @@ function App(): React.ReactElement {
       void window.api.artifact?.hide?.()
     }
   }, [activeTool])
+
+  // Fluidity J11: a tool launch is a trigger that should auto-open the
+  // right panel — same one-pop-per-trigger rule the artifact emit uses.
+  useEffect(() => {
+    if (!activeTool) return
+    const convId = useChatStore.getState().activeConversationId
+    if (!convId) return
+    autoOpenRightPanel(convId, `tool:${activeTool}`)
+  }, [activeTool, autoOpenRightPanel])
+
+  // Fluidity J11: hydrate the global collapsed flag from the per-conv map
+  // every time the active conversation changes. New conversations seed
+  // to collapsed; existing ones restore their last manual / auto state.
+  useEffect(() => {
+    hydrateRightPanelForConv(activeConversationId)
+  }, [activeConversationId, hydrateRightPanelForConv])
 
   // Narrow-viewport drawer: Esc closes (collapses the right panel) so the
   // chat takes the full width back. Only active while the drawer is open.
