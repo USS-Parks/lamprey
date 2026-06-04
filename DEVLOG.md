@@ -1,5 +1,30 @@
 # Lamprey Harness Dev Log
 
+## [Track 3 — Prompt D1] Memory taxonomy + frontmatter migration — 2026-06-03
+
+**Files changed:**
+- `electron/services/memory-frontmatter.ts` (new) — `MemoryType` taxonomy, slug helper, gray-matter parse/serialize for the `{name, description, metadata:{type}}` shape (with tolerant flat-`type:` parsing for hand-written files).
+- `electron/services/memory-store.ts` (rewrite) — file-backed CRUD at `userData/lamprey-memory/<projectSlug>/<slug>.md` with a SQLite mirror, chokidar watcher for external edits, idempotent migration of legacy `memory_entries` rows to `type: project` files under the `__global__` slug, and an in-memory fallback so list/read/search/delete still work when the better-sqlite3 binding is unavailable (test env). Legacy `addMemory(content) / updateMemory(id, content) / deleteMemory(id) / listMemories() / buildMemoryBlock()` kept as shims over the file API so the pre-D3 MemoryPanel and `memory_add` tool keep working.
+- `electron/services/database.ts` (extend) — `memory_index` table + FTS5 mirror + AI/AU/AD triggers; new `__resetDbForTests` escape hatch.
+- `electron/ipc/memory.ts` (extend) — `memory:write` / `memory:read` / `memory:search`; `memory:list` accepts an optional `{ type, projectSlug }` filter; `memory:delete` accepts either the numeric legacy id or a string `name`.
+- `electron/preload.ts` (extend) — typed `memory.write/read/search` methods and `onChanged` subscription so D2/D3 can react live.
+- `electron/main.ts` (extend) — `initializeMemoryStore()` on startup, `shutdownMemoryStore()` on `will-quit`.
+- `electron/services/memory-store.test.ts` (new) — 12 unit tests covering frontmatter shape, typed filtering, external-edit re-scan, search, legacy shim back-compat, and migration idempotence.
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- vitest electron/services/memory-store.test.ts ✓ (12 tests)
+- vitest full suite ✓ (834 passed | 5 skipped — 12 new + 822 baseline)
+- user-verification-needed: smoke the live Electron app with an existing `lamprey.db` containing `memory_entries` rows to confirm the migration step writes them into `userData/lamprey-memory/__global__/` with `type: project` and that the existing MemoryPanel still renders/edits them through the legacy IPC.
+
+**Notes:**
+- Files are canonical, SQLite is a search/index mirror. External editors and version control are first-class.
+- Per-project routing is wired through `projectSlug` but defaults to `__global__` until a future prompt threads the current project id; this keeps the slug ergonomics ready without forcing a project-id contract on D1.
+- The store gracefully falls back to an in-memory mirror when the SQLite binding can't load (test env runs system Node, but better-sqlite3 is built for Electron's ABI); production code path still uses the FTS mirror.
+
+**Commit:** see git log on `feat/track-3-memory-verify`.
+
 ## Parity Phase planning — three-track roster authored (2026-06-03)
 
 Planning-only turn. No source changes; one new planning artifact landed.

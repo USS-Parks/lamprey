@@ -12,6 +12,7 @@ import { startAutomations, stopAutomations } from './services/automations-runner
 import { mcpManager } from './services/mcp-manager'
 import { ensureNodeReplDefaultServer } from './services/node-repl-default-server'
 import { initializeSkillLoader, shutdownSkillLoader } from './services/skill-loader'
+import { initializeMemoryStore, shutdownMemoryStore } from './services/memory-store'
 import { shutdownReviewWatcher } from './ipc/review'
 import { destroyTray, handleWindowClose, initializeTray, refreshTrayMenu } from './services/tray'
 import { registerGlobalShortcuts } from './services/shortcuts'
@@ -428,6 +429,12 @@ app.whenReady().then(() => {
   }
 
   try {
+    initializeMemoryStore()
+  } catch (err) {
+    console.error('[main] Memory store init error:', (err as Error).message)
+  }
+
+  try {
     fireHooks('sessionStart')
     startAutomations()
   } catch (err) {
@@ -469,6 +476,7 @@ app.on('will-quit', () => {
   suppressBoundsPersist = true
   mcpManager.shutdown().catch(() => {})
   shutdownSkillLoader()
+  shutdownMemoryStore()
   destroyArtifactSandbox()
   destroyTray()
   ptyKillAll()

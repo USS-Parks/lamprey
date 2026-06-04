@@ -140,15 +140,37 @@ const api = {
   },
 
   memory: {
-    list: () => ipcRenderer.invoke('memory:list'),
+    // `filter` is optional; pass `{ type?: MemoryType, projectSlug?: string }`
+    // to scope the result to a typed file-backed view. The no-arg form
+    // returns the legacy shape (numeric ids) so the pre-D3 MemoryPanel
+    // keeps rendering during the transition.
+    list: (filter?: { type?: string; projectSlug?: string }) =>
+      ipcRenderer.invoke('memory:list', filter),
     add: (content: string) => ipcRenderer.invoke('memory:add', content),
     update: (id: number, content: string) => ipcRenderer.invoke('memory:update', id, content),
-    delete: (id: number) => ipcRenderer.invoke('memory:delete', id),
+    delete: (idOrName: number | string) => ipcRenderer.invoke('memory:delete', idOrName),
     clear: () => ipcRenderer.invoke('memory:clear'),
     export: () => ipcRenderer.invoke('memory:export'),
     import: (entries: unknown[]) => ipcRenderer.invoke('memory:import', entries),
+    // Typed file-backed surface (D1).
+    write: (payload: {
+      name: string
+      type: 'user' | 'feedback' | 'project' | 'reference'
+      body: string
+      description?: string
+      projectSlug?: string
+      sourceConversationId?: string
+    }) => ipcRenderer.invoke('memory:write', payload),
+    read: (name: string) => ipcRenderer.invoke('memory:read', name),
+    search: (query: string, limit?: number) =>
+      ipcRenderer.invoke('memory:search', query, limit),
     onAdded: (cb: (entry: unknown) => void) =>
-      ipcRenderer.on('memory:added', (_, entry) => cb(entry))
+      ipcRenderer.on('memory:added', (_, entry) => cb(entry)),
+    onChanged: (cb: (entries: unknown[]) => void): (() => void) => {
+      const handler = (_: unknown, entries: unknown[]) => cb(entries)
+      ipcRenderer.on('memory:changed', handler)
+      return () => ipcRenderer.removeListener('memory:changed', handler)
+    }
   },
 
   mcp: {
