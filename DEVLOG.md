@@ -1,5 +1,40 @@
 # Lamprey Harness Dev Log
 
+## [Fluidity — Prompt J3] @file inline mention autocomplete — 2026-06-04
+
+`@<token>` in ChatInput surfaces a popover ranking workspace files by name
+overlap. Selection inserts a collapsed `@<basename>` token and queues the
+picked file through the existing `files.process` → `addAttachments`
+pipeline so the next send carries it as a regular attachment.
+
+The popover skips:
+- carets inside ``` fenced blocks
+- carets inside an inline single-backtick span
+- `@` in mid-word context (e.g. `email@host`) — only fires at a word
+  boundary (start-of-line or after whitespace/bracket)
+
+**Files changed:**
+- `src/lib/file-rank.ts` (new) — `scoreFile`, `rankFiles`, `detectAtMention`, `isInsideCodeContext`
+- `src/lib/file-rank.test.ts` (new) — 21 cases covering ranking, extension dominance, code-fence guard, word-boundary
+- `src/components/chat/AtFileMention.tsx` (new) — popover styled to match SlashCommandPalette
+- `src/components/chat/ChatInput.tsx` — workspace file index cache, caret tracking, popover mount + apply
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- vitest ✓ (1216 passed / 16 skipped — +21 J3 tests)
+- user-verification-needed: in Electron, type `@chat` in ChatInput → popover lists ChatInput/Chat* matches; ↑/↓ walks; Tab/Enter inserts; Esc dismisses; `@` inside ```ts ... ``` does NOT trigger; selected file appears as a pending attachment with the existing chip UI.
+
+**Notes:** Workspace index reuses `files:walkProject` (same IPC the
+QuickOpenPalette uses). Index is cached per ChatInput mount; the docked
+file panel keeps its own cache so the two don't share lifecycle. The
+popover renders absolutely above the input bar (`bottom-full`) so it
+doesn't shift the layout when it opens/closes.
+
+**Commit:** pending
+
+---
+
 ## [Fluidity — Prompt J2] Shift+Tab cycles permission/plan mode — 2026-06-04
 
 Replaces the old binary planMode toggle on Shift+Tab with a four-state

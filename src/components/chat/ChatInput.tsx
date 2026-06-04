@@ -8,8 +8,10 @@ import { toast } from '@/stores/toast-store'
 import { useThemedIcon } from '@/lib/themed-icon'
 import { ApiKeyModal } from '@/components/settings/ApiKeyModal'
 import { SlashCommandPalette } from './SlashCommandPalette'
+import { AtFileMention } from './AtFileMention'
 import { useSlashCommandsStore } from '@/stores/slash-commands-store'
 import { usePlanStore } from '@/stores/plan-store'
+import { detectAtMention } from '@/lib/file-rank'
 import {
   emptyHistoryState,
   historyDown,
@@ -768,6 +770,18 @@ export function ChatInput({ onSend, onCancel, isStreaming, disabled }: ChatInput
     }
   }
 
+  // Fluidity J3: @file mention popover state. The popover is independent
+  // of the slash palette and triggers when detectAtMention finds an
+  // `@<token>` immediately preceding the caret (not inside a code fence).
+  // workspaceFiles caches walkProject() output for the popover to rank
+  // against — same shape QuickOpenPalette uses, kept local here so the
+  // input bar doesn't depend on the docked file panel's lifecycle.
+  const [workspaceFiles, setWorkspaceFiles] = useState<string[] | null>(null)
+  const [workspaceRoot, setWorkspaceRoot] = useState<string | null>(null)
+  const [workspaceLoading, setWorkspaceLoading] = useState(false)
+  const [atMentionDismissed, setAtMentionDismissed] = useState(false)
+  const [caretPos, setCaretPos] = useState<number>(0)
+
   // Track 2 / C4 — slash palette state. The palette appears whenever the
   // input begins with '/' AND has no newline (so a code block beginning
   // with '/' does not trip it). The user can dismiss with Esc; we close
@@ -790,6 +804,74 @@ export function ChatInput({ onSend, onCancel, isStreaming, disabled }: ChatInput
     setContent(`/${name} `)
     setSlashPaletteOpen(false)
     requestAnimationFrame(() => textareaRef.current?.focus())
+  }
+
+  // Fluidity J3 — derive the active @-mention token from (content, caret).
+  // Recomputed on every render; cheap, and avoids missing a token when the
+  // user clicks elsewhere in the textarea.
+  const mention = detectAtMention(content, caretPos)
+  const showAtMention = mention !== null && !atMentionDismissed && !isStreaming && !disabled
+
+  // Lazy-load the workspace file index the first time the popover opens.
+  useEffect(() => {
+    if (!showAtMention) return
+    if (workspaceFiles !== null || workspaceLoading) return
+    if (!window.api?.files) return
+    let cancelled = false
+    setWorkspaceLoading(true)
+    void (async () => {
+      try {
+        const wd = await window.api.files.getWorkdir()
+        if (cancelled || !wd.success || !wd.data) {
+          if (!cancelled) setWorkspaceLoading(false)
+          return
+        }
+        const root = wd.data.path
+        const w = await window.api.files.walkProject(root)
+        if (cancelled) return
+        if (w.success) {
+          const data = w.data as { files: string[] }
+          setWorkspaceFiles(data.files)
+          setWorkspaceRoot(root)
+        }
+      } finally {
+        if (!cancelled) setWorkspaceLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [showAtMention, workspaceFiles, workspaceLoading])
+
+  const applyAtMention = (relPath: string) => {
+    if (!mention) return
+    const sep = workspaceRoot && workspaceRoot.includes('\\') ? '\\' : '/'
+    const fullPath = workspaceRoot ? `${workspaceRoot}${sep}${relPath}` : relPath
+    const basename = relPath.split(/[\\/]/).pop() ?? relPath
+    // Replace the @<token> run with a collapsed @<basename> in the textarea.
+    const next = `${content.slice(0, mention.start)}@${basename} ${content.slice(mention.end)}`
+    setContent(next)
+    setAtMentionDismissed(false)
+    // Process + attach the picked file via the existing pipeline so the
+    // next send carries its content as a ProcessedFile attachment.
+    if (window.api?.files?.process) {
+      setProcessing(true)
+      void window.api.files
+        .process([fullPath])
+        .then((res) => {
+          if (res.success) addAttachments(res.data as ProcessedFile[])
+          else if (res.error) toast.error(`Attach failed: ${res.error}`)
+        })
+        .finally(() => setProcessing(false))
+    }
+    requestAnimationFrame(() => {
+      const ta = textareaRef.current
+      if (!ta) return
+      const newCaret = mention.start + basename.length + 2 // "@" + name + " "
+      ta.focus()
+      ta.setSelectionRange(newCaret, newCaret)
+      setCaretPos(newCaret)
+    })
   }
 
   const handleSubmit = () => {
@@ -1066,6 +1148,20 @@ export function ChatInput({ onSend, onCancel, isStreaming, disabled }: ChatInput
             onClose={() => setSlashPaletteOpen(false)}
           />
         )}
+        {/* Fluidity J3 — @file mention popover. Mounted only when the
+            caret sits inside an @<token> run that's NOT inside a code
+            fence. Slash palette and this one are mutually exclusive in
+            practice because a single character can't be both `/` AND
+            `@`-prefixed. */}
+        {showAtMention && mention && (
+          <AtFileMention
+            query={mention.token}
+            files={workspaceFiles ?? []}
+            loading={workspaceLoading}
+            onApply={applyAtMention}
+            onClose={() => setAtMentionDismissed(true)}
+          />
+        )}
         <div className="flex items-start gap-2">
           <textarea
             ref={textareaRef}
@@ -1073,12 +1169,18 @@ export function ChatInput({ onSend, onCancel, isStreaming, disabled }: ChatInput
             value={content}
             onChange={(e) => {
               setContent(e.target.value)
+              setCaretPos(e.target.selectionStart ?? e.target.value.length)
               // Any keystroke that mutates text is "I'm done browsing":
               // drop the history index so the next ↑ starts fresh.
               if (historyRef.current.index !== null) {
                 historyRef.current = emptyHistoryState
               }
+              // Typing extends/changes the @-token — re-arm the popover
+              // even if the user just dismissed it with Esc.
+              if (atMentionDismissed) setAtMentionDismissed(false)
             }}
+            onClick={(e) => setCaretPos(e.currentTarget.selectionStart ?? 0)}
+            onSelect={(e) => setCaretPos(e.currentTarget.selectionStart ?? 0)}
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
             placeholder="Ask anything — ↑ for history"
