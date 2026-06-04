@@ -8,6 +8,8 @@ import { StreamingText } from './StreamingText'
 import { ToolUseCard } from './ToolUseCard'
 import { MultiAgentRunCard } from './MultiAgentRunCard'
 import { StreamStatusLine } from './StreamStatusLine'
+import { InlineApprovalChip } from './InlineApprovalChip'
+import { useInlineApprovalsStore } from '@/stores/inline-approvals-store'
 import { CHAT_COLUMN_CLASS } from './ChatView'
 import { ChapterDivider } from './ChapterDivider'
 import { useChaptersStore, type Chapter } from '@/stores/chapters-store'
@@ -31,6 +33,27 @@ interface MessageListProps {
 // the bottom". If the user is within this, auto-scroll follows new content;
 // if they've scrolled further up, we leave them alone.
 const STICK_THRESHOLD_PX = 120
+
+function InlineApprovalQueue() {
+  const queue = useInlineApprovalsStore((s) => s.queue)
+  const dismiss = useInlineApprovalsStore((s) => s.dismiss)
+  if (queue.length === 0) return null
+  return (
+    <>
+      {queue.map((req, i) => (
+        <InlineApprovalChip
+          key={req.callId}
+          request={req}
+          // Only the first chip claims global keystrokes — successive chips
+          // wait their turn. Once the leader resolves, the next becomes
+          // active via this index check on next render.
+          autoFocus={i === 0}
+          onResolved={() => dismiss(req.callId)}
+        />
+      ))}
+    </>
+  )
+}
 
 function SystemMarker({ content }: { content: string }) {
   return (
@@ -152,6 +175,11 @@ export function MessageList({
               <ToolUseCard key={tc.callId} toolCall={tc} />
             )
           )}
+          {/* Fluidity J5 — inline approval chips for previously-approved,
+              non-destructive (server, tool) pairs. The first chip in the
+              queue auto-focuses so 1/2/3 keystrokes land without a click. */}
+          <InlineApprovalQueue />
+
           {isStreaming && (streamingContent || streamStartedAt) && (
             <div className="mb-3 flex justify-start">
               <div className="max-w-[80%] rounded-lg bg-[var(--bg-secondary)] px-4 py-3">

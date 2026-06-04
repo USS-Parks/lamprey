@@ -11,6 +11,8 @@ import { WorktreeManagerModal } from '@/components/worktree/WorktreeManagerModal
 import { ApiKeyModal } from '@/components/settings/ApiKeyModal'
 import { SettingsDialog } from '@/components/settings/SettingsDialog'
 import { ToolApprovalModal } from '@/components/tools/ToolApprovalModal'
+import { approvalKey, routeApproval } from '@/lib/approval-routing'
+import { useInlineApprovalsStore } from '@/stores/inline-approvals-store'
 import { MemoryModal } from '@/components/memory/MemoryModal'
 import { ToastContainer } from '@/components/ui/Toast'
 import { FloatingEnvironmentCard } from '@/components/workspace/FloatingEnvironmentCard'
@@ -43,6 +45,12 @@ function App(): React.ReactElement {
   const [artifactType, setArtifactType] = useState<string | null>(null)
   const [artifactSource, setArtifactSource] = useState<string | null>(null)
   const [approvalRequest, setApprovalRequest] = useState<ToolApprovalRequest | null>(null)
+  // Fluidity J5: inline approval chips for previously-approved,
+  // non-destructive tool calls. The set tracks (server, tool) pairs we've
+  // seen approved at least once this session — first sighting still gets
+  // the heavyweight modal so the user reads the descriptor + args once.
+  const approvedSeenRef = useRef<Set<string>>(new Set())
+  const pushInlineApproval = useInlineApprovalsStore((s) => s.push)
   const loadConversations = useChatStore((s) => s.loadConversations)
   const loadModels = useModelStore((s) => s.loadModels)
   const loadSettings = useSettingsStore((s) => s.loadSettings)
@@ -189,10 +197,19 @@ function App(): React.ReactElement {
   useEffect(() => {
     if (!window.api) return
     const unsubscribe = window.api.tools.onApprovalRequired((e: unknown) => {
-      setApprovalRequest(e as ToolApprovalRequest)
+      const req = e as ToolApprovalRequest
+      const surface = routeApproval(
+        { serverId: req.serverId, name: req.name, risks: req.risks ?? [] },
+        { approvedSeen: approvedSeenRef.current }
+      )
+      if (surface === 'chip') {
+        pushInlineApproval(req)
+      } else {
+        setApprovalRequest(req)
+      }
     })
     return unsubscribe
-  }, [])
+  }, [pushInlineApproval])
 
   useEffect(() => {
     if (!window.api) return
@@ -323,6 +340,9 @@ function App(): React.ReactElement {
         <ToolApprovalModal
           request={approvalRequest}
           onResolved={() => setApprovalRequest(null)}
+          onAllowed={(req) => {
+            approvedSeenRef.current.add(approvalKey(req.serverId, req.name))
+          }}
         />
       )}
 

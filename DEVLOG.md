@@ -1,5 +1,48 @@
 # Lamprey Harness Dev Log
 
+## [Fluidity — Prompt J5] Inline tool approval chips — 2026-06-04
+
+When a tool approval is requested AND the (server, tool) pair has been
+approved at least once this session AND no descriptor risk is destructive,
+the request now renders as a transcript-level chip with 1/2/3 keystroke
+bindings (Approve / Deny / Always) instead of opening the full modal. The
+modal still owns the heavyweight first-touch confirmation and every
+destructive-risk path.
+
+Routing decision is a pure helper (`approval-routing.routeApproval`).
+A renderer-only Zustand store (`inline-approvals-store`) is the queue;
+App.tsx pushes chip-routed requests, MessageList renders them after the
+toolCalls section, the chip itself dismisses on resolve. The modal grew
+an `onAllowed` callback so an allow click also adds the pair to the
+session-level `approvedSeen` set — the very next request from that pair
+will be a chip.
+
+**Files changed:**
+- `src/lib/approval-routing.ts` (new) — pure routing helper + `approvalKey`
+- `src/lib/approval-routing.test.ts` (new) — 6 cases (destructive lock, per-(server, tool) granularity)
+- `src/stores/inline-approvals-store.ts` (new) — zustand queue with de-dupe
+- `src/components/chat/InlineApprovalChip.tsx` (new) — chip + 1/2/3/Esc bindings
+- `src/components/tools/ToolApprovalModal.tsx` — added `onAllowed(request)` prop
+- `src/components/chat/MessageList.tsx` — renders the queue
+- `src/App.tsx` — `approvedSeenRef` + routing dispatch + modal-allow → seen-set
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- vitest ✓ (1230 passed / 16 skipped — +6 J5 tests)
+- user-verification-needed: in Electron, trigger a read-file approval → first time renders the modal; click Allow; trigger the same read-file again → second time renders the inline chip in the transcript; press `1` → resolves with allow; trigger a destructive tool → still modal even if previously allowed.
+
+**Notes:** Per-(server, tool) granularity is more conservative than the
+plan's "server is already approved at least once" wording — a brand new
+write-tier tool from a previously-trusted server still gets the modal so
+its descriptor is read once. Destructive is the safety floor. The
+`approvedSeen` set lives in a `useRef` on App.tsx; not persisted across
+reload by design (every session starts cold).
+
+**Commit:** pending
+
+---
+
 ## [Fluidity — Prompt J4] # memory-write inline shortcut — 2026-06-04
 
 Typing `#` (alone) or `# <text>` at col 0 of line 1 in ChatInput flips
