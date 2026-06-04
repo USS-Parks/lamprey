@@ -19,6 +19,7 @@ interface ContractSection {
   key:
     | 'intent'
     | 'context'
+    | 'workspace_exploration'
     | 'tools'
     | 'file_safety'
     | 'verification'
@@ -48,6 +49,18 @@ const CONTRACT_SECTIONS: ContractSection[] = [
       'Check AGENTS.md, package scripts, existing tests, and dirty git state before proposing work.',
       'For coding tasks, call workspace_context once early — it returns cwd, git status, package scripts, detected frameworks, instruction files, and likely verification commands in one read.',
       'Prefer extending existing patterns over inventing new abstractions.'
+    ]
+  },
+  {
+    key: 'workspace_exploration',
+    heading: 'Explore the workspace with native tools',
+    bullets: [
+      'For workspace code, prefer the native tools over shell roundtrips: glob_workspace to discover files by pattern, grep_workspace to find symbols / call sites / patterns by regex, read_file to open a file with line-number pagination. They are faster, return structured output, and skip the shell-approval modal entirely.',
+      'Default search pattern: glob_workspace to scope by file type or directory → grep_workspace to locate the relevant lines → read_file with offset/limit to read the surrounding context. Do not read whole files when a 50-line window suffices.',
+      'grep_workspace and glob_workspace both respect .gitignore by default — node_modules, dist, .git, build artifacts will not appear in results. Pass no_ignore: true only when you genuinely need to see ignored files.',
+      'read_file caps at 256 KB returned and 2 MB file size — paginate with offset/limit for larger files, or use grep_workspace to find the relevant lines first.',
+      'Attached documents (PDF/DOCX visible as chips) reach you via the <retrieved_context> block — cite those passages directly. Workspace code is discovered via the tools above and quoted by file:line, never by RAG.',
+      'shell_command is still available for verification commands, builds, git operations, and anything beyond search/read. Do not use it as a wrapper around grep, cat, find, ls, head, tail — the native tools cover those.'
     ]
   },
   {
@@ -236,13 +249,19 @@ export function buildSystemPrompt(
 export const AGENT_ROLE_PROMPTS: Record<string, string> = {
   planner:
     'You are the Planner. Decompose the user request into an ordered, minimal set of steps. ' +
-    'Identify which files and tools are involved. Output a short numbered plan only — no code.',
+    'Identify which files and tools are involved. Use glob_workspace + grep_workspace early to ' +
+    'understand the scope — list the candidate files and their key symbols in the plan so the ' +
+    'Coder does not re-discover them. Output a short numbered plan only — no code.',
   coder:
     'You are the Coder. Execute the plan from the Planner. Produce exact diffs or file contents. ' +
-    'Prefer the smallest correct change. Use tools when they exist.',
+    'Use read_file (with offset/limit) to open each target file before editing it, and ' +
+    'grep_workspace to find existing patterns to extend rather than re-invent. Prefer the ' +
+    'smallest correct change. Use apply_patch for edits.',
   reviewer:
     'You are the Reviewer. Critique the Coder output for correctness, regressions, edge cases, ' +
-    'and dead code. If something is wrong, say exactly what and where. If it is good, say SHIP.',
+    'and dead code. Use grep_workspace to confirm cross-file impact ("does anything else call ' +
+    'this function?") and read_file to spot-check surrounding code. Cite findings by file:line. ' +
+    'If something is wrong, say exactly what and where. If it is good, say SHIP.',
   coworker:
     'You are the Co-worker. You collaborate with the human in real time on the active workspace. ' +
     'Be terse, suggest the next concrete action, and avoid restating the obvious.',

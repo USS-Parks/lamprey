@@ -58,6 +58,51 @@ function ragDescription(file: ProcessedFile): string {
   return `${ragPhaseLabel(phase)} ${pct}% · ${size}`
 }
 
+/**
+ * Tiny corner badge that tells the user at a glance HOW the attachment
+ * reaches the model: INLINE (content embedded in user message),
+ * INDEX (mid-ingest), RAG (ready, retrieved at chat-send time), or
+ * VISION (image base64 in request body).
+ */
+function StrategyBadge({ file }: { file: ProcessedFile }) {
+  let label = 'INLINE'
+  let cls = 'bg-[var(--bg-tertiary)] text-[var(--text-muted)]'
+  if (file.kind === 'image') {
+    label = 'VISION'
+    cls = 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)]'
+  } else if (file.kind === 'rag-pending') {
+    const phase = file.ragPhase ?? 'queued'
+    if (phase === 'ready') {
+      label = 'RAG'
+      cls = 'bg-[var(--accent-dim)] text-[var(--accent)]'
+    } else if (phase === 'error') {
+      label = 'FAIL'
+      cls = 'bg-[var(--error)]/15 text-[var(--error)]'
+    } else {
+      label = 'INDEX'
+      cls = 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)]'
+    }
+  }
+  return (
+    <span
+      title={
+        label === 'INLINE'
+          ? 'Content embedded directly in the user message'
+          : label === 'VISION'
+            ? 'Base64-encoded image in the request body'
+            : label === 'INDEX'
+              ? 'Being chunked + embedded; retrievable on the next turn'
+              : label === 'RAG'
+                ? 'Indexed; relevant chunks retrieved at chat-send time'
+                : 'Ingest failed'
+      }
+      className={`select-none rounded-full px-1.5 py-0.5 font-mono text-[9px] tracking-wider ${cls}`}
+    >
+      {label}
+    </span>
+  )
+}
+
 function Tile({ file, index }: { file: ProcessedFile; index: number }) {
   const removeAttachment = useChatStore((s) => s.removeAttachment)
   const isImage = file.kind === 'image' && !!file.content && !file.error
@@ -115,7 +160,10 @@ function Tile({ file, index }: { file: ProcessedFile; index: number }) {
           </span>
         )}
         <div className="min-w-0 flex-1">
-          <div className="truncate font-mono text-xs text-[var(--text-primary)]">{file.name}</div>
+          <div className="flex items-center gap-1.5 min-w-0">
+            <span className="truncate font-mono text-xs text-[var(--text-primary)]">{file.name}</span>
+            <StrategyBadge file={file} />
+          </div>
           <div className="truncate text-[12px] text-[var(--text-muted)]">{description}</div>
         </div>
         <button

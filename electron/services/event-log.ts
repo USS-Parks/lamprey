@@ -96,7 +96,22 @@ export const EVENT_TYPES = [
   // payload, not emitted separately.
   'rag.query.completed',
   'rag.query.failed',
-  'rag.rerank.completed'
+  'rag.rerank.completed',
+
+  // Explore subagent (H8 of LAMPREY_HYBRID_CONTEXT_PLAN). One started +
+  // one completed/failed per parent-tool invocation of `explore`.
+  // correlationId carries the PARENT conversation's correlationId so the
+  // timeline groups the subagent run under the parent turn.
+  'subagent.started',
+  'subagent.completed',
+  'subagent.failed',
+
+  // Per-turn context summary (H10 of LAMPREY_HYBRID_CONTEXT_PLAN). Emitted
+  // when a chat turn completes; payload counts inline_bytes, rag_chunks,
+  // files_read, greps_run, globs_run, subagent_runs, tokens_in,
+  // tokens_out. Lets the Activity Timeline + bench harness measure which
+  // context strategies actually fired per turn.
+  'chat.context.summary'
 ] as const
 
 export type EventType = (typeof EVENT_TYPES)[number]
