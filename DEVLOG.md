@@ -718,6 +718,27 @@ All 8 prompts (A1 → A2 → A3 → B1 → B2 → B3 → B4 → B5) committed on
 
 **Commit:** see git log on `codex-t3-final-four`.
 
+## [Track 3 — Prompt G3] Headless / remote run mode — 2026-06-03
+
+**Files changed:**
+- `electron/services/headless-runner.ts` (new) — parses `run --conv <id>` / `run --automation <id>` + `--json`, executes one persisted conversation turn via `chatOnce` or one automation via `runAutomation`, saves conversation replies, and formats JSON or human-readable output.
+- `electron/cli.ts` (new) — packaged `lamprey` bin wrapper that spawns Electron with `--lamprey-headless`.
+- `electron/main.ts` — early argv branch runs the headless service before creating splash/main windows, prints to stdout/stderr, closes stores, and exits with success/non-zero status.
+- `electron.vite.config.ts` — adds the CLI entry to the main build inputs.
+- `package.json` — adds the `lamprey` bin and `npm run lamprey -- ...` script surface.
+- `electron/services/headless-runner.test.ts` — parser/formatter coverage for conversation, automation, JSON, and headless-argv detection.
+- `PLANNING/LAMPREY_PARITY_PLAN.md` — marked G3 complete.
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- vitest `electron/services/headless-runner.test.ts` ✓ (4 tests)
+- manual smoke: user-verification-needed: run `npm run lamprey -- run --conv <conversationId> --json` against a real configured conversation/API key and confirm a persisted assistant message plus parseable JSON stdout
+
+**Notes:** The automation path reuses the existing `runAutomation()` function. Full cron isolation can call the same headless service later, but this prompt does not rewrite the cron runner to spawn a child process.
+
+**Commit:** see git log on `codex-t3-final-four`.
+
 ## [Track 3 — Prompt F4] Monitor primitive + background shell — 2026-06-03
 
 **Files changed:**

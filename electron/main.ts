@@ -27,6 +27,11 @@ import { destroyTray, handleWindowClose, initializeTray, refreshTrayMenu } from 
 import { registerGlobalShortcuts } from './services/shortcuts'
 import { initializeUpdater, quitAndInstall, checkNow } from './services/updater'
 import { readSettings, patchSettings } from './services/settings-helper'
+import {
+  formatHeadlessResult,
+  isHeadlessCliArgv,
+  runHeadlessFromArgv
+} from './services/headless-runner'
 
 let mainWindow: BrowserWindow | null = null
 let splashWindow: BrowserWindow | null = null
@@ -318,6 +323,37 @@ app.whenReady().then(() => {
   // a stale cached icon.
   if (process.platform === 'win32') {
     app.setAppUserModelId('com.lamprey.harness')
+  }
+
+  if (isHeadlessCliArgv(process.argv)) {
+    void (async () => {
+      let exitCode = 0
+      try {
+        initializeMemoryStore()
+        const { result, json } = await runHeadlessFromArgv(process.argv)
+        const text = formatHeadlessResult(result, json)
+        if (result.success) {
+          process.stdout.write(text + '\n')
+        } else {
+          exitCode = 1
+          process.stderr.write(text + '\n')
+        }
+      } catch (err) {
+        exitCode = 1
+        const result = {
+          success: false as const,
+          error: err instanceof Error ? err.message : String(err)
+        }
+        process.stderr.write(formatHeadlessResult(result, process.argv.includes('--json')) + '\n')
+      } finally {
+        stopLoopWakeups()
+        stopAutomations()
+        shutdownMemoryStore()
+        closeDb()
+        app.exit(exitCode)
+      }
+    })()
+    return
   }
 
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
