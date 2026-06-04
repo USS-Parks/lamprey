@@ -30,9 +30,12 @@ import { registerPlanHandlers } from './plan'
 import { registerGitHubHandlers } from './github'
 import { registerEventsHandlers } from './events'
 import { registerRagHandlers } from './rag'
+import { registerSlashHandlers } from './slash'
+import { registerChaptersHandlers } from './chapters'
 import { registerTasksHandlers } from './tasks'
 import { registerWorkflowsHandlers } from './workflows'
 import { registerMonitorHandlers } from './monitor'
+import { registerAsyncEventHandlers } from './async-events'
 
 export function registerAllIpcHandlers(): void {
   registerChatHandlers()
@@ -62,7 +65,10 @@ export function registerAllIpcHandlers(): void {
   registerGitHubHandlers()
   registerEventsHandlers()
   registerRagHandlers()
+  registerSlashHandlers()
+  registerChaptersHandlers()
   registerTasksHandlers()
   registerWorkflowsHandlers()
   registerMonitorHandlers()
+  registerAsyncEventHandlers()
 }

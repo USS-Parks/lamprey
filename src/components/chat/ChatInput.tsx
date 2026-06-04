@@ -7,6 +7,9 @@ import { useUiStore, type PermissionsMode } from '@/stores/ui-store'
 import { toast } from '@/stores/toast-store'
 import { useThemedIcon } from '@/lib/themed-icon'
 import { ApiKeyModal } from '@/components/settings/ApiKeyModal'
+import { SlashCommandPalette } from './SlashCommandPalette'
+import { useSlashCommandsStore } from '@/stores/slash-commands-store'
+import { usePlanStore } from '@/stores/plan-store'
 import type { ModelInfo, ProcessedFile } from '@/lib/types'
 
 import defaultAccessLight from '@assets/Lamprey Default Access Icon.png'
@@ -709,14 +712,67 @@ export function ChatInput({ onSend, onCancel, isStreaming, disabled }: ChatInput
         return true
       }
       case '/plan': {
-        useUiStore.getState().togglePlanMode()
-        const next = useUiStore.getState().planMode
-        toast.info(`Plan mode ${next ? 'ON' : 'OFF'}`)
+        // Track 2 / C4 + C3 — `/plan` now flips the real per-conversation
+        // dispatcher gate (PlanModeBanner appears). The legacy UI flag
+        // and Shift+Tab toggle keep working alongside it for now.
+        if (activeConvId) {
+          const ok = await usePlanStore.getState().enterPlanMode(activeConvId)
+          if (ok) toast.success('Plan mode is on. Mutating tools are blocked.')
+          else toast.error('Failed to enter plan mode.')
+        } else {
+          toast.error('No active conversation.')
+        }
         return true
       }
-      default:
-        return false
+      case '/clear': {
+        // Track 2 / C4 — renderer-side clear: drop visible messages but
+        // keep the conversation row. The `clear.md` template is hidden in
+        // the palette and only resolves through IPC for harness use.
+        useChatStore.setState({ messages: [], streamingContent: '' })
+        toast.info('Cleared visible messages.')
+        return true
+      }
+      default: {
+        // Track 2 / C4 — try the filesystem-discovered slash-command
+        // resolver. Anything that resolves to a prompt is dispatched as a
+        // normal user turn. Unknown commands fall through to a toast so
+        // the user sees the typo.
+        const rest = raw.trim().slice(cmd?.length ?? 0).trim()
+        const slashResult = await useSlashCommandsStore
+          .getState()
+          .resolve(cmd?.slice(1) ?? '', rest)
+        if (slashResult) {
+          onSend(slashResult.prompt)
+          return true
+        }
+        toast.error(`Unknown slash command: ${cmd}`)
+        return true
+      }
     }
+  }
+
+  // Track 2 / C4 — slash palette state. The palette appears whenever the
+  // input begins with '/' AND has no newline (so a code block beginning
+  // with '/' does not trip it). The user can dismiss with Esc; we close
+  // the palette via `slashPaletteOpen=false` and re-open on the next '/'
+  // typed at the start.
+  const [slashPaletteOpen, setSlashPaletteOpen] = useState(true)
+  const isSlashInput =
+    content.startsWith('/') && !content.includes('\n')
+  const showSlashPalette =
+    isSlashInput && slashPaletteOpen && !isStreaming && !disabled
+  // Strip the leading '/' and take everything up to the first whitespace.
+  const slashQuery = isSlashInput ? content.slice(1).split(/\s/)[0] : ''
+
+  useEffect(() => {
+    // Re-open the palette whenever the user starts a fresh '/' token.
+    if (isSlashInput && !slashPaletteOpen) setSlashPaletteOpen(true)
+  }, [isSlashInput, slashPaletteOpen])
+
+  const applySlashName = (name: string) => {
+    setContent(`/${name} `)
+    setSlashPaletteOpen(false)
+    requestAnimationFrame(() => textareaRef.current?.focus())
   }
 
   const handleSubmit = () => {
@@ -728,7 +784,10 @@ export function ChatInput({ onSend, onCancel, isStreaming, disabled }: ChatInput
     }
     if (trimmed.startsWith('/')) {
       void handleSlashCommand(trimmed).then((handled) => {
-        if (handled) setContent('')
+        if (handled) {
+          setContent('')
+          setSlashPaletteOpen(true)
+        }
       })
       return
     }
@@ -881,7 +940,17 @@ export function ChatInput({ onSend, onCancel, isStreaming, disabled }: ChatInput
         </div>
       )}
 
-      <div className="flex w-full flex-col gap-2 rounded-3xl border border-[var(--border)] bg-[var(--bg-secondary)] px-4 pt-3 pb-2 shadow-lg backdrop-blur-sm">
+      <div className="relative flex w-full flex-col gap-2 rounded-3xl border border-[var(--border)] bg-[var(--bg-secondary)] px-4 pt-3 pb-2 shadow-lg backdrop-blur-sm">
+        {/* Track 2 / C4 — slash-command palette. Anchored to this
+            container's top edge via `bottom-full`, so it floats above
+            the input box without affecting layout. */}
+        {showSlashPalette && (
+          <SlashCommandPalette
+            query={slashQuery}
+            onApply={applySlashName}
+            onClose={() => setSlashPaletteOpen(false)}
+          />
+        )}
         <div className="flex items-start gap-2">
           <textarea
             ref={textareaRef}

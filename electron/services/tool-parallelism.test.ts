@@ -19,6 +19,11 @@ function makeDescriptor(
     risks: [],
     requiresApproval: false,
     enabled: true,
+    // C1 added derived fields. Tests don't need real tags here — they only
+    // exercise the parallelism predicate, which ignores tags + lazy + mutates.
+    tags: ['native'],
+    lazy: false,
+    mutates: false,
     ...overrides
   }
 }

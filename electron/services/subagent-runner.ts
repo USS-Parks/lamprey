@@ -93,6 +93,7 @@ export interface AgentRunNotifyEvent {
   finishedAt?: number
   resultText?: string | null
   error?: string | null
+  worktreePath?: string | null
   background?: boolean
 }
 
@@ -620,6 +621,7 @@ export function forkAgent<T = string | Record<string, unknown>>(
             startedAt,
             finishedAt,
             resultText: raw,
+            worktreePath: finalWorktreePath,
             background: !!opts.runInBackground
           })
         } catch (err) {
@@ -686,6 +688,7 @@ export function forkAgent<T = string | Record<string, unknown>>(
             startedAt,
             finishedAt,
             error: errorMessage,
+            worktreePath: finalWorktreePath,
             background: !!opts.runInBackground
           })
         } catch (notifyErr) {

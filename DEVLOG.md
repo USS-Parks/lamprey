@@ -1,5 +1,401 @@
 # Lamprey Harness Dev Log
 
+## [Track 2 - COMPLETE] Tool Layer + Continuity track shipped - 2026-06-04
+
+All 9 prompts (C1 -> C2 -> C3 -> C4 -> E1 -> E2 -> E5 -> E6 -> E4) are implemented on `feat/track-2-tool-layer`.
+
+**Shipped prompts:**
+1. C1 lazy tool schemas + ToolSearch (`384909e`)
+2. C2 hooks wired into dispatch + Hooks UI (`47179c2`)
+3. C3 plan-mode state gate (`6eacd1b`)
+4. C4 filesystem-discovered slash-command system + built-ins (`2ae9266`)
+5. E1 session chapters + `mark_chapter` tool (`212a611`)
+6. E2 chapter TOC + Ctrl+G quick-jumper (`84b1cd5`)
+7. E5 auto context compression for chat turns (`59663da`)
+8. E6 async event-to-prompt bridge (this completion batch)
+9. E4 spawn-task primitive (this completion batch)
+
+**Verify gate:**
+- `npx tsc --noEmit -p tsconfig.node.json` ok
+- `npx tsc --noEmit -p tsconfig.web.json` ok
+- `git diff --check` ok
+- `npx vitest run electron/services/async-event-bridge.test.ts electron/services/spawn-task.test.ts electron/services/system-prompt-builder.test.ts` blocked before test load: Vite/esbuild config bundling failed with `spawn EPERM` while starting the shared `node_modules/vite/node_modules/esbuild` helper from the sibling root workspace. No test assertions ran.
+
+**Manual smoke / user-verification-needed:**
+- Spawn a background agent in a conversation; after completion, send another message in that conversation and confirm the model sees a `<task-notifications>` block and the user gets an async-event toast.
+- Invoke `spawn_task` from the model or `tasks:spawn` IPC; confirm a child conversation is created, seeded with the task prompt, linked back to the source conversation, and the source chat shows a dismissible chip that opens the child.
+- Confirm real Git worktree creation succeeds from the active workspace for spawn-task. Unit coverage uses seams; runtime creates worktrees via `git worktree add`.
+
+**Notes:**
+- E6 adds a durable `async_events` queue with one-shot drain semantics and an in-memory fallback for test/native-binding failure paths.
+- E4 shares that queue by enqueueing `tasks:spawn-completed`, so spawned tasks become both visible UI chips and model-visible context on the source conversation's next turn.
+- The completion commit batches E6 and E4 because both prompts share `tasks.ts`, `chat-events.ts`, and `preload.ts` surfaces.
+
+---
+
+## [Track 2 - Prompt E4] Spawn-task primitive - 2026-06-04
+
+**Files changed:**
+- `electron/services/spawn-task.ts` (new) - creates linked child conversations, seeds source/child backlink system messages, writes the child prompt, and optionally creates an isolated worktree from the active workspace.
+- `electron/services/spawn-task-tool-pack.ts` (new) - registers `spawn_task` as a mutating native tool.
+- `electron/ipc/tasks.ts` - adds `tasks:spawn` IPC while preserving Track 1 task lifecycle handlers.
+- `src/components/chat/SpawnTaskChip.tsx` + `SpawnTaskTray.tsx` (new) - dismissible source-chat chip; clicking opens the child conversation.
+- `resources/slash-commands/spawn-task.md` - updated to call the real `spawn_task` tool.
+
+**Verify gate:**
+- tsc node ok
+- tsc web ok
+- `git diff --check` ok
+- vitest blocked before config load by `spawn EPERM` from Vite/esbuild helper startup.
+
+**Notes:**
+- The service has dependency seams for tests and runtime worktree creation uses Track 1's `createAgentWorktreeManager`.
+- Source and child conversations both get system backlink markers so the relationship survives a restart even before Integration H5 polishes the persistent tray.
+
+**Commit:** this commit
+
+---
+
+## [Track 2 - Prompt E6] Async event-to-prompt bridge - 2026-06-04
+
+**Files changed:**
+- `electron/services/async-event-bridge.ts` (new) - durable async-event queue, in-memory fallback, one-shot drain, `<task-notifications>` renderer, and `agent:run:notify` adapter.
+- `electron/ipc/async-events.ts` (new) - internal list/drain diagnostics.
+- `electron/services/database.ts` - adds `async_events(id, conversation_id, kind, payload_json, created_at, delivered_at)`.
+- `electron/ipc/chat.ts` + `system-prompt-builder.ts` - drain pending events during prompt assembly and inject `<task-notifications>`.
+- `electron/ipc/tasks.ts` - enqueues terminal background-agent notifications.
+- `src/components/chat/AsyncEventToast.tsx` - subtle toast for queued async events.
+
+**Verify gate:**
+- tsc node ok
+- tsc web ok
+- `git diff --check` ok
+- vitest blocked before config load by `spawn EPERM` from Vite/esbuild helper startup.
+
+**Notes:**
+- Events drain per conversation and are stamped with `delivered_at` so they are not re-injected.
+- The queue is intentionally generic: Track 3's G4 can enqueue `sessions:incoming-message`, loops can enqueue `loops:wakeup-fired`, and automations can enqueue `automations:run-completed` once those producers carry a conversation id.
+
+**Commit:** this commit
+
+---
+
+## [Track 2 — Partial completion summary] 7/9 prompts shipped — 2026-06-03
+
+Track 2 ("Tool Layer + Continuity") shipped 7 of its 9 prompts; the
+remaining 2 (E6, E4) are blocked on Track 1 prompts that have not yet
+merged to `main` per the plan §0 Step 3c wait-gate protocol.
+
+### Shipped (in commit order on `feat/track-2-tool-layer`)
+
+| # | Title | Verify gate |
+|---|---|---|
+| C1 | Lazy tool schemas + ToolSearch | tsc node ✓ · tsc web ✓ · vitest +32 ✓ |
+| C2 | Hooks wired into dispatch + Hooks UI | tsc node ✓ · tsc web ✓ · vitest +14 ✓ · UI smoke: user-verification-needed |
+| C3 | Plan mode state gate | tsc node ✓ · tsc web ✓ · vitest +7 ✓ · UI smoke: user-verification-needed |
+| C4 | Slash command system + built-ins | tsc node ✓ · tsc web ✓ · vitest +14 ✓ · UI smoke: user-verification-needed |
+| E1 | Session chapters | tsc node ✓ · tsc web ✓ · vitest +5 ✓ · DB smoke: user-verification-needed |
+| E2 | Session TOC + nav | tsc node ✓ · tsc web ✓ · vitest unchanged (DOM-heavy UI) · UI smoke: user-verification-needed |
+| E5 | Auto context compression | tsc node ✓ · tsc web ✓ · vitest +7 ✓ · DB smoke: user-verification-needed |
+
+**Cumulative test delta:** baseline 822 → 901 passing / 5 skipped (+79 tests across the 7 prompts, 0 regressions).
+
+### Blocked
+
+| # | Title | Blocker | Plan §0 §3c |
+|---|---|---|---|
+| E6 | Async event-to-prompt bridge | T1:A2 (background agents + `agent:run:notify`) not merged to main | Defer; revisit after A2 lands. |
+| E4 | Spawn-task primitive | T1:A3 (worktree-isolated subagent runs + `worktree-runner.ts`) not merged to main | Halt per plan: "if A3 is still unmerged when you get there, halt with 'waiting-on-T1:A3' status". |
+
+**Wait status:** `waiting-on-T1:A2` (E6) and `waiting-on-T1:A3` (E4). When the corresponding Track 1 commits land on main, either continue this branch or open a fresh session pointed at this worktree to resume.
+
+### Architectural impact for Tracks 1 + 3 to be aware of when rebasing
+
+- **`electron/services/tool-registry.ts`** — `LampreyToolDescriptor` now requires `tags: string[]`, `lazy: boolean`, `mutates: boolean`. `LampreyToolRegistration` accepts all three as optional and the registry normalizes them on insert. The 10 existing tool-pack files did not need edits; T1/T3's new tool registrations should follow the same pattern (omit unless you need to override the derived defaults).
+- **`electron/ipc/chat.ts`** — dispatcher now runs `compressOldestMessages` then `getEffectiveMessages` BEFORE pulling history (E5); the plan-mode gate (C3) and preToolUse/postToolUse hook fences (C2) wrap the dispatch branch. T1's subagent-fork wiring (A1) needs to land on top of these gates, not under them — a subagent call is itself dispatched through this same path.
+- **`electron/services/chat-events.ts`** — `ChatEventMap` extended with `plan:mode-changed`, `chat:chapter-marked`, `chat:compressed`. Renderer event subscribers can rely on all three.
+- **`electron/services/event-log.ts`** — `EVENT_TYPES` extended with `chat.chapter.marked` and `chat.compressed`. Renderer `EventType` mirror in `src/lib/types.ts` and `event-presentation.ts` labels are in sync.
+- **`electron/services/system-prompt-builder.ts`** — extended additively (new `progress` bullet for `mark_chapter`). T3:D2's `memory_index` block can land in front of all existing blocks without conflict.
+- **`electron/preload.ts`** — new namespaces: `tools.resolve` / `tools.search` (C1), `hooks.test` (C2), `plan.isModeActive` / `enterMode` / `exitMode` / `onModeChanged` (C3), `slash.list` / `listAll` / `resolve` / `onChanged` (C4), `session.markChapter` / `listChapters` / `chaptersForAnchor` / `deleteChapter` / `onChapterMarked` (E1). No removals.
+
+### Manual smoke checklist (Electron-only items the preview server can't reach)
+
+The user should run these to confirm the renderer integrations land cleanly on a real machine:
+
+1. **C1** — Open Settings (or wherever tools are surfaced); `tools:list` payload is materially smaller than before.
+2. **C2** — Settings → Hooks: 5-event tabs, create a `preToolUse` JS hook that throws on `shell_command`, Test → BLOCKED chip; Save and confirm shell_command actually blocks during a chat.
+3. **C3** — Have the model call `enter_plan_mode`; yellow banner appears; attempt `shell_command` → blocked; click Exit banner → next call runs.
+4. **C4** — Type `/` in chat input; palette appears with 8 built-ins; type `/verify` and submit → verify prompt dispatched; drop a custom `userData/slash-commands/release-notes.md` → palette updates without restart.
+5. **E1 + E2** — Have the model call `mark_chapter` 4 times; sidebar appears top-right with 4 entries; Ctrl/Cmd+G opens the jumper; click a row scrolls to the divider.
+6. **E5** — Run a long conversation until projected tokens cross 75% of the model's context; the next turn auto-compresses, a `<conversation_summary>` system message appears as a CompressedRegionPill, the next prompt to the model contains the summary block in place of the originals.
+
+### Next steps
+
+1. Wait for Track 1's A2 + A3 to merge to `main`.
+2. Resume this branch (or open a new session pointing at `feat/track-2-tool-layer`) and implement E6 + E4 per the plan.
+3. After E6 + E4 ship, fast-forward `feat/track-2-tool-layer` and prep for merge to `main`.
+
+---
+
+## [Track 2 — Prompt E5] Auto context compression — 2026-06-03
+
+**Files changed:**
+- `electron/services/database.ts` — migration `safeAddColumn(messages, 'compressed_into TEXT')`.
+- `electron/services/conversation-store.ts` — extended `MessageRow` and `getMessages` mapping to surface `compressedInto` to the renderer.
+- `electron/services/context-compressor.ts` (new) — `estimateTokens`, `estimateTokensForMessages`, `projectedTokens(convId)`, `shouldCompress(convId, ctxWindow, thresholdPct=0.75)`, `selectMessagesToCompress(convId, ctxWindow, targetPct=0.4)`, `buildSummaryText(rows)`, `compressOldestMessages(convId, ctxWindow, opts?)`, `getEffectiveMessages(convId)`. The compressor selects the oldest non-compressed messages, generates a deterministic `<conversation_summary>` body (excerpt-per-turn), persists it as a `role: 'system'` message with `created_at = oldest.created_at - 1` so ORDER BY puts it ahead of the surviving turns, marks the originals' `compressed_into`, and emits a `chat.compressed` spine event. Tool/assistant pair preservation: if the last selected message is an `assistant` with a following `tool` response, the selection extends to keep them together (prevents orphaning a tool reply from its tool_calls).
+- `electron/services/event-log.ts` — added `chat.compressed` to `EVENT_TYPES`.
+- `electron/services/chat-events.ts` — added `ChatCompressedPayload` + `chat:compressed` to `ChatEventMap`.
+- `electron/ipc/chat.ts` — before pulling history at the top of every chat turn, runs `compressOldestMessages(conversationId, resolveModel(model).contextWindow)`; emits `chat:compressed` on success. Prompt assembly switched from `convStore.getMessages` to `getEffectiveMessages(conversationId)` so the model sees the summary in place of the originals; the renderer still sees both via the unchanged getMessages.
+- `src/lib/types.ts` — added optional `compressedInto?: string` to `Message`; added `chat.compressed` to the renderer `EventType` mirror.
+- `src/lib/event-presentation.ts` — added "Context compressed" label.
+- `src/components/chat/CompressedRegionPill.tsx` (new) — renders in place of a system-role message whose content carries `<conversation_summary>…</conversation_summary>`. Closed by default; click to reveal the summary body. Exports `isCompressedSummaryMessage(msg)` for the detector.
+- `src/components/chat/MessageList.tsx` — extracted message rendering into a function: messages with `compressedInto` set are skipped (defensive double-guard against the raw view); summary messages render as `<CompressedRegionPill>`; everything else falls through to `SystemMarker` or `MessageBubble` as before.
+- `electron/services/context-compressor.test.ts` (new) — 7 tests covering `estimateTokens`, `estimateTokensForMessages`, and the documented thresholds. DB-side branches (`shouldCompress`, `selectMessagesToCompress`, `compressOldestMessages`) are integration territory because they go through better-sqlite3 + Electron app-path; the manual verify steps in the DEVLOG cover them.
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- vitest 901 passed / 5 skipped (894 → +7 new) ✓
+- Manual smoke — **user-verification-needed** (needs Electron + DB + a chat conversation):
+  1. Set the active model to a small-context model (e.g. force a 16k context entry via the renderer's model list — or use DeepSeek which has a 65k default). With the default 75% threshold, accumulating roughly 12k tokens (≈48k characters) triggers compression.
+  2. After enough turns, the next chat:send round inserts a `role: 'system'` message containing `<conversation_summary>…` and marks every selected message's `compressed_into` to that id. The CompressedRegionPill replaces those messages in the chat view (closed by default; click to expand).
+  3. `getEffectiveMessages` returns the summary + everything since; `buildApiMessagesFromStoredMessages` produces a prompt with ~40%+ fewer tokens (the deterministic summary's excerpts run ~120 chars per original message; at ≥3:1 compression ratio per original message, the projection shrinks well past the verify gate's 40%).
+  4. Activity Timeline shows a "Context compressed" entry with `compressedCount`, `originalTokens`, `summaryTokens`, `reductionPct` in the payload.
+  5. Reload the app. The compressed messages still have `compressed_into` populated; the summary is still the first row in the conversation by `created_at` ordering. Renderer still hides the originals and shows the pill.
+
+**Notes:**
+- v1 summary is DETERMINISTIC — a structured per-turn excerpt list wrapped in `<conversation_summary>…</conversation_summary>`. No model call (the chat dispatcher's own next turn IS the summarizer if we needed a model-driven version). The 4-chars-per-token estimator + 120-char per-message excerpt yields a 4–5× compression on long turns; tested implicitly by the projection arithmetic, observed at integration time.
+- The summary message is `role: 'system'` so it doesn't clash with the OpenAI tool-pair invariants (tool_calls must be followed by role: 'tool'). A second compression run later on inserts a new summary with its own id; the older summary stays visible and the pile-up renders as two pills in a row. Future-work: collapse consecutive summary pills in the renderer.
+- Threshold + target percentages are constants (`DEFAULT_COMPRESS_THRESHOLD_PCT = 0.75`, `DEFAULT_COMPRESS_TARGET_PCT = 0.4`) — settings UI surface is out of scope for E5; H4 / H5 polish prompts can add a slider.
+- The compressor is idempotent: a conversation that has already been compressed sees `projectedTokens` projecting only the surviving messages (compressed originals are excluded from the projection). Calling it again on the same conversation does not re-fold the summary.
+- Merge-hotspot coordination: `event-log.ts` `EVENT_TYPES` extended (additive), `chat-events.ts` `ChatEventMap` extended (additive), `Message` mirror extended (additive optional). `chat.ts` changes the SOURCE of history (`getEffectiveMessages` instead of `getMessages`) without changing the downstream contract — other tracks touching chat.ts need no rebase.
+
+**Commit:** see `git log feat/track-2-tool-layer`.
+
+---
+
+## [Track 2 — Prompt E2] Session TOC + nav — 2026-06-03
+
+**Files changed:**
+- `src/stores/chapters-store.ts` (new) — renderer chapters store: `loadForConversation`, `applyMarked` (live `chat:chapter-marked` reducer), `clear`. Mirrors the main-side Chapter shape 1:1.
+- `src/components/chat/ChapterDivider.tsx` (new) — inline boundary between messages. Carries `data-chapter-id` so the sidebar / quick-jumper can scrollIntoView. Hover surfaces the chapter summary.
+- `src/components/chat/ChapterSidebar.tsx` (new) — floating TOC pinned to the top-right of the chat column. Lists every chapter for the active conversation; self-hides when the list is empty. Click scrolls the message list to the divider.
+- `src/components/chat/ChapterQuickJumper.tsx` (new) — Ctrl+G modal with type-to-filter input. Ranks by title prefix > title substring > summary substring. Arrow keys navigate, Enter jumps, Esc dismisses.
+- `src/components/chat/MessageList.tsx` — wraps each message in a `<div data-message-id={msg.id}>` so future deep-link tooling can target by message id; computes a "before message at index i" → `Chapter[]` map by walking sorted chapters and finding the first message whose `timestamp >= chapter.createdAt`. Renders `<ChapterDivider>` before that message. Chapters created after the last existing message land in an `afterAll` bucket rendered at the bottom (so a late `mark_chapter` still shows up).
+- `src/components/chat/ChatView.tsx` — mounts `<ChapterSidebar conversationId={activeConversationId} />` and `<ChapterQuickJumper conversationId={activeConversationId} />`.
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- vitest 894 passed / 5 skipped (no new tests; E2 is heavily DOM-dependent UI — scroll behaviour, keyboard handlers, popovers are hard to unit-test meaningfully) ✓
+- Manual smoke — **user-verification-needed** (needs Electron + `window.api.session`):
+  1. Have the model call `mark_chapter` 4 times across a chat. Sidebar appears in the top-right corner with all 4 titles, counts 4.
+  2. Hover a sidebar row. The summary appears in the native tooltip.
+  3. Click a sidebar row. The message list smooth-scrolls to the divider with `block: 'start'`.
+  4. Press Ctrl+G. The quick-jumper opens, the input is focused. Type the first few characters of a chapter title; the list filters and ranks by prefix > substring > summary. Enter jumps; Esc closes.
+  5. Resize the chat pane narrower. The sidebar stays anchored to top-right and doesn't overlap the message text past the column edge (sidebar is 200 px wide and the chat column is `max-w-4xl`; the absolute-positioned sidebar floats inside the column padding).
+
+**Notes:**
+- Chapter placement is by timestamp, not by anchor-message-id. E1 stores `anchor_message_id` as the tool-call id (which doesn't correspond to a message row), so the renderer uses `createdAt` instead — chapters sit between messages, which matches the user's intuition. If a future iteration wants exact-message anchoring (e.g., when the user manually marks a chapter from the UI on a specific message), `data-message-id` is already in place.
+- The sidebar is an `<aside>` inside `ChatView`'s outer wrapper, positioned `absolute right-3 top-3`. The chat column itself is `position: relative` because of the FileDropZone overlay; the sidebar inherits the same anchor.
+- Ctrl+G also responds to Cmd+G on macOS (the handler checks `e.ctrlKey || e.metaKey`).
+- Live updates: `ChapterSidebar` subscribes to `chat:chapter-marked` and adds the new row to the store; the message list re-renders on the next mount because chapters is in zustand. The quick-jumper reads the same store so it sees the new entry on its next open.
+
+**Commit:** see `git log feat/track-2-tool-layer`.
+
+---
+
+## [Track 2 — Prompt E1] Session chapters — 2026-06-03
+
+**Files changed:**
+- `electron/services/database.ts` — new `chapters(id, conversation_id, title, summary, anchor_message_id, created_at)` table with `idx_chapters_conversation` + `idx_chapters_anchor`. Foreign key `conversation_id REFERENCES conversations(id) ON DELETE CASCADE` — deleting a conversation cleans its chapters.
+- `electron/services/chapters-store.ts` (new) — `createChapter`, `listChapters(conversationId)`, `getChapter`, `listChaptersByAnchor`, `deleteChapter`.
+- `electron/ipc/chapters.ts` (new) — `session:markChapter`, `session:listChapters`, `session:chaptersForAnchor`, `session:deleteChapter`. Every successful mark emits `chat:chapter-marked` for live renderer subscriptions.
+- `electron/ipc/index.ts` — wired `registerChaptersHandlers()`.
+- `electron/services/tool-registry.ts` — registered `mark_chapter` native tool with empty risks, `mutates: false`, schema `{ title: required string, summary?: string }` and `additionalProperties: false`. Surface description teaches the model when to use it (phase shifts, not every tool call).
+- `electron/ipc/chat.ts` — inline handler under `enter_plan_mode` / `exit_plan_mode`: validates title, anchors the chapter at the tool-call id (the post-tool assistant message has not been persisted yet at this dispatch point — chat-history maps the tool-call id back to its parent assistant turn), creates the row, emits `chat:chapter-marked`, records the `chat.chapter.marked` spine event.
+- `electron/services/chat-events.ts` — new `chat:chapter-marked` payload + entry in `ChatEventMap`.
+- `electron/services/event-log.ts` — new `chat.chapter.marked` entry in `EVENT_TYPES`.
+- `electron/services/system-prompt-builder.ts` — bullet under `progress` instructing the model on when to call `mark_chapter`.
+- `electron/preload.ts` — new `session.markChapter`, `listChapters`, `chaptersForAnchor`, `deleteChapter`, `onChapterMarked` bindings.
+- `src/lib/types.ts` — added `chat.chapter.marked` to the renderer `EventType` mirror.
+- `src/lib/event-presentation.ts` — added "Chapter marked" label so the Activity Timeline shows the right name.
+- `electron/services/chapters-mark-tool.test.ts` (new) — 5 tests covering descriptor registration shape, schema requirements, `additionalProperties: false`, search ranking, and event-type registration. DB CRUD is left to integration smoke (better-sqlite3 + Electron app-path dependency makes a unit test mostly mechanical mocking).
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- vitest 894 passed / 5 skipped (889 → +5 new) ✓
+- Manual smoke — **user-verification-needed** (DB-backed; chokidar / Electron required):
+  1. Have the model call `mark_chapter` with `{ title: "Exploration" }`. The tool result text is `Chapter marked: "Exploration"`; a row lands in `chapters` with the tool-call id as `anchor_message_id`.
+  2. Call again with `{ title: "Implementation", summary: "Apply patches per the plan" }`. A second row lands ordered by `created_at`.
+  3. `session:listChapters(<convId>)` returns both rows in insertion order.
+  4. Restart the app. `session:listChapters(<convId>)` still returns the two rows (table is persisted).
+  5. The Activity Timeline shows two "Chapter marked" entries (spine event recorded).
+  6. The renderer-side sidebar / divider / quick-jumper land in E2 — confirming presence in this smoke does not need any of those.
+
+**Notes:**
+- The renderer-visible sidebar (`ChapterSidebar`), inline `ChapterDivider`, and `ChapterQuickJumper` ship in E2. E1 establishes the data plane only; the renderer can hydrate via `session:listChapters` and subscribe to `chat:chapter-marked` even before E2 lands.
+- Anchor choice: this implementation anchors on the tool-call id rather than the next-persisted assistant message id. Reason: the assistant message that carries the mark_chapter call is saved AFTER the call resolves, so at handler time there is no message id to point at; the tool-call id is the closest stable identifier in this dispatch step. E2's renderer treats the anchor as a boundary marker rather than an exact pin (chapters are between messages, not at one), so this maps cleanly.
+- System-prompt mention is in the `progress` section; the model already sees the descriptor's full prose in the OpenAI tool array, but the `<contract>` reminder makes it actually reach for it. The block ordering plan §2 invariant (`memory_index → skills → retrieved_context → chapters → conversation`) ships the `<chapters>` block via T3:D2 — E1 doesn't add that block, only registers the tool + data plane.
+- Merge-hotspot coordination: `chat-events.ts` extended (additive), `event-log.ts` `EVENT_TYPES` extended (additive), `tool-registry.ts` registration appended (no shape change). Other tracks need no rebase.
+
+**Commit:** see `git log feat/track-2-tool-layer`.
+
+---
+
+## [Track 2 — Prompt C4] Slash command system + built-ins — 2026-06-03
+
+**Files changed:**
+- `electron/services/slash-commands.ts` (new) — filesystem-discovered loader mirroring `skill-loader.ts`. Built-ins live in `resources/slash-commands/`; the loader bootstraps `userData/slash-commands/` from there on first run and watches for live edits via chokidar. Frontmatter: `{name, description, args?, hidden?}`. Body is the prompt template; `interpolateSlashBody` supports `{{args}}` (joined rest), `{{arg1}}..{{argN}}` (positional, empty when out of range), `{{<named>}}` (from `args:` frontmatter), and leaves unmatched non-positional tokens literal.
+- `electron/ipc/slash.ts` (new) — `slash:list` (visible commands), `slash:listAll` (incl. hidden), `slash:resolve({name, rest})`. Hidden entries stay out of `slash:list` but `resolve` still resolves them.
+- `electron/ipc/index.ts` — registers the new handlers.
+- `electron/main.ts` — `initializeSlashCommandLoader()` at startup; `shutdownSlashCommandLoader()` at will-quit.
+- `electron/preload.ts` — `slash.list / listAll / resolve / onChanged` bindings.
+- `electron-builder.yml` — bundles `resources/slash-commands/` into the packaged `process.resourcesPath/slash-commands/`.
+- `resources/slash-commands/*.md` (9 built-ins): `/init`, `/review`, `/verify`, `/simplify`, `/loop`, `/plan`, `/workflow`, `/spawn-task`, `/clear` (hidden).
+- `src/stores/slash-commands-store.ts` (new) — renderer store: `commands`, `load`, `resolve`, `applyChange` (live `slash:changed` reducer).
+- `src/components/chat/SlashCommandPalette.tsx` (new) — popover above the chat input that lists matching commands when content starts with `/`. Keyboard: ↑/↓ to focus, Tab/Enter to apply, Esc to dismiss. Each row shows `/name`, the source badge (`user`/`builtin`), optional `<arg>` placeholders, and the description.
+- `src/components/chat/ChatInput.tsx` — detects leading `/` (no newline), mounts the palette, routes the existing renderer-side cases (`/compact`, `/fork`, `/models`, `/fast`) plus two repurposed ones: `/plan` now calls `usePlanStore().enterPlanMode(activeConvId)` (C3's real gate) and `/clear` drops visible messages. Anything else goes through `useSlashCommandsStore().resolve(name, rest)` → `onSend(prompt)`.
+- `electron/services/slash-commands.test.ts` (new) — 14 tests over `parseSlashFile`, `fileNameToSlug`, `isMarkdownFile`, `interpolateSlashBody`. Electron is mocked at the module boundary (same pattern as `event-log.test.ts`).
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- vitest 889 passed / 5 skipped (875 → +14 new) ✓
+- Manual smoke — **user-verification-needed** (Electron-only, `window.api.slash` IPC + chokidar watch):
+  1. Launch Electron. Type `/` in the chat input → palette appears with the 8 visible built-ins.
+  2. Type `/rev` → "review" ranks first. Tab inserts `/review `.
+  3. Send `/verify` → the verify prompt dispatches to the model as a user turn.
+  4. Drop a file in `userData/slash-commands/release-notes.md`:
+     ```
+     ---
+     name: release-notes
+     description: Draft release notes for the named version.
+     args: [version]
+     ---
+     Draft release notes for version {{version}}.
+     ```
+     The palette updates without restart (chokidar fires `slash:changed`). Send `/release-notes 1.2.3` → the model receives "Draft release notes for version 1.2.3.".
+  5. Send `/plan` → PlanModeBanner appears (C3 gate flips). Send `/clear` → visible messages drop but the conversation row stays.
+  6. Type `/nope` → toast "Unknown slash command: /nope" (no IPC fallback hit).
+
+**Notes:**
+- The pre-C4 `/plan` was a renderer-side prefix-the-message UI flag. C4 retargets `/plan` at C3's dispatcher-level gate (`PlanModeBanner` appears) — the model gets a real "no mutations" guarantee rather than a polite prompt prefix. The legacy Shift+Tab toggle for the pre-C3 UI flag stays in place for users who muscle-memory it; that flag can be retired in a follow-up.
+- The `/workflow` and `/spawn-task` templates ship as prompt text that *describes* the future capability (Track 1 / B1 and Track 2 / E4). Until those land, sending the command surfaces the description; the renderer does not error.
+- `/clear` is `hidden: true` in the markdown so it stays out of the palette but is still typeable; the renderer takes precedence and short-circuits, the IPC path stays available for harness callers.
+- Tag taxonomy: slash-commands have a `source: 'user' | 'builtin'` field on the renderer-visible payload, surfaced as a chip in the palette. `userData/slash-commands/<name>.md` shadows the built-in of the same name (built-in's body is copied into userData on first run, so the user's override always wins).
+- Merge-hotspot coordination: `electron/preload.ts` extended with a new `slash` namespace; no overlap with the C1/C2/C3 surfaces. `chat.ts` not touched (slash routing lives entirely in `ChatInput.tsx`).
+
+**Commit:** see `git log feat/track-2-tool-layer`.
+
+---
+
+## [Track 2 — Prompt C3] Plan mode state gate — 2026-06-03
+
+**Files changed:**
+- `electron/services/database.ts` — migration `safeAddColumn(conversations, 'plan_mode_active INTEGER NOT NULL DEFAULT 0')`.
+- `electron/services/conversation-store.ts` — new `isPlanModeActive(id)` / `setPlanModeActive(id, active)` helpers; the flag survives restart on the conversation row.
+- `electron/services/tool-registry.ts` — added required `mutates: boolean` to `LampreyToolDescriptor`; `LampreyToolRegistration` accepts it as optional and the registry derives `mutates = risks.includes('write') || risks.includes('destructive')` when omitted; MCP descriptor build path also computes it. New helper `isMutatingDescriptor(d)`. Two new inline-registered tools: `enter_plan_mode` and `exit_plan_mode` with empty risks + `mutates: false` so they always run.
+- `electron/services/tool-search.ts` — `computeToolTags` emits a `'mutates'` meta-tag when the flag is set, for the renderer's filter chips and the model-facing tool description.
+- `electron/services/chat-events.ts` — new `plan:mode-changed` event with `PlanModeChangedPayload { conversationId, active }`.
+- `electron/ipc/chat.ts` — dispatcher gates mutating tools BEFORE the approval modal: `blockedByPlanMode = isPlanModeActive(conv) && isMutatingDescriptor(desc)`, sets `approvalSource = 'plan-mode'` and returns `'Blocked: plan mode is active...'` with status `'denied'`. Inline handlers for `enter_plan_mode` / `exit_plan_mode` persist the flag and emit `plan:mode-changed`.
+- `electron/ipc/plan.ts` — new `plan:isModeActive`, `plan:enterMode`, `plan:exitMode` IPC channels.
+- `electron/preload.ts` — `plan.isModeActive`, `plan.enterMode`, `plan.exitMode`, `plan.onModeChanged` bindings.
+- `src/lib/types.ts` — mirrored `mutates: boolean` (required) on `LampreyToolDescriptor`.
+- `src/stores/plan-store.ts` — added `planModeActive: boolean | null`, `enterPlanMode` / `exitPlanMode` actions, `applyModeChange` reducer. `loadForConversation` fetches both plan snapshot AND mode flag in parallel.
+- `src/components/chat/PlanModeBanner.tsx` (new) — yellow strip with "Plan mode is on" + "Exit plan mode" button, hydrates via `plan:isModeActive`, subscribes to `plan:mode-changed`, hides when `planModeActive !== true`.
+- `src/components/chat/ChatView.tsx` — mounts `<PlanModeBanner conversationId={activeConversationId} />` between the file-drop overlay and the message list.
+- `electron/services/plan-mode.test.ts` (new) — 7 tests covering descriptor-side `mutates` derivation, `isMutatingDescriptor`, and the enter/exit-tool mutates-false invariant.
+- `electron/services/tool-parallelism.test.ts` — test helper extended with `mutates: false`.
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- vitest 875 passed / 5 skipped (868 → +7 new) ✓
+- Manual smoke — **user-verification-needed**: PlanModeBanner + dispatcher integration need Electron + better-sqlite3. Steps:
+  1. Launch Electron, open a conversation, ask the model to `enter_plan_mode`. Banner appears (yellow strip, "Exit plan mode" button).
+  2. Ask the model to run `shell_command` (or any apply_patch). Tool result reads `Blocked: plan mode is active...` with status `denied` in the audit log.
+  3. Ask the model to run `workspace_context` (read-only). Runs normally — confirms read tools still flow.
+  4. Click "Exit plan mode" in the banner. Banner disappears, next `shell_command` runs (subject to the existing approval gate).
+  5. Re-enter plan mode, force-reload the renderer (Ctrl+R). Banner re-renders on conversation load — plan_mode_active survived because it's persisted on the conversation row.
+  6. Verify `plan-goal-store.ts` checklist (`update_plan` tool) still works inside plan mode (it has risk `'write'` BUT it's a session-state mutation; if this is undesirable we'll need to mark it `mutates: false` explicitly in a follow-up — currently it is gated like other write tools, which is the safer default and means the plan needs to be authored before entering plan mode).
+
+**Notes:**
+- `mutates` derivation defaults to write+destructive risks. The two plan-mode toggles explicitly opt out (`mutates: false`) so they remain callable. The renderer mirror keeps `mutates` required so consumers don't have to handle `undefined` — main-side `LampreyToolRegistration` accepts it as optional to spare the 10 tool-pack files from edits.
+- Block precedes approval (the plan-mode check zeroes `needsApproval`). Reason: there is no point asking the user to approve a tool that plan mode forbids, and a global "deny destructive" policy must not silently allow what plan mode forbids.
+- The `update_plan` tool keeps its `mutates: true` derivation — that's safe (users author plans before entering plan mode) but slightly inconvenient. If complaints arise, a follow-up can flag plan/goal mutation tools as session-only (similar to enter/exit_plan_mode). Tracked here rather than spawning a separate plan to avoid premature scope.
+- Merge-hotspot coordination: `tool-registry.ts` shape extended (+1 required field on the exposed descriptor; +1 optional on the registration input). Existing tool-pack registrations need no edits. Track 1 / T3 must rebase their new tool descriptors onto the extended shape — same `LampreyToolRegistration` ergonomics (mutates auto-derived from risks; explicitly opt out when needed).
+
+**Commit:** see `git log feat/track-2-tool-layer`.
+
+---
+
+## [Track 2 — Prompt C2] Hooks wired into dispatch + Hooks UI — 2026-06-03
+
+**Files changed:**
+- `electron/services/database.ts` — migration: `safeAddColumn(hooks, language TEXT NOT NULL DEFAULT 'shell')` + `timeout_ms INTEGER NOT NULL DEFAULT 5000`. Existing rows preserve their shell semantics; new rows from the UI explicitly set `language='js'`.
+- `electron/services/hooks-store.ts` — added `language: 'js' | 'shell'` + `timeoutMs` to `Hook`; `getHook(id)` getter; `createHook` / `updateHook` thread the new fields. `DEFAULT_HOOK_TIMEOUT_MS = 5000` exported.
+- `electron/services/hooks-runner.ts` (rewritten) — new `vm`-sandboxed JS path with bindings (`event`, `conversationId`, `toolName`, `args` deep-clone, `result`, `promptBody`, `cwd`, `log(...)`, `console.{log,error,warn}`, `Date`, `JSON`, `Math`). `preToolUse` blocks dispatch when a hook throws — message reaches the model as the synthetic tool result. Legacy shell-language path preserved for pre-migration rows. New `testHook({ code, event, context, timeoutMs })` for the UI test-run button.
+- `electron/ipc/hooks.ts` — `hooks:create` / `hooks:update` accept `language` + `timeoutMs`. New `hooks:test` IPC.
+- `electron/ipc/chat.ts` — `resolveSingleToolCall` now wraps the dispatch branch with `await fireHooks('preToolUse', ...)`; if blocked, returns `'Blocked by hook: <reason>'` with status `'denied'`. Post-call: `await fireHooks('postToolUse', { ..., result })` before recording the audit row. Existing `promptSubmit` / `agentStop` call sites switched to `void fireHooks(...)` for the async signature.
+- `electron/main.ts` — `void fireHooks('sessionStart')`.
+- `electron/preload.ts` — added `hooks.test` binding; `hooks.create` / `hooks.update` accept the new fields.
+- `src/stores/hooks-store.ts` (new) — renderer hooks store. Load + create + update + remove + test. `lastTest` slot holds the most recent test run for the editor pane.
+- `src/components/settings/HooksSettings.tsx` (rewrite) — per-event tab strip with count badges, master/detail list + editor, code textarea, language badge (legacy 'shell' marked deprecated and read-only-runtime), timeout field, enable toggle, Save / Test / Delete buttons, inline test-output panel (BLOCKED / OK chip + thrown message + log lines).
+- `electron/services/hooks-runner.test.ts` (new) — 14 tests covering sandbox bindings, preToolUse blocking, args-clone isolation, timeout, multi-hook ordering, disabled-hooks-skipped, postToolUse no-block. `listHooksForEvent` is mocked at the module boundary so the runner is exercised without booting better-sqlite3 / Electron.
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- vitest 868 passed / 5 skipped (854 baseline → +14 from `hooks-runner.test.ts`) ✓
+- Manual smoke — **user-verification-needed**: the HooksSettings panel needs window.api.hooks (Electron IPC + better-sqlite3) so the preview server cannot exercise create/test/delete. Steps for the user:
+  1. Launch Electron (`ELECTRON_EXEC_PATH=... npx electron-vite dev`).
+  2. Open Settings → Hooks. Confirm 5-event tab strip with count badges.
+  3. New hook on `preToolUse` with body `if (toolName === "shell_command") throw "blocked by hook"`; click Test → expect "BLOCKED" chip + thrown line.
+  4. Save and submit a chat turn that invokes `shell_command`. Tool result should read `Blocked by hook: blocked by hook` and the audit row status `'denied'`.
+  5. Disable the hook from the list checkbox → next shell call runs normally.
+  6. Create a `postToolUse` hook with `log(toolName, "→", result.slice(0, 60))`; run any tool; confirm the log line appears in the hook's Test output for a subsequent test-run with sample context (live postToolUse logs route to backend console for now — UI surfacing is H4).
+  7. Delete the hook — list updates, no stale row.
+
+**Notes:**
+- Architectural-invariant compliance (plan §2 item 3): same `vm` sandbox shape as workflows. Track 1 / B1 will eventually extract a shared sandbox helper; until then, both modules (workflow-runner once it lands, hooks-runner now) construct their own `vm.createContext` with the same security posture (no `require`, no `process`, no fs/net, configurable timeout). When B1 lands the hooks-runner can rebase onto the extracted helper without behaviour change.
+- preToolUse multi-hook ordering: the first throw wins (sets `blocked` + `blockReason`); later hooks still run so their `log()` calls are captured. This means an audit-style postcondition hook keeps working even when an earlier hook objected.
+- `args` snapshot uses `structuredClone` (Node 17+) with a JSON-roundtrip fallback. Sandbox mutations cannot leak back into the dispatcher's args object.
+- Legacy `shell` hooks remain executable but cannot be created from the new UI; the editor surfaces a "Legacy shell hook" warning and disables the Test button (shell test would spawn a child process and that's not what the inline editor preview promises).
+- Merge-hotspot coordination: `chat.ts` dispatch hook wires landed before T1:A1 (subagent-fork). T1 must rebase its dispatch additions on top of the new preToolUse / postToolUse fences.
+
+**Commit:** see `git log feat/track-2-tool-layer`.
+
+---
+
+## [Track 2 — Prompt C1] Lazy tool schemas + ToolSearch — 2026-06-03
+
+**Files changed:**
+- `electron/services/tool-search.ts` (new) — pure functions: `computeToolTags`, `parseSelectQuery`, `tokenizeQuery`, `scoreDescriptor`, `searchDescriptors`.
+- `electron/services/tool-registry.ts` — added `tags: string[]` and `lazy: boolean` (required) to `LampreyToolDescriptor`; new `LampreyToolStub` and `LampreyToolRegistration` types; `registerNative()` now accepts the relaxed registration shape and normalizes derived fields on insert; new methods `getStubs()`, `resolveByName()`, `search()`. `getDescriptors()` populates tags+lazy for MCP-derived descriptors at build time.
+- `electron/ipc/tools.ts` — `tools:list` returns stubs (no `inputSchema`); new `tools:resolve(names[])` and `tools:search({ query, maxResults })` handlers.
+- `electron/preload.ts` — exposed `tools.resolve` and `tools.search`.
+- `src/lib/types.ts` — mirrored `tags`/`lazy` on `LampreyToolDescriptor`; added `LampreyToolStub`.
+- `src/stores/tools-store.ts` — replaced eager `descriptors` cache with `stubs` + `resolved` map + `resolveTools` / `searchTools` actions.
+- `electron/services/tool-parallelism.test.ts` — test helper updated to include the new required `tags`/`lazy` fields.
+- `electron/services/tool-registry.test.ts` (extend) + `electron/services/tool-search.test.ts` (new) — 32 new tests.
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- vitest 854 passed / 5 skipped (baseline 822 + 32 new) ✓
+- No preview server needed: change is backend + store-only, no renderer surface consumes it yet.
+
+**Notes:**
+- The "MCP tools tagged `lazy: true`; schema fetched on first resolve" line in the prompt is satisfied structurally by the IPC-payload split: MCP schemas are still fetched at MCP connect time (the MCP `listTools` protocol returns them in one call — there is no per-tool schema endpoint), but `tools:list` no longer ships them to the renderer. Renderers expand on demand. Chat dispatch still uses `getOpenAITools()` internally, so the model surface is unchanged ("auto-resolves on demand" invariant — the dispatcher always materializes full schemas before calling the model).
+- Tag taxonomy locked: `providerKind` (native | mcp | plugin), every risk class (read | write | network | destructive | secret), and meta tags (`lazy`, `approval-required`, `parallelizable`). C3 will add `mutates` to gate plan mode; the tag list grows additively.
+- Merge hotspot: `tool-registry.ts` shape change. Track 1 and Track 3 must rebase their tool registrations onto the new `LampreyToolRegistration` input type — `tags` and `lazy` are optional at registration so existing call sites (10 tool-pack files + 2 inline natives) needed no edits. Net touch outside this prompt: 1 test helper.
+
+**Commit:** see `git log feat/track-2-tool-layer -- electron/services/tool-search.ts` (SHA inline in the commit would chase itself across amends).
+
+---
+
 ## [Track 1 — COMPLETE] Runtime Foundation track shipped — 2026-06-03
 
 All 8 prompts (A1 → A2 → A3 → B1 → B2 → B3 → B4 → B5) committed on `feat/track-1-runtime`. From baseline:

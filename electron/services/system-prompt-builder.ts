@@ -89,7 +89,8 @@ const CONTRACT_SECTIONS: ContractSection[] = [
       'On long tasks, post one-sentence status at meaningful step boundaries.',
       'Do not narrate internal reasoning or list every tool call.',
       'Do not restate what the user just said back to them.',
-      'Surface real blockers immediately; do not bury them at the end.'
+      'Surface real blockers immediately; do not bury them at the end.',
+      'When the work shifts to a meaningfully different phase (exploration → implementation, fix → verification, the user pivots to a new topic), call mark_chapter with a short noun-phrase title so the user can navigate the session. Use sparingly: a chapter covers a coherent stretch of work, not every tool call.'
     ]
   },
   {
@@ -204,7 +205,8 @@ export function buildSystemPrompt(
   // parity plan locks the inter-block order as
   //   memory_index → skills → retrieved_context → chapters → conversation
   // so the index sits just above the skill blocks below.
-  memoryIndexBlock?: string
+  memoryIndexBlock?: string,
+  taskNotificationsBlock?: string
 ): string {
   // A non-empty override fully replaces the default base (identity + contract).
   // Power users who set a custom prompt are opting out of the contract on
@@ -230,6 +232,10 @@ export function buildSystemPrompt(
 
   if (memoryIndexBlock && memoryIndexBlock.trim()) {
     parts.push(memoryIndexBlock.trim())
+  }
+
+  if (taskNotificationsBlock && taskNotificationsBlock.trim()) {
+    parts.push(taskNotificationsBlock.trim())
   }
 
   for (const skill of activeSkillContents) {

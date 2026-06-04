@@ -9,6 +9,10 @@ import { WelcomeScreen } from './WelcomeScreen'
 import { TokenTicker } from './TokenTicker'
 import { AgentRunBanner } from './AgentRunBanner'
 import { PlanChecklist } from './PlanChecklist'
+import { PlanModeBanner } from './PlanModeBanner'
+import { ChapterSidebar } from './ChapterSidebar'
+import { ChapterQuickJumper } from './ChapterQuickJumper'
+import { SpawnTaskTray } from './SpawnTaskTray'
 
 // Shared chat column: max-width cap + internal padding. Messages and the
 // input pill both use this so they sit in the same centered column no
@@ -59,6 +63,17 @@ export function ChatView({ rightInset = 0 }: ChatViewProps = {}) {
     >
       <FileDropZone />
 
+      {/* Track 2 / C3 — persistent yellow banner above the conversation
+          when plan mode is active. Self-hides when off. */}
+      <PlanModeBanner conversationId={activeConversationId} />
+
+      {/* Track 2 / E2 — chapter TOC + Ctrl+G quick-jumper. The sidebar
+          floats over the message list (top-right) and self-hides until
+          the conversation has at least one chapter. The quick-jumper
+          opens on Ctrl+G regardless of mount order. */}
+      <ChapterSidebar conversationId={activeConversationId} />
+      <ChapterQuickJumper conversationId={activeConversationId} />
+
       <div className="flex flex-1 flex-col overflow-hidden">
         {!activeConversationId ? (
           <WelcomeScreen />
@@ -78,6 +93,7 @@ export function ChatView({ rightInset = 0 }: ChatViewProps = {}) {
         <div className={CHAT_COLUMN_CLASS}>
           <PlanChecklist />
           <AgentRunBanner />
+          <SpawnTaskTray />
           <TokenTicker />
           <AttachmentPreview />
           <ChatInput

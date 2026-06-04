@@ -24,6 +24,11 @@ const api = {
       ipcRenderer.on('chat:phase', (_, e) => cb(e)),
     onAgentStatus: (cb: (e: unknown) => void) =>
       ipcRenderer.on('agent:status', (_, e) => cb(e)),
+    onAsyncEvent: (cb: (e: unknown) => void): (() => void) => {
+      const handler = (_: unknown, e: unknown): void => cb(e)
+      ipcRenderer.on('async-event:received', handler)
+      return () => ipcRenderer.removeListener('async-event:received', handler)
+    },
     offAll: () => {
       ;[
         'chat:chunk',
@@ -210,8 +215,13 @@ const api = {
   },
 
   tools: {
+    // Track 2 / C1: `tools:list` returns lightweight stubs (no inputSchema).
+    // Renderer uses `resolve` / `search` to pull full descriptors on demand.
     list: () => ipcRenderer.invoke('tools:list'),
     get: (id: string) => ipcRenderer.invoke('tools:get', id),
+    resolve: (names: string[]) => ipcRenderer.invoke('tools:resolve', names),
+    search: (payload: { query: string; maxResults?: number }) =>
+      ipcRenderer.invoke('tools:search', payload),
     getRecentCalls: (limit?: number) => ipcRenderer.invoke('tools:getRecentCalls', limit),
     getCallsForConversation: (conversationId: string, limit?: number) =>
       ipcRenderer.invoke('tools:getCallsForConversation', conversationId, limit),
@@ -265,6 +275,26 @@ const api = {
       const handler = (_: unknown, e: { conversationId: string; snapshot: unknown }) => cb(e)
       ipcRenderer.on('plan:updated', handler)
       return () => ipcRenderer.removeListener('plan:updated', handler)
+    },
+    // Track 2 / C3 — plan-mode gate. Banner hydrates via `isModeActive` on
+    // conversation switch; the Exit button calls `exitMode`. Live updates
+    // arrive via `onModeChanged` (the model toggles via the
+    // enter_plan_mode / exit_plan_mode tools mid-turn).
+    isModeActive: (conversationId: string) =>
+      ipcRenderer.invoke('plan:isModeActive', conversationId),
+    enterMode: (conversationId: string) =>
+      ipcRenderer.invoke('plan:enterMode', conversationId),
+    exitMode: (conversationId: string) =>
+      ipcRenderer.invoke('plan:exitMode', conversationId),
+    onModeChanged: (
+      cb: (e: { conversationId: string; active: boolean }) => void
+    ): (() => void) => {
+      const handler = (
+        _: unknown,
+        e: { conversationId: string; active: boolean }
+      ) => cb(e)
+      ipcRenderer.on('plan:mode-changed', handler)
+      return () => ipcRenderer.removeListener('plan:mode-changed', handler)
     }
   },
 
@@ -291,6 +321,55 @@ const api = {
     }
   },
 
+  // Track 2 / E1 — session chapters. `markChapter` anchors a chapter to
+  // a message; `list` hydrates the renderer's TOC; `chaptersForAnchor`
+  // returns rows pinned to a specific message id; `delete` removes one.
+  // `onMarked` is the live subscription to `chat:chapter-marked` so any
+  // open chapter sidebar updates without polling.
+  session: {
+    markChapter: (payload: {
+      conversationId: string
+      title: string
+      summary?: string | null
+      anchorMessageId: string
+    }) => ipcRenderer.invoke('session:markChapter', payload),
+    listChapters: (conversationId: string) =>
+      ipcRenderer.invoke('session:listChapters', conversationId),
+    chaptersForAnchor: (anchorMessageId: string) =>
+      ipcRenderer.invoke('session:chaptersForAnchor', anchorMessageId),
+    deleteChapter: (id: string) => ipcRenderer.invoke('session:deleteChapter', id),
+    onChapterMarked: (
+      cb: (e: { conversationId: string; chapter: unknown }) => void
+    ): (() => void) => {
+      const handler = (
+        _: unknown,
+        e: { conversationId: string; chapter: unknown }
+      ) => cb(e)
+      ipcRenderer.on('chat:chapter-marked', handler)
+      return () => ipcRenderer.removeListener('chat:chapter-marked', handler)
+    }
+  },
+
+  // Track 2 / C4 — slash commands. `list` returns user-visible commands
+  // only (`hidden: true` entries stay out of the palette but `resolve`
+  // still resolves them by name); `listAll` is for diagnostics; `resolve`
+  // returns the interpolated prompt body. `onChanged` fires whenever
+  // chokidar picks up a file mutation in userData/slash-commands.
+  slash: {
+    list: () => ipcRenderer.invoke('slash:list'),
+    listAll: () => ipcRenderer.invoke('slash:listAll'),
+    resolve: (payload: { name: string; rest?: string }) =>
+      ipcRenderer.invoke('slash:resolve', payload),
+    onChanged: (cb: (e: unknown) => void): (() => void) => {
+      const handler = (_: unknown, e: unknown) => cb(e)
+      ipcRenderer.on('slash:changed', handler)
+      return () => ipcRenderer.removeListener('slash:changed', handler)
+    }
+  },
+
+  // Track 1 / B1+B3 — workflow runner control. `runInline` accepts a
+  // raw script body; `run` fires a named workflow from disk. Progress
+  // events arrive over `workflow:progress`.
   workflows: {
     list: () => ipcRenderer.invoke('workflows:list'),
     runInline: (input: {
@@ -310,7 +389,19 @@ const api = {
     }
   },
 
+  // Track 1 / A2 — background subagent task tracking. `onNotify` fires
+  // when a background fork completes; E6 (this branch) layers the
+  // async-event-bridge on top so the next user turn sees a synthetic
+  // <task-notifications> block.
   tasks: {
+    spawn: (payload: {
+      sourceConversationId: string
+      title: string
+      prompt: string
+      tldr?: string | null
+      cwd?: string | null
+      model?: string | null
+    }) => ipcRenderer.invoke('tasks:spawn', payload),
     list: (filter?: {
       status?: 'running' | 'done' | 'error' | 'aborted' | Array<'running' | 'done' | 'error' | 'aborted'>
       parentConvId?: string | null
@@ -327,18 +418,49 @@ const api = {
       const wrapped = (_e: unknown, event: unknown): void => listener(event)
       ipcRenderer.on('agent:run:notify', wrapped)
       return () => ipcRenderer.removeListener('agent:run:notify', wrapped)
+    },
+    onSpawned: (listener: (event: unknown) => void): (() => void) => {
+      const wrapped = (_e: unknown, event: unknown): void => listener(event)
+      ipcRenderer.on('tasks:spawned', wrapped)
+      return () => ipcRenderer.removeListener('tasks:spawned', wrapped)
     }
   },
 
   hooks: {
     list: () => ipcRenderer.invoke('hooks:list'),
-    create: (input: { event: string; label: string; command: string }) =>
-      ipcRenderer.invoke('hooks:create', input),
+    create: (input: {
+      event: string
+      label: string
+      command: string
+      language?: 'js' | 'shell'
+      timeoutMs?: number
+    }) => ipcRenderer.invoke('hooks:create', input),
     update: (
       id: string,
-      patch: Partial<{ event: string; label: string; command: string; enabled: boolean }>
+      patch: Partial<{
+        event: string
+        label: string
+        command: string
+        enabled: boolean
+        language: 'js' | 'shell'
+        timeoutMs: number
+      }>
     ) => ipcRenderer.invoke('hooks:update', id, patch),
-    delete: (id: string) => ipcRenderer.invoke('hooks:delete', id)
+    delete: (id: string) => ipcRenderer.invoke('hooks:delete', id),
+    // Track 2 / C2 — test-run an unsaved hook body against a sample context.
+    test: (payload: {
+      code: string
+      event: string
+      context?: {
+        conversationId?: string
+        toolName?: string
+        args?: Record<string, unknown>
+        result?: string
+        promptBody?: string
+        cwd?: string
+      }
+      timeoutMs?: number
+    }) => ipcRenderer.invoke('hooks:test', payload)
   },
 
   automations: {
