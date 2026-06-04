@@ -1,5 +1,44 @@
 # Lamprey Harness Dev Log
 
+## [Fluidity — Prompt J2] Shift+Tab cycles permission/plan mode — 2026-06-04
+
+Replaces the old binary planMode toggle on Shift+Tab with a four-state
+cycle: `default → auto-review → full → plan → default`. A pure helper
+(`src/lib/mode-cycle.ts`) projects the `(permissionsMode, planMode)` pair
+to a virtual slot; the keydown handler advances it.
+
+When transitioning into / out of plan, the cycle also calls the real
+`plan:enterMode` / `plan:exitMode` IPC via the new `usePlanMode` hook so
+persistence (`conversations.plan_mode_active`) is honored alongside the
+legacy ui-store flag. A slim mode-name indicator now sits under the input
+bar; its `key={liveSlot}` swap replays a 200ms opacity/translate keyframe
+on every cycle.
+
+Shift+Tab is only claimed when the textarea is empty — mid-draft, native
+focus navigation still works.
+
+**Files changed:**
+- `src/lib/mode-cycle.ts` (new) — `MODE_CYCLE`, `currentSlot`, `nextMode`, `slotLabel`
+- `src/lib/mode-cycle.test.ts` (new) — 7 cases covering cycle wrap + plan-permission preservation
+- `src/hooks/usePlanMode.ts` (new) — IPC wrapper bound to the active conversation
+- `src/components/chat/ChatInput.tsx` — cycle wiring + indicator markup, content-empty guard
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- vitest ✓ (1195 passed / 16 skipped — +7 J2 tests)
+- user-verification-needed: in Electron, with the textarea empty, press Shift+Tab → mode advances through all four slots; toast + indicator both reflect the new slot; in a conversation, entering Plan persists across reload (DB row in `conversations.plan_mode_active`); mid-draft Shift+Tab does NOT cycle.
+
+**Notes:** The legacy `ui-store.planMode` boolean stays so the existing
+`PlanModeBanner` (when no active conv exists) still renders. The hook
+returns `false` for `enter` when there's no active conv — the local flag
+covers that path. Indicator animation uses an inline `<style>` block to
+avoid touching the Tailwind config for a one-prompt keyframe.
+
+**Commit:** pending
+
+---
+
 ## [Fluidity — Prompt J1] ESC cancels stream + ↑ recalls prompt history — 2026-06-04
 
 ESC was already wired in `useKeyboardShortcuts` to cancel an active stream;

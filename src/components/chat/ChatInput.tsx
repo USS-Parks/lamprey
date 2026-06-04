@@ -17,6 +17,13 @@ import {
   historyUp,
   type PromptHistoryState
 } from '@/lib/prompt-history'
+import {
+  currentSlot,
+  nextMode,
+  slotLabel,
+  type ModeSlot
+} from '@/lib/mode-cycle'
+import { usePlanMode } from '@/hooks/usePlanMode'
 import type { ModelInfo, ProcessedFile } from '@/lib/types'
 
 import defaultAccessLight from '@assets/Lamprey Default Access Icon.png'
@@ -811,6 +818,40 @@ export function ChatInput({ onSend, onCancel, isStreaming, disabled }: ChatInput
     historyRef.current = emptyHistoryState
   }
 
+  // Fluidity J2: Shift+Tab walks default → auto-review → full → plan → default.
+  // permissionsMode + the legacy planMode flag both update unconditionally so
+  // the existing PermissionsDropdown + plan banner stay in sync; if an active
+  // conversation exists, plan transitions also drive the real IPC gate via
+  // usePlanMode so persistence (conversations.plan_mode_active) is honored.
+  const permissionsMode = useUiStore((s) => s.permissionsMode)
+  const planModeLocal = useUiStore((s) => s.planMode)
+  const planModeActive = usePlanStore((s) => s.planModeActive ?? false)
+  const setPermissionsMode = useUiStore((s) => s.setPermissionsMode)
+  const setPlanModeFlag = useUiStore((s) => s.setPlanMode)
+  const planControl = usePlanMode()
+
+  // "Live" slot blends ui-store's local flags with plan-store's IPC truth so
+  // the indicator reflects whichever transitioned most recently.
+  const liveSlot: ModeSlot = currentSlot({
+    permissions: permissionsMode,
+    plan: planModeLocal || planModeActive
+  })
+
+  const cycleMode = () => {
+    const next = nextMode({
+      permissions: permissionsMode,
+      plan: planModeLocal || planModeActive
+    })
+    setPermissionsMode(next.permissions)
+    setPlanModeFlag(next.plan)
+    if (next.plan && !(planModeLocal || planModeActive)) {
+      void planControl.enter()
+    } else if (!next.plan && (planModeLocal || planModeActive)) {
+      void planControl.exit()
+    }
+    toast.info(`Mode: ${slotLabel(currentSlot(next))}`)
+  }
+
   const moveCaretToEnd = () => {
     requestAnimationFrame(() => {
       const ta = textareaRef.current
@@ -875,10 +916,11 @@ export function ChatInput({ onSend, onCancel, isStreaming, disabled }: ChatInput
     }
 
     if (e.key === 'Tab' && e.shiftKey) {
+      // Only claim Shift+Tab when the textarea has no content — mid-draft
+      // we leave it for native focus navigation per the J2 spec.
+      if (content.length > 0) return
       e.preventDefault()
-      useUiStore.getState().togglePlanMode()
-      const next = useUiStore.getState().planMode
-      toast.info(`Plan mode ${next ? 'ON' : 'OFF'}`)
+      cycleMode()
       return
     }
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -1105,6 +1147,21 @@ export function ChatInput({ onSend, onCancel, isStreaming, disabled }: ChatInput
 
         <ContextChipRow onAddFile={handlePickerClick} />
       </div>
+
+      {/* Fluidity J2 — slim mode indicator below the input bar. The `key` swap
+          on slot change gives React a fresh element each cycle so the CSS
+          opacity transition replays without needing a keyframe definition. */}
+      <div className="mt-1 flex justify-center">
+        <span
+          key={liveSlot}
+          data-mode-slot={liveSlot}
+          style={{ opacity: 0, animation: 'lamprey-mode-fade 200ms ease-out forwards' }}
+          className="font-mono text-[10px] uppercase tracking-wider text-[var(--text-muted)]"
+        >
+          {slotLabel(liveSlot)} · ⇧⇥ to cycle
+        </span>
+      </div>
+      <style>{`@keyframes lamprey-mode-fade { from { opacity: 0; transform: translateY(-1px) } to { opacity: 1; transform: translateY(0) } }`}</style>
 
       {keyPromptProvider && (
         <ApiKeyModal
