@@ -77,3 +77,34 @@ jobs:
           path: coverage/
           if-no-files-found: warn
           retention-days: 14
+
+  smoke:
+    # Builds the production bundles and runs the headless smokes on every PR
+    # (and on push to main). Before this, smokes ran only in build.yml on
+    # push/tag — so a PR could go green without ever exercising the bundle,
+    # which is exactly how the v0.1.25 TDZ launch crash slipped through.
+    # Both smoke scripts stub `electron` and `better-sqlite3` at the module
+    # loader, so this job needs neither the native rebuild nor the Electron
+    # binary — `npm ci --ignore-scripts` + build is enough.
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Use Node.js 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Build main + renderer bundles
+        run: npm run build
+
+      - name: Headless smoke of main bundle
+        run: npm run smoke:bundle
+
+      - name: Integrity smoke of renderer bundle
+        run: npm run smoke:renderer

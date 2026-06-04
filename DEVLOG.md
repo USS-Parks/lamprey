@@ -1,5 +1,25 @@
 # Lamprey Harness Dev Log
 
+## [Audit Remediation — Prompt 3] CI: run smokes on PRs — 2026-06-04
+
+Closes CI-1. Added a `smoke` job to `.github/workflows/ci.yml` that runs on
+`pull_request` (and push to main): `npm ci --ignore-scripts` → `npm run build`
+→ `smoke:bundle` → `smoke:renderer`. Both smoke scripts stub `electron` and
+`better-sqlite3` at the module loader, so the job needs neither the native
+rebuild nor the Electron binary download — keeping it as lean as the existing
+lint/test jobs. Before this, smokes ran only in `build.yml` on push/tag, so a
+PR could go green without ever exercising the bundle (the v0.1.25 TDZ launch
+crash slipped through exactly that gap). The existing main/tag smoke steps in
+build.yml are unchanged — this is purely additive.
+
+Verify: both workflow files parse (python `yaml.safe_load`); tsc node ✓ · tsc
+web ✓ · lint ✓ · vitest 1276 pass ✓ as the local sanity baseline (the smokes
+themselves are verified by CI on the PR). A deliberately broken bundle would
+fail the new job — locally confirmed `npm run build && npm run smoke:bundle`
+passes on the current tree.
+
+---
+
 ## [Audit Remediation — Prompt 2] Documentation refresh — 2026-06-04
 
 Closes DOC-1, DOC-2, DOC-3, DOC-5, DOC-6, SEC-4 (doc). Pure docs + one comment.
