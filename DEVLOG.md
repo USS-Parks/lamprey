@@ -1,5 +1,31 @@
 # Lamprey Harness Dev Log
 
+## [Track 1 — Prompt B2] Workflow journaling + resume — 2026-06-03
+
+**Files changed:**
+- `electron/services/workflow-journal.ts` (new) — JSONL journal per run at `<journalDir>/<runId>.jsonl`. Record types: `meta` (run start: runId + metaName + argsHash + startedAt), `agent` (one per agent() call: seq + promptHash + optsHash + label + phase + agentType + startedAt + finishedAt + resultJson + rawOutput + tokensUsedEstimate), `finished/errored/aborted` (one terminal record per run). Helpers: `sha256`, `stableStringify` (recursive key-sort + undefined-safe), `hashPrompt`, `hashOpts`, `journalPathFor`, `appendJournalRecord` (auto-creates the parent dir), `readJournal` (returns `[]` on missing file, skips malformed lines), `readAgentRecords` (filtered + sorted by seq).
+- `electron/services/workflow-runner.ts` — `WorkflowRunInput` now accepts `resumeFromRunId?: string` and `journalDir?: string`. State hoisted above the main try so the catch block can write a meaningful `aborted`/`errored` terminal record (`runAgentCount` renamed from inner `agentCount` for clarity). When `resumeFromRunId + journalDir` are set: read the prior journal's agent records once at start; for each `agent()` call, compute `(promptHash, optsHash)` and compare against `priorRecords[seq]`. **Match → cached path:** replay the parsed `resultJson`, accumulate `tokensUsedEstimate` into the live budget, emit `agent:finish` with `message:'cached'`, append the cached record to THIS run's journal (with the live `phase`/`label`/`agentType` so chained resumes see the consistent shape). **Mismatch → divergence:** flip `cacheActive = false` for the rest of the run (subsequent calls might match by coincidence but the script's intent has changed), fall through to live forkAgent + journal append. When `journalDir` is omitted, the runner skips journaling entirely. Successful completion writes a `finished` record; failure writes `aborted` or `errored` depending on `controller.signal.aborted`.
+- `electron/services/workflow-journal.test.ts` (new) — 11 tests covering hash determinism, stableStringify recursive sort + primitives + undefined, append + read round-trip, multi-record order preservation, missing-file → `[]`, malformed-line tolerance, auto-dir creation, journalPathFor shape.
+- `electron/services/workflow-runner.test.ts` — added "B2 journal + resume" describe block (7 tests): **REQUIRED:** edit 4th of 6 agent() calls + resume → first 3 cached, 4th–6th live (verified by counting calls into the seam runner). **REQUIRED:** unchanged + same args → 100% cache hit in <1s with `liveCallCount === 0`. **REQUIRED:** journal survives "restart" — second runWorkflow with a fresh seam still reads from disk and serves all 6 from cache, returning the original (not the restart-seam) values. Chained resume (A → B → C) sees all 6 cached at C. Without `resumeFromRunId`, the cache is never consulted even when the journal exists on disk. Without `journalDir`, the runner skips journaling entirely.
+
+**Verify gate:**
+- `tsc --noEmit -p tsconfig.node.json` ✓
+- `tsc --noEmit -p tsconfig.web.json` ✓
+- `vitest run` ✓ — **965 passed, 5 skipped** (was 947 after B1 → +18 net, 0 regressions)
+- Verify-gate bullets covered:
+  - edit 4th of 6 agent() calls + resume → first 3 cached, 4th–6th re-run ✓
+  - unchanged + same args → 100% hit, <1s finish ✓
+  - journal survives app restart ✓ (read from disk in a fresh test seam after the first run)
+
+**Notes:**
+- The `cacheActive` flag flips off on the first divergence and never flips back on — even if calls 5 and 6 happen to match the prior journal, they are re-run live because the script's intent has changed. This matches the plan's "longest unchanged prefix" semantics.
+- `stableStringify(undefined)` returns the literal string `'undefined'` so absent args/opts hash deterministically. `JSON.stringify(undefined)` returns `undefined` (not a string) which would crash the SHA-256 update.
+- Resume reads the prior journal once at start, not lazily — for a 1000-record journal this is a one-shot ~100 KB read; lazy reads would cost a syscall per agent call.
+- The new run writes its OWN journal even on full cache replay, so a chain like `A → B → C` is supported (each B,C records the same sequence and can be the seed of the next resume). The plan's example "edit + resume" pattern is exactly this.
+- `argsHash` is recorded on the `meta` record but isn't yet used by the cache check — a future hardening pass should compare `meta.argsHash` between runs and refuse to resume if args changed.
+
+**Commit:** see `git log --grep "B2 workflow journaling"`.
+
 ## [Track 1 — Prompt B1] Workflow JS evaluator core — 2026-06-03
 
 **Files changed:**

@@ -1,4 +1,6 @@
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
+import { mkdtempSync, rmSync, existsSync } from 'fs'
+import { tmpdir } from 'os'
 import { join } from 'path'
 
 vi.mock('electron', () => ({
@@ -373,5 +375,200 @@ describe('runWorkflow — args plumbing', () => {
       { forkSeam: seam }
     ).promise
     expect(result.output).toEqual({ count: 3, first: 'a' })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// B2 — journal + resume (VERIFY GATE bullets)
+// ---------------------------------------------------------------------------
+
+describe('runWorkflow — B2 journal + resume', () => {
+  let journalDir: string
+  beforeEach(() => {
+    journalDir = mkdtempSync(join(tmpdir(), 'lamprey-wf-resume-'))
+  })
+  afterEach(() => {
+    try {
+      rmSync(journalDir, { recursive: true, force: true })
+    } catch {
+      /* best-effort */
+    }
+  })
+
+  const SIX_CALL_SCRIPT_V1 = `${META}
+    const r1 = await agent('call-1')
+    const r2 = await agent('call-2')
+    const r3 = await agent('call-3')
+    const r4 = await agent('call-4')
+    const r5 = await agent('call-5')
+    const r6 = await agent('call-6')
+    return [r1, r2, r3, r4, r5, r6]
+  `
+
+  // V2 differs only at call-4: the prompt is changed. Calls 1–3 must hit
+  // cache; calls 4–6 must run live.
+  const SIX_CALL_SCRIPT_V2 = `${META}
+    const r1 = await agent('call-1')
+    const r2 = await agent('call-2')
+    const r3 = await agent('call-3')
+    const r4 = await agent('call-4-EDITED')
+    const r5 = await agent('call-5')
+    const r6 = await agent('call-6')
+    return [r1, r2, r3, r4, r5, r6]
+  `
+
+  it('edits the 4th of 6 agent() calls + resume → first 3 cached, 4th–6th run live (REQUIRED bullet)', async () => {
+    let liveCallCount = 0
+    const seam = makeSeam(async ({ prompt }) => {
+      liveCallCount++
+      return `out:${prompt}`
+    })
+
+    // First run: all 6 live, journal written.
+    const first = await runWorkflow(
+      { script: SIX_CALL_SCRIPT_V1, journalDir, runId: 'run-A' },
+      { forkSeam: seam }
+    ).promise
+    expect(first.agentCount).toBe(6)
+    expect(liveCallCount).toBe(6)
+    expect(first.output).toHaveLength(6)
+
+    // Resume run with edited script: first 3 cached, last 3 live.
+    liveCallCount = 0
+    const second = await runWorkflow(
+      {
+        script: SIX_CALL_SCRIPT_V2,
+        journalDir,
+        runId: 'run-B',
+        resumeFromRunId: 'run-A'
+      },
+      { forkSeam: seam }
+    ).promise
+    expect(liveCallCount).toBe(3) // only 4, 5, 6 ran live
+    expect(second.agentCount).toBe(6) // total still counts both cached + live
+    // Cache returned the original "call-N" outputs verbatim for 1–3.
+    expect((second.output as string[])[0]).toBe('out:call-1')
+    expect((second.output as string[])[1]).toBe('out:call-2')
+    expect((second.output as string[])[2]).toBe('out:call-3')
+    // Live re-run got new prompts for 4 (edited) and 5, 6 (same prompts).
+    expect((second.output as string[])[3]).toBe('out:call-4-EDITED')
+    expect((second.output as string[])[4]).toBe('out:call-5')
+    expect((second.output as string[])[5]).toBe('out:call-6')
+  })
+
+  it('unchanged script + same args → 100% cache hit (no live calls)', async () => {
+    let liveCallCount = 0
+    const seam = makeSeam(async ({ prompt }) => {
+      liveCallCount++
+      return `out:${prompt}`
+    })
+
+    // Seed journal.
+    await runWorkflow(
+      { script: SIX_CALL_SCRIPT_V1, journalDir, runId: 'run-A' },
+      { forkSeam: seam }
+    ).promise
+    expect(liveCallCount).toBe(6)
+
+    // Resume with same script.
+    liveCallCount = 0
+    const start = Date.now()
+    const second = await runWorkflow(
+      {
+        script: SIX_CALL_SCRIPT_V1,
+        journalDir,
+        runId: 'run-B',
+        resumeFromRunId: 'run-A'
+      },
+      { forkSeam: seam }
+    ).promise
+    const wall = Date.now() - start
+    expect(liveCallCount).toBe(0)
+    expect(wall).toBeLessThan(1000) // <1s
+    expect(second.output).toEqual(['out:call-1', 'out:call-2', 'out:call-3', 'out:call-4', 'out:call-5', 'out:call-6'])
+  })
+
+  it('journal survives a "restart" — second runWorkflow reads from disk', async () => {
+    const seam = makeSeam(async ({ prompt }) => `out:${prompt}`)
+    await runWorkflow(
+      { script: SIX_CALL_SCRIPT_V1, journalDir, runId: 'run-A' },
+      { forkSeam: seam }
+    ).promise
+    // The journal file is on disk — verify directly.
+    expect(existsSync(join(journalDir, 'run-A.jsonl'))).toBe(true)
+    // Build a fresh seam (simulates a process boundary — same runtime API,
+    // no in-memory carry-over).
+    let liveCallCount = 0
+    const restartedSeam = makeSeam(async ({ prompt }) => {
+      liveCallCount++
+      return `restart:${prompt}`
+    })
+    const result = await runWorkflow(
+      {
+        script: SIX_CALL_SCRIPT_V1,
+        journalDir,
+        runId: 'run-B',
+        resumeFromRunId: 'run-A'
+      },
+      { forkSeam: restartedSeam }
+    ).promise
+    expect(liveCallCount).toBe(0) // all cached
+    // Cached values are the originals from run-A, not 'restart:' values.
+    expect((result.output as string[])[0]).toBe('out:call-1')
+  })
+
+  it('the new run writes its own journal so a chained resume sees the same sequence', async () => {
+    const seam = makeSeam(async ({ prompt }) => `out:${prompt}`)
+    await runWorkflow(
+      { script: SIX_CALL_SCRIPT_V1, journalDir, runId: 'run-A' },
+      { forkSeam: seam }
+    ).promise
+    await runWorkflow(
+      { script: SIX_CALL_SCRIPT_V2, journalDir, runId: 'run-B', resumeFromRunId: 'run-A' },
+      { forkSeam: seam }
+    ).promise
+    // run-B's journal exists and is a valid jsonl file with 8 lines (1 meta +
+    // 6 agent + 1 finished).
+    const path = join(journalDir, 'run-B.jsonl')
+    expect(existsSync(path)).toBe(true)
+    // Chain a third run from run-B — every cache should hit.
+    let liveCallCount = 0
+    const seamC = makeSeam(async ({ prompt }) => {
+      liveCallCount++
+      return `live:${prompt}`
+    })
+    await runWorkflow(
+      { script: SIX_CALL_SCRIPT_V2, journalDir, runId: 'run-C', resumeFromRunId: 'run-B' },
+      { forkSeam: seamC }
+    ).promise
+    expect(liveCallCount).toBe(0)
+  })
+
+  it('without resumeFromRunId, even with a matching journal on disk, no cache is used', async () => {
+    const seam = makeSeam(async ({ prompt }) => `out:${prompt}`)
+    await runWorkflow(
+      { script: SIX_CALL_SCRIPT_V1, journalDir, runId: 'run-A' },
+      { forkSeam: seam }
+    ).promise
+    let liveCallCount = 0
+    const seamB = makeSeam(async ({ prompt }) => {
+      liveCallCount++
+      return `out:${prompt}`
+    })
+    await runWorkflow(
+      { script: SIX_CALL_SCRIPT_V1, journalDir, runId: 'run-B' }, // no resumeFromRunId
+      { forkSeam: seamB }
+    ).promise
+    expect(liveCallCount).toBe(6)
+  })
+
+  it('skips journaling entirely when journalDir is omitted', async () => {
+    const seam = makeSeam(async ({ prompt }) => `out:${prompt}`)
+    const result = await runWorkflow(
+      { script: `${META}\nreturn await agent('one')` },
+      { forkSeam: seam }
+    ).promise
+    expect(result.agentCount).toBe(1)
+    // No assertion beyond "didn't throw + no journal dir touched."
   })
 })

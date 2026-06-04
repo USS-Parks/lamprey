@@ -10,6 +10,16 @@ import {
   type IsolationMode,
   type JsonSchemaLike
 } from './subagent-runner'
+import {
+  appendJournalRecord,
+  hashOpts,
+  hashPrompt,
+  journalPathFor,
+  readAgentRecords,
+  type AgentJournalRecord,
+  type FinishJournalRecord,
+  type MetaJournalRecord
+} from './workflow-journal'
 
 // Workflow JS evaluator core (B1). Loads a workflow script into Node's
 // built-in vm with a frozen sandbox exposing the documented API surface:
@@ -92,6 +102,20 @@ export interface WorkflowRunInput {
   timeoutMs?: number
   /** Parent signal — aborting it aborts the workflow and any in-flight agents. */
   signal?: AbortSignal
+  /**
+   * B2: prior run to read cached agent results from. The new run keeps the
+   * longest unchanged prefix from the prior journal (matching by
+   * promptHash + optsHash at each seq) and runs anything after the first
+   * divergence live. Set `resumeFromRunId === runId` to continue a run
+   * whose journal already exists on disk.
+   */
+  resumeFromRunId?: string
+  /**
+   * B2: directory where journals are written. Required when journaling is
+   * desired — when omitted, the runner skips journaling entirely (this is
+   * the test default unless the test wants resume coverage).
+   */
+  journalDir?: string
 }
 
 export interface WorkflowAgentOptions {
@@ -196,6 +220,12 @@ export function runWorkflow(input: WorkflowRunInput, deps: WorkflowRunnerDeps): 
     else input.signal.addEventListener('abort', () => abort('parent-aborted'), { once: true })
   }
 
+  // B2: journaling state hoisted above the try so the catch block can write
+  // a meaningful failure record.
+  const journalDir = input.journalDir
+  const journalPath = journalDir ? journalPathFor(runId, journalDir) : null
+  let runAgentCount = 0
+
   const promise = (async (): Promise<WorkflowRunResult> => {
     const startedAt = clock()
     let timedOut = false
@@ -207,6 +237,27 @@ export function runWorkflow(input: WorkflowRunInput, deps: WorkflowRunnerDeps): 
     try {
       const parsed = parseWorkflowScript(input.script)
       const meta = parsed.meta
+
+      // B2: journaling + resume setup (continued).
+      // - `priorRecords`: cache from the resumeFromRunId journal (if any)
+      // - `cacheActive`: flips to false on the first divergent agent() call;
+      //   subsequent calls never check cache even if they happen to match
+      let priorRecords: AgentJournalRecord[] = []
+      if (input.resumeFromRunId && journalDir) {
+        priorRecords = readAgentRecords(journalPathFor(input.resumeFromRunId, journalDir))
+      }
+      let cacheActive = priorRecords.length > 0
+      let nextSeq = 0
+      if (journalPath) {
+        const metaRecord: MetaJournalRecord = {
+          type: 'meta',
+          runId,
+          metaName: meta.name,
+          argsHash: hashOpts(input.args),
+          startedAt: clock()
+        }
+        appendJournalRecord(journalPath, metaRecord)
+      }
 
       // Budget tracker. budget.spent() / remaining() are recomputed live.
       const budgetTotal = input.budgetTotal ?? null
@@ -221,7 +272,6 @@ export function runWorkflow(input: WorkflowRunInput, deps: WorkflowRunnerDeps): 
         byTier: (): Record<string, number> => ({}) // B5 populates
       }
 
-      let agentCount = 0
       let currentPhase: string | undefined
       const semaphore = makeSemaphore(Math.max(1, concurrencyCap))
 
@@ -255,16 +305,63 @@ export function runWorkflow(input: WorkflowRunInput, deps: WorkflowRunnerDeps): 
         if (controller.signal.aborted) {
           throw new WorkflowAbortError(timedOut ? 'timed out' : undefined)
         }
-        if (agentCount >= WORKFLOW_TOTAL_AGENT_CAP) {
+        if (runAgentCount >= WORKFLOW_TOTAL_AGENT_CAP) {
           throw new WorkflowAgentCapError(WORKFLOW_TOTAL_AGENT_CAP)
         }
         if (budgetTotal !== null && budgetSpent >= budgetTotal) {
           throw new WorkflowBudgetError(budgetTotal, budgetSpent)
         }
-        agentCount++
+        runAgentCount++
         const agentType = opts.agentType ?? 'general'
         const phaseTag = opts.phase ?? currentPhase
         const label = opts.label ?? agentType
+
+        // B2: cache lookup before doing any real work. As soon as cache misses
+        // for ANY seq, it stays inactive for the rest of the run — calls
+        // after the first divergence might match by coincidence but the
+        // script's intent has changed.
+        const seq = nextSeq++
+        const promptHash = hashPrompt(prompt)
+        const optsHash = hashOpts({ label, phase: phaseTag, agentType, schema: opts.schema, model: opts.model, isolation: opts.isolation })
+        if (cacheActive) {
+          const prior = priorRecords[seq]
+          if (prior && prior.promptHash === promptHash && prior.optsHash === optsHash) {
+            // Cache hit — replay the cached result without forking.
+            const parsedResult: string | Record<string, unknown> = (() => {
+              try {
+                const r = JSON.parse(prior.resultJson) as unknown
+                return r as string | Record<string, unknown>
+              } catch {
+                return prior.resultJson as unknown as string
+              }
+            })()
+            budgetSpent += prior.tokensUsedEstimate ?? 0
+            // Write the replay-from-cache record to THIS run's journal so a
+            // chained resume sees the same sequence.
+            if (journalPath) {
+              appendJournalRecord(journalPath, {
+                ...prior,
+                phase: phaseTag,
+                label,
+                agentType
+              })
+            }
+            emit({
+              runId,
+              kind: 'agent:finish',
+              agentType,
+              label,
+              phase: phaseTag,
+              status: 'done',
+              durationMs: 0,
+              tokensUsedEstimate: prior.tokensUsedEstimate,
+              message: 'cached'
+            })
+            return parsedResult
+          }
+          // First divergence — disable cache for the rest of the run.
+          cacheActive = false
+        }
 
         const release = await semaphore.acquire()
         if (controller.signal.aborted) {
@@ -294,6 +391,7 @@ export function runWorkflow(input: WorkflowRunInput, deps: WorkflowRunnerDeps): 
           const handle = deps.forkSeam.forkAgent(forkOpts, deps.forkSeam.forkDeps)
           result = (await handle.promise) as ForkAgentResult
           budgetSpent += result.tokensUsedEstimate ?? 0
+          const finishedAgentAt = clock()
           emit({
             runId,
             kind: 'agent:finish',
@@ -302,9 +400,27 @@ export function runWorkflow(input: WorkflowRunInput, deps: WorkflowRunnerDeps): 
             label,
             phase: phaseTag,
             status: 'done',
-            durationMs: clock() - startedAgentAt,
+            durationMs: finishedAgentAt - startedAgentAt,
             tokensUsedEstimate: result.tokensUsedEstimate
           })
+          // B2: append the live record to the journal.
+          if (journalPath) {
+            const record: AgentJournalRecord = {
+              type: 'agent',
+              seq,
+              promptHash,
+              optsHash,
+              label,
+              phase: phaseTag,
+              agentType,
+              startedAt: startedAgentAt,
+              finishedAt: finishedAgentAt,
+              resultJson: JSON.stringify(result.output),
+              rawOutput: result.rawOutput,
+              tokensUsedEstimate: result.tokensUsedEstimate ?? 0
+            }
+            appendJournalRecord(journalPath, record)
+          }
           return result.output as string | Record<string, unknown>
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err)
@@ -481,12 +597,25 @@ export function runWorkflow(input: WorkflowRunInput, deps: WorkflowRunnerDeps): 
         durationMs,
         finalResult: workflowOutput
       })
+      if (journalPath) {
+        const finishRecord: FinishJournalRecord = {
+          type: 'finished',
+          finishedAt: clock(),
+          agentCount: runAgentCount,
+          payload: JSON.stringify(workflowOutput)
+        }
+        try {
+          appendJournalRecord(journalPath, finishRecord)
+        } catch (err) {
+          console.error('[workflow-runner] journal finish append failed (continuing):', err)
+        }
+      }
       return {
         runId,
         meta,
         output: workflowOutput,
         durationMs,
-        agentCount,
+        agentCount: runAgentCount,
         budget: finalBudget
       }
     } catch (err) {
@@ -496,6 +625,19 @@ export function runWorkflow(input: WorkflowRunInput, deps: WorkflowRunnerDeps): 
           deps.progress({ runId, kind: 'errored', error: message })
         } catch (notifyErr) {
           console.error('[workflow-runner] errored progress threw (continuing):', notifyErr)
+        }
+      }
+      if (journalPath) {
+        try {
+          const failureRecord: FinishJournalRecord = {
+            type: controller.signal.aborted ? 'aborted' : 'errored',
+            finishedAt: clock(),
+            agentCount: runAgentCount,
+            payload: message
+          }
+          appendJournalRecord(journalPath, failureRecord)
+        } catch (jerr) {
+          console.error('[workflow-runner] journal failure append failed (continuing):', jerr)
         }
       }
       if (controller.signal.aborted && !(err instanceof WorkflowAgentCapError)) {
