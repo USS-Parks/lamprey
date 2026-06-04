@@ -596,6 +596,8 @@ export type EventType =
   | 'automation.started'
   | 'automation.completed'
   | 'automation.failed'
+  | 'loop.wakeup.scheduled'
+  | 'loop.wakeup.fired'
   | 'security.decision'
   | 'permission.policy.created'
   | 'permission.policy.updated'

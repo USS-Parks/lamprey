@@ -6,12 +6,14 @@ import { toast } from '@/stores/toast-store'
 import { parseReasoning } from '@/lib/reasoning'
 import { ReasoningBlock } from './ReasoningBlock'
 import { MessageActions } from './MessageActions'
+import { WakeupPill } from './WakeupPill'
 
 interface MessageBubbleProps {
   message: Message
 }
 
 const REMEMBER_MAX = 280
+const WAKEUP_PREFIX = '[scheduled wake-up]'
 
 function formatTime(timestamp: number): string {
   return new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
@@ -32,9 +34,11 @@ export function MessageBubble({ message }: MessageBubbleProps) {
   if (isTool) return null
 
   const isReasoner = message.model === 'deepseek-reasoner'
+  const wakeup = isUser && message.content.startsWith(WAKEUP_PREFIX)
+  const wakeupParts = wakeup ? parseWakeupContent(message.content) : null
   const { reasoning, body } = isReasoner && !isUser
     ? parseReasoning(message.content)
-    : { reasoning: null as string | null, body: message.content }
+    : { reasoning: null as string | null, body: wakeupParts?.body ?? message.content }
 
   const handleRemember = async () => {
     if (saving) return
@@ -59,8 +63,9 @@ export function MessageBubble({ message }: MessageBubbleProps) {
             : 'bg-[var(--bg-secondary)] text-[var(--text-primary)]'
         }`}
       >
+        {wakeupParts && <WakeupPill reason={wakeupParts.reason} />}
         {isUser ? (
-          <div className="whitespace-pre-wrap break-words text-sm">{message.content}</div>
+          <div className="whitespace-pre-wrap break-words text-sm">{wakeupParts?.body ?? message.content}</div>
         ) : (
           <>
             {reasoning && <ReasoningBlock content={reasoning} />}
@@ -87,4 +92,13 @@ export function MessageBubble({ message }: MessageBubbleProps) {
       {!isUser && <MessageActions content={body || message.content} />}
     </div>
   )
+}
+
+function parseWakeupContent(content: string): { reason?: string; body: string } {
+  const [firstLine, ...rest] = content.split('\n')
+  const reason = firstLine.slice(WAKEUP_PREFIX.length).trim()
+  return {
+    reason: reason || undefined,
+    body: rest.join('\n').trimStart()
+  }
 }
