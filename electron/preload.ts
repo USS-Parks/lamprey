@@ -164,6 +164,12 @@ const api = {
     read: (name: string) => ipcRenderer.invoke('memory:read', name),
     search: (query: string, limit?: number) =>
       ipcRenderer.invoke('memory:search', query, limit),
+    // D2: read the on-disk MEMORY.md for a project, plus the broken-link
+    // list so D3's sidebar pip can surface "to-write" suggestions.
+    readIndex: (projectSlug?: string) =>
+      ipcRenderer.invoke('memory:readIndex', projectSlug),
+    listBrokenLinks: (projectSlug?: string) =>
+      ipcRenderer.invoke('memory:listBrokenLinks', projectSlug),
     onAdded: (cb: (entry: unknown) => void) =>
       ipcRenderer.on('memory:added', (_, entry) => cb(entry)),
     onChanged: (cb: (entries: unknown[]) => void): (() => void) => {

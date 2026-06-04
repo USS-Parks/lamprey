@@ -187,6 +187,10 @@ export function registerChatHandlers(): void {
 
       const allMessages = convStore.getMessages(conversationId)
       const memoryBlock = memStore.buildMemoryBlock()
+      // D2: always-loaded `<memory_index>` block built from MEMORY.md.
+      // Returns '' when the project has no entries, in which case
+      // buildSystemPrompt drops the block entirely.
+      const memoryIndexBlock = memStore.buildMemoryIndexBlock()
 
       const settingsRaw = readSettingsJson()
       const agentic = loadAgenticCodingConfig(settingsRaw)
@@ -225,7 +229,8 @@ export function registerChatHandlers(): void {
         // When mode is on, layer the coding role fragment on top of the base
         // contract. When off, leave contractRole undefined so existing turn
         // shapes match pre-Prompt-14.
-        agentic.mode ? 'coding' : undefined
+        agentic.mode ? 'coding' : undefined,
+        memoryIndexBlock
       )
 
       // Tools come from the unified registry — natives (memory_add today) plus
@@ -280,7 +285,8 @@ export function registerChatHandlers(): void {
           coderSystemOverride,
           agentsMd,
           coderRoster.coder,
-          'coding'
+          'coding',
+          memoryIndexBlock
         )
         const priorWithoutLatestUser = apiMessages.filter(
           (m, idx) => idx !== 0 // drop the system entry; pipeline owns it

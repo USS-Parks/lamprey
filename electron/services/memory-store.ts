@@ -43,6 +43,12 @@ import {
 
 const DEFAULT_PROJECT_SLUG = '__global__'
 const MIGRATION_MARKER = '.migrated-from-sqlite'
+const MEMORY_INDEX_FILENAME = 'MEMORY.md'
+const MEMORY_INDEX_MAX_LINES = 200
+// `[[link-name]]` pattern — link targets are memory slugs so we accept
+// the same chars `memorySlug()` emits. Spaces inside the brackets are
+// tolerated and slug-normalized on resolve.
+const MEMORY_LINK_RE = /\[\[([^\[\]\n]+?)\]\]/g
 
 export interface MemoryFile {
   name: string
@@ -260,10 +266,172 @@ function scanAndSync(): void {
 }
 
 function broadcastChange(): void {
+  // The memory index is regenerated as part of the broadcast so a single
+  // write touches both the renderer cache and the on-disk MEMORY.md
+  // (which the system-prompt builder pulls on every chat turn).
+  try {
+    regenerateMemoryIndexAllProjects()
+  } catch (err) {
+    console.error('[memory-store] index regen failed:', (err as Error).message)
+  }
   const list = listMemoryFiles()
   for (const win of BrowserWindow.getAllWindows()) {
     win.webContents.send('memory:changed', list)
   }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// D2 — MEMORY.md always-loaded index + [[link]] graph
+// ───────────────────────────────────────────────────────────────────────
+
+function memoryIndexPath(projectSlug: string = DEFAULT_PROJECT_SLUG): string {
+  return join(projectDir(projectSlug), MEMORY_INDEX_FILENAME)
+}
+
+function indexLineFor(file: MemoryFile): string {
+  // Mirror the format used in the user's hand-authored MEMORY.md
+  // (CLAUDE.md memory section):
+  //   - [Title](slug.md) — one-line hook
+  // Falls back to the slug when no description is present so the user
+  // still gets a clickable file pointer.
+  const fileName = `${file.name}.md`
+  const title = file.description?.trim() || file.name
+  const hook = file.description?.trim() || `${file.type} memory`
+  return `- [${title}](${fileName}) — ${hook}`
+}
+
+/**
+ * Write `MEMORY.md` for a single project. The file is a 1-line-per-entry
+ * index of every memory in that project, capped at MEMORY_INDEX_MAX_LINES
+ * (matches the system-prompt truncation so the on-disk index and the
+ * injected `<memory_index>` block stay consistent).
+ */
+export function regenerateMemoryIndex(
+  projectSlug: string = DEFAULT_PROJECT_SLUG
+): string {
+  const dir = projectDir(projectSlug)
+  ensureDir(dir)
+  // Don't fire scanAndSync here — broadcastChange's callers already drove
+  // a write/delete that populated the in-memory mirror, and re-scanning
+  // would pull *this* MEMORY.md (it's filtered by isMemoryFile, so
+  // actually it can't — but skipping the scan keeps regen cheap).
+  const files = listFromMirror({ projectSlug })
+  // Stable sort: type first (so user/feedback/project/reference group
+  // visually), then by description/name. This keeps the index diff-stable
+  // across small edits.
+  files.sort((a, b) => {
+    if (a.type !== b.type) return a.type.localeCompare(b.type)
+    const left = (a.description || a.name).toLowerCase()
+    const right = (b.description || b.name).toLowerCase()
+    return left.localeCompare(right)
+  })
+  const lines = files.slice(0, MEMORY_INDEX_MAX_LINES).map(indexLineFor)
+  const truncated = files.length > MEMORY_INDEX_MAX_LINES
+  const body =
+    lines.length === 0
+      ? '# Memory index\n\n_(no memories yet)_\n'
+      : `# Memory index\n\n${lines.join('\n')}\n${
+          truncated ? `\n_(+ ${files.length - MEMORY_INDEX_MAX_LINES} more)_\n` : ''
+        }`
+  const path = memoryIndexPath(projectSlug)
+  writeFileSync(path, body, 'utf-8')
+  return body
+}
+
+function regenerateMemoryIndexAllProjects(): void {
+  // Collect slugs from both the mirror and the FS so a project that
+  // has no entries left (everything deleted) still gets its MEMORY.md
+  // collapsed back to the empty-state placeholder.
+  const slugs = new Set<string>([DEFAULT_PROJECT_SLUG])
+  for (const file of memoryMirror.values()) slugs.add(file.projectSlug)
+  for (const slug of listProjectSlugs()) slugs.add(slug)
+  for (const slug of slugs) {
+    try {
+      regenerateMemoryIndex(slug)
+    } catch (err) {
+      console.error(
+        `[memory-store] regenerate MEMORY.md failed for ${slug}:`,
+        (err as Error).message
+      )
+    }
+  }
+}
+
+/**
+ * Read the on-disk MEMORY.md for a project, returning the raw text.
+ * Returns an empty string when no index exists yet. The system-prompt
+ * builder calls this on every chat turn to inject the `<memory_index>`
+ * block.
+ */
+export function loadMemoryIndex(
+  projectSlug: string = DEFAULT_PROJECT_SLUG
+): string {
+  const path = memoryIndexPath(projectSlug)
+  if (!existsSync(path)) return ''
+  try {
+    return readFileSync(path, 'utf-8')
+  } catch (err) {
+    console.error('[memory-store] loadMemoryIndex failed:', (err as Error).message)
+    return ''
+  }
+}
+
+/**
+ * Build the `<memory_index>` system-prompt block for a project. Returns
+ * an empty string when the index would be empty so chat.ts can skip the
+ * block entirely (rather than emit a noisy empty tag).
+ */
+export function buildMemoryIndexBlock(
+  projectSlug: string = DEFAULT_PROJECT_SLUG
+): string {
+  const raw = loadMemoryIndex(projectSlug)
+  const trimmed = raw.trim()
+  if (!trimmed || /\(no memories yet\)/i.test(trimmed)) return ''
+  // Cap the injected payload at MEMORY_INDEX_MAX_LINES so a corrupted /
+  // unexpectedly long MEMORY.md (e.g. user pasted notes) can't blow up
+  // the prompt budget.
+  const lines = trimmed.split('\n').slice(0, MEMORY_INDEX_MAX_LINES + 4) // header + spacer + lines
+  return `<memory_index>\n${lines.join('\n')}\n</memory_index>`
+}
+
+export interface BrokenMemoryLink {
+  from: string
+  fromFilePath: string
+  target: string
+}
+
+function extractLinks(body: string): string[] {
+  const out = new Set<string>()
+  let m: RegExpExecArray | null
+  while ((m = MEMORY_LINK_RE.exec(body)) !== null) {
+    const cleaned = m[1].trim()
+    if (cleaned) out.add(cleaned)
+  }
+  return [...out]
+}
+
+/**
+ * Scan every memory body for `[[link-name]]` markers and return the
+ * ones whose target slug has no matching file. D3's MemoryLinkGraph
+ * surfaces these as "to-write" pips so the user can convert a casual
+ * cross-reference into a real entry.
+ */
+export function getBrokenMemoryLinks(
+  projectSlug: string = DEFAULT_PROJECT_SLUG
+): BrokenMemoryLink[] {
+  scanAndSync()
+  const files = listFromMirror({ projectSlug })
+  const knownSlugs = new Set(files.map((f) => f.name))
+  const out: BrokenMemoryLink[] = []
+  for (const file of files) {
+    for (const raw of extractLinks(file.body)) {
+      const target = memorySlug(raw)
+      if (target === file.name) continue
+      if (knownSlugs.has(target)) continue
+      out.push({ from: file.name, fromFilePath: file.filePath, target })
+    }
+  }
+  return out
 }
 
 function migrateLegacyEntries(): void {

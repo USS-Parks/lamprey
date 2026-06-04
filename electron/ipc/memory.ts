@@ -131,6 +131,27 @@ export function registerMemoryHandlers(): void {
     }
   })
 
+  ipcMain.handle(
+    'memory:listBrokenLinks',
+    async (_event, projectSlug?: unknown) => {
+      try {
+        const slug = typeof projectSlug === 'string' ? projectSlug : undefined
+        return { success: true, data: memStore.getBrokenMemoryLinks(slug) }
+      } catch (err: any) {
+        return { success: false, error: err.message }
+      }
+    }
+  )
+
+  ipcMain.handle('memory:readIndex', async (_event, projectSlug?: unknown) => {
+    try {
+      const slug = typeof projectSlug === 'string' ? projectSlug : undefined
+      return { success: true, data: memStore.loadMemoryIndex(slug) }
+    } catch (err: any) {
+      return { success: false, error: err.message }
+    }
+  })
+
   ipcMain.handle('memory:search', async (_event, query: unknown, limit?: unknown) => {
     try {
       if (typeof query !== 'string') return { success: false, error: 'query must be a string' }

@@ -1,5 +1,32 @@
 # Lamprey Harness Dev Log
 
+## [Track 3 — Prompt D2] MEMORY.md always-loaded index — 2026-06-03
+
+**Files changed:**
+- `electron/services/memory-store.ts` — `regenerateMemoryIndex(projectSlug)` writes `userData/lamprey-memory/<projectSlug>/MEMORY.md` with one line per typed entry (sorted by type then description, capped at 200 lines, with a trailing `+ N more` note when truncated). The regen runs from `broadcastChange()`, so every write/delete/clear automatically rewrites the index. New `loadMemoryIndex()` reads it back; `buildMemoryIndexBlock()` returns the `<memory_index>...</memory_index>` system-prompt block (empty string when no entries so chat.ts can drop it). New `extractLinks()` + `getBrokenMemoryLinks()` walk every body, slug-normalize `[[link-name]]` targets, and return the ones with no matching file.
+- `electron/services/system-prompt-builder.ts` — `buildSystemPrompt` gains an optional `memoryIndexBlock` 7th parameter that gets injected between the legacy `<memory>` block and the skill blocks (per the parity-plan §2 invariant: `memory_index → skills → retrieved_context → chapters → conversation`). Empty/whitespace blocks are dropped entirely.
+- `electron/ipc/chat.ts` — pulls `memStore.buildMemoryIndexBlock()` once per turn and threads it through both single-mode and multi-mode `buildSystemPrompt` calls.
+- `electron/ipc/memory.ts` — new `memory:readIndex` (returns raw MEMORY.md text) and `memory:listBrokenLinks` (returns `{from, target}[]` for the renderer pip).
+- `electron/preload.ts` — `memory.readIndex` / `memory.listBrokenLinks` exposed on the IPC bridge.
+- `src/components/memory/MemoryLinkGraph.tsx` (new) — "To write" pip strip rendered at the bottom of the memory sidebar. Subscribes to the `memory:changed` broadcast for live refresh; dedupes by target with a `×N` count when multiple entries reference the same missing slug. Click pre-fills the add-memory draft with `[[target]] — ` so D3's MemoryEditor inherits a working seed.
+- `src/components/memory/MemoryPanel.tsx` — mounts `MemoryLinkGraph` and wires its `onPick` to the existing add-memory flow.
+- `electron/services/memory-store.test.ts` — 6 new D2-specific tests (MEMORY.md regen, `<memory_index>` block shape, empty-state suppression, regen-on-delete, broken-link detection, 200-line truncation).
+- `electron/services/system-prompt-builder.test.ts` — 2 new tests asserting the inter-block order and empty-block suppression.
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- vitest memory-store + system-prompt-builder ✓ (41 tests including 8 new)
+- vitest full suite ✓ (842 passed | 5 skipped — 8 new + 834 baseline)
+- user-verification-needed: launch Electron, write 5 typed memories via the panel, confirm `userData/lamprey-memory/__global__/MEMORY.md` lists all 5 (sorted by type → description), include a `[[unknown-target]]` reference in one body, confirm a "To write" pip appears in the sidebar with the right target name, click the pip and confirm the add-memory draft is pre-filled.
+
+**Notes:**
+- Per the parity-plan merge protocol, `system-prompt-builder.ts` is a hotspot: T3:D2 (memory_index) lands first, then T2:E1 (chapters mention), then T2:E5 (compressed regions). This commit adds the memory_index slot only — chapter/compressed regions will append cleanly later.
+- The legacy `<memory>` block (full body of each entry) remains alongside `<memory_index>` for now. The index gives the model a map; the legacy block gives it the actual content. D4's consolidation workflow will decide whether to retire one in favor of the other.
+- The pip surface is wired to the existing add-memory draft for D2; D3 rebuilds the MemoryPanel into the typed-tabs editor and will rewire the pip to open the typed-entry editor directly.
+
+**Commit:** see git log on `feat/track-3-memory-verify`.
+
 ## [Track 3 — Prompt D1] Memory taxonomy + frontmatter migration — 2026-06-03
 
 **Files changed:**

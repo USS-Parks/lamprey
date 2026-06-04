@@ -198,7 +198,13 @@ export function buildSystemPrompt(
   systemPromptOverride?: string,
   agentsMd?: string,
   modelId?: string,
-  contractRole?: ContractRole
+  contractRole?: ContractRole,
+  // D2: optional `<memory_index>` block (the always-loaded MEMORY.md
+  // index of every typed memory entry, capped at 200 lines). The
+  // parity plan locks the inter-block order as
+  //   memory_index → skills → retrieved_context → chapters → conversation
+  // so the index sits just above the skill blocks below.
+  memoryIndexBlock?: string
 ): string {
   // A non-empty override fully replaces the default base (identity + contract).
   // Power users who set a custom prompt are opting out of the contract on
@@ -220,6 +226,10 @@ export function buildSystemPrompt(
 
   if (memoryBlock) {
     parts.push(memoryBlock)
+  }
+
+  if (memoryIndexBlock && memoryIndexBlock.trim()) {
+    parts.push(memoryIndexBlock.trim())
   }
 
   for (const skill of activeSkillContents) {

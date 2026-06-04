@@ -2,6 +2,7 @@
 import { useMemoryStore } from '@/stores/memory-store'
 import { toast } from '@/stores/toast-store'
 import type { MemoryEntry } from '@/lib/types'
+import { MemoryLinkGraph } from './MemoryLinkGraph'
 
 const UNDO_MS = 3000
 
@@ -224,6 +225,16 @@ export function MemoryPanel() {
           </button>
         </div>
       )}
+
+      {/* D2: surface broken [[link]] markers as "to-write" pips. Pre-D3
+          the click handler stays no-op; D3 wires it to MemoryEditor so
+          a click pre-fills the new-entry form with the missing target. */}
+      <MemoryLinkGraph
+        onPick={(target) => {
+          setAdding(true)
+          setDraft(`[[${target}]] — `)
+        }}
+      />
     </div>
   )
 }

@@ -265,3 +265,103 @@ describe('D1 — migration from legacy memory_entries', () => {
     expect(memStore.listMemoryFiles().length).toBe(first)
   })
 })
+
+describe('D2 — MEMORY.md always-loaded index + broken-link graph', () => {
+  it('regenerates MEMORY.md with one line per entry on every write', () => {
+    memStore.initializeMemoryStore()
+    for (let i = 1; i <= 5; i++) {
+      memStore.writeMemoryFile({
+        name: `m_${i}`,
+        type: 'feedback',
+        description: `Description ${i}`,
+        body: `Body ${i}`
+      })
+    }
+    const slug = memStore.__memoryStoreTest.DEFAULT_PROJECT_SLUG
+    const indexPath = join(
+      memStore.__memoryStoreTest.projectDir(slug),
+      'MEMORY.md'
+    )
+    expect(existsSync(indexPath)).toBe(true)
+    const raw = readFileSync(indexPath, 'utf-8')
+    for (let i = 1; i <= 5; i++) {
+      expect(raw).toContain(`m_${i}.md`)
+      expect(raw).toContain(`Description ${i}`)
+    }
+  })
+
+  it('buildMemoryIndexBlock wraps the index in <memory_index>', () => {
+    memStore.initializeMemoryStore()
+    memStore.writeMemoryFile({
+      name: 'user_role',
+      type: 'user',
+      description: 'data scientist focused on observability',
+      body: 'See [[ref_grafana_dashboard]] for the dashboard.'
+    })
+    const block = memStore.buildMemoryIndexBlock()
+    expect(block).toContain('<memory_index>')
+    expect(block).toContain('user_role.md')
+    expect(block.trim().endsWith('</memory_index>')).toBe(true)
+  })
+
+  it('emits an empty string when no memories exist', () => {
+    memStore.initializeMemoryStore()
+    expect(memStore.buildMemoryIndexBlock()).toBe('')
+  })
+
+  it('deleting an entry removes its line from MEMORY.md on the next regen', () => {
+    memStore.initializeMemoryStore()
+    memStore.writeMemoryFile({ name: 'keeper', type: 'project', body: 'stays' })
+    memStore.writeMemoryFile({ name: 'goner', type: 'project', body: 'leaves' })
+    const slug = memStore.__memoryStoreTest.DEFAULT_PROJECT_SLUG
+    const indexPath = join(
+      memStore.__memoryStoreTest.projectDir(slug),
+      'MEMORY.md'
+    )
+    expect(readFileSync(indexPath, 'utf-8')).toContain('goner.md')
+
+    memStore.deleteMemoryFile('goner')
+    expect(readFileSync(indexPath, 'utf-8')).not.toContain('goner.md')
+    expect(readFileSync(indexPath, 'utf-8')).toContain('keeper.md')
+  })
+
+  it('flags [[unknown]] links as broken so the pip surface can show them', () => {
+    memStore.initializeMemoryStore()
+    memStore.writeMemoryFile({
+      name: 'feedback_real_db',
+      type: 'feedback',
+      description: 'mocks vs real db',
+      body: 'See [[user_role]] and the missing [[future_topic_to_write]] entry.'
+    })
+    memStore.writeMemoryFile({
+      name: 'user_role',
+      type: 'user',
+      description: 'data scientist',
+      body: 'no further links'
+    })
+
+    const broken = memStore.getBrokenMemoryLinks()
+    const targets = broken.map((b) => b.target)
+    expect(targets).toContain('future_topic_to_write')
+    expect(targets).not.toContain('user_role') // resolved
+    expect(broken.find((b) => b.target === 'future_topic_to_write')?.from).toBe(
+      'feedback_real_db'
+    )
+  })
+
+  it('truncates the injected block at 200 entries', () => {
+    memStore.initializeMemoryStore()
+    for (let i = 0; i < 210; i++) {
+      memStore.writeMemoryFile({
+        name: `e_${i.toString().padStart(3, '0')}`,
+        type: 'project',
+        description: `entry ${i}`,
+        body: `body ${i}`
+      })
+    }
+    const block = memStore.buildMemoryIndexBlock()
+    const bullet = (block.match(/\n- \[/g) ?? []).length
+    expect(bullet).toBeLessThanOrEqual(200)
+    expect(block).toContain('more')
+  })
+})
