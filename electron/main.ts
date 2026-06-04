@@ -12,6 +12,7 @@ import { destroyAllBackgroundShells } from './services/shell-tool'
 import { destroyAllMonitors } from './services/monitor-service'
 import { fireHooks } from './services/hooks-runner'
 import { startAutomations, stopAutomations } from './services/automations-runner'
+import { startLoopWakeups, stopLoopWakeups } from './services/loop-runner'
 import { mcpManager } from './services/mcp-manager'
 import { ensureNodeReplDefaultServer } from './services/node-repl-default-server'
 import { initializeSkillLoader, shutdownSkillLoader } from './services/skill-loader'
@@ -448,8 +449,9 @@ app.whenReady().then(() => {
   try {
     fireHooks('sessionStart')
     startAutomations()
+    startLoopWakeups()
   } catch (err) {
-    console.error('[main] hooks/automations init error:', (err as Error).message)
+    console.error('[main] hooks/automations/loops init error:', (err as Error).message)
   }
 
   mcpManager.initialize()
@@ -496,6 +498,7 @@ app.on('will-quit', () => {
   destroyAllBackgroundShells()
   destroyAllMonitors()
   stopAutomations()
+  stopLoopWakeups()
   void shutdownReviewWatcher()
   closeDb()
 })

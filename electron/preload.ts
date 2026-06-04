@@ -354,6 +354,26 @@ const api = {
     validateCron: (expr: string) => ipcRenderer.invoke('automations:validateCron', expr)
   },
 
+  loops: {
+    schedule: (input: {
+      conversationId: string
+      delaySeconds: number
+      prompt: string
+      reason?: string | null
+    }) => ipcRenderer.invoke('loops:schedule', input),
+    cancel: (id: string) => ipcRenderer.invoke('loops:cancel', id),
+    list: (filter?: {
+      conversationId?: string
+      status?: 'pending' | 'fired' | 'cancelled' | 'error' | Array<'pending' | 'fired' | 'cancelled' | 'error'>
+      limit?: number
+    }) => ipcRenderer.invoke('loops:list', filter),
+    onFired: (cb: (event: unknown) => void): (() => void) => {
+      const handler = (_: unknown, event: unknown): void => cb(event)
+      ipcRenderer.on('loop:wakeup:fired', handler)
+      return () => ipcRenderer.removeListener('loop:wakeup:fired', handler)
+    }
+  },
+
   worktree: {
     list: (args: { cwd?: string }) => ipcRenderer.invoke('worktree:list', args),
     create: (args: { cwd?: string; path: string; branch: string; baseRef?: string }) =>

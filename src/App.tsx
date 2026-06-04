@@ -232,6 +232,22 @@ function App(): React.ReactElement {
   }, [])
 
   useEffect(() => {
+    if (!window.api?.loops?.onFired) return
+    const unsubscribe = window.api.loops.onFired((e: unknown) => {
+      const event = e as { wakeup?: { conversationId?: string } }
+      const conversationId = event?.wakeup?.conversationId
+      const chat = useChatStore.getState()
+      if (conversationId && chat.activeConversationId === conversationId) {
+        void window.api.conversation.getMessages(conversationId).then((result) => {
+          if (result.success) useChatStore.setState({ messages: result.data })
+        })
+      }
+      void chat.loadConversations()
+    })
+    return unsubscribe
+  }, [])
+
+  useEffect(() => {
     const init = async () => {
       if (!window.api) {
         setNeedsApiKey(true)
