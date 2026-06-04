@@ -338,6 +338,70 @@ function initSchema(db: Database.Database): void {
   // was not gated (no requiresApproval, no gating risks).
   safeAddColumn(db, 'tool_calls', 'approval_source TEXT')
 
+  // Track 2 / C2 — `hooks` rows can now hold either JavaScript bodies executed
+  // in a `vm` sandbox (the new default) or legacy shell commands run via
+  // child_process. Existing rows predate the column and were always shell, so
+  // the migration default is 'shell'; new rows from the UI explicitly set
+  // 'js'. `timeout_ms` caps the vm sandbox; ignored for shell hooks.
+  safeAddColumn(db, 'hooks', "language TEXT NOT NULL DEFAULT 'shell'")
+  safeAddColumn(db, 'hooks', 'timeout_ms INTEGER NOT NULL DEFAULT 5000')
+
+  // Track 2 / C3 — per-conversation plan-mode flag. When set, the chat
+  // dispatcher refuses any tool whose descriptor carries `mutates: true`
+  // (the model can still call read-only tools like workspace_context or
+  // any MCP read) until the model or user toggles the flag back off via
+  // the `exit_plan_mode` tool / banner button. Stored as INTEGER 0/1.
+  safeAddColumn(db, 'conversations', 'plan_mode_active INTEGER NOT NULL DEFAULT 0')
+
+  // Track 2 / E1 — session chapters. Each row anchors a chapter title +
+  // optional summary to a specific message id. Created via the
+  // `mark_chapter` tool descriptor or the `session:markChapter` IPC; the
+  // renderer (E2) shows them as a sidebar TOC + inline dividers, and the
+  // system-prompt builder injects the chapter list under <chapters>.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS chapters (
+      id TEXT PRIMARY KEY,
+      conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+      title TEXT NOT NULL,
+      summary TEXT,
+      anchor_message_id TEXT NOT NULL,
+      created_at INTEGER NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_chapters_conversation
+      ON chapters(conversation_id, created_at ASC);
+    CREATE INDEX IF NOT EXISTS idx_chapters_anchor
+      ON chapters(anchor_message_id);
+  `)
+
+  // Track 2 / E5 — auto context compression. When a turn's projected
+  // token count exceeds the model's context budget, the compressor
+  // selects the oldest messages, generates a structured summary, and
+  // persists it as a new message; the originals get `compressed_into`
+  // set to the summary message id. Prompt assembly then skips
+  // compressed messages and inserts the summary in their place.
+  safeAddColumn(db, 'messages', 'compressed_into TEXT')
+
+  // Track 2 / E6 — async events that should be visible to the model on
+  // the owning conversation's next turn. Producers enqueue rows when
+  // background work completes; chat.ts drains pending rows exactly once
+  // into a <task-notifications> block during prompt assembly.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS async_events (
+      id TEXT PRIMARY KEY,
+      conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+      kind TEXT NOT NULL,
+      payload_json TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      delivered_at INTEGER
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_async_events_pending
+      ON async_events(conversation_id, delivered_at, created_at ASC);
+    CREATE INDEX IF NOT EXISTS idx_async_events_kind
+      ON async_events(kind, created_at DESC);
+  `)
+
   // Parent call id — set on synthetic rows spawned from another tool (e.g.
   // sub-agent calls under `multi_agent_run`). Null for top-level
   // model-initiated calls. Lets the audit log answer "which fanout was this

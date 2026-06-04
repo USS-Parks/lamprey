@@ -6,6 +6,10 @@ import {
   getPlanSnapshot
 } from '../services/plan-goal-store'
 import { emitChatEvent } from '../services/chat-events'
+import {
+  isPlanModeActive,
+  setPlanModeActive
+} from '../services/conversation-store'
 
 // Read-side IPC for the per-conversation plan checklist, plus the inspect/clear
 // surface used by the Plan & Goals settings panel. The model writes through the
@@ -65,6 +69,52 @@ export function registerPlanHandlers(): void {
       return { success: true, data: null }
     } catch (err: any) {
       return { success: false, error: err?.message ?? 'plan:clearAllState failed' }
+    }
+  })
+
+  // Track 2 / C3 — plan-mode gate. The model toggles this via the
+  // `enter_plan_mode` / `exit_plan_mode` tool descriptors during a chat
+  // turn; the renderer banner uses these IPC channels for the user-facing
+  // Exit button and for hydrating the banner state on conversation
+  // switch. Both flips emit `plan:mode-changed` for live subscribers.
+  ipcMain.handle('plan:isModeActive', async (_event, conversationId: string) => {
+    try {
+      if (typeof conversationId !== 'string' || !conversationId) {
+        return { success: false, error: 'conversationId is required' }
+      }
+      return { success: true, data: isPlanModeActive(conversationId) }
+    } catch (err: any) {
+      return { success: false, error: err?.message ?? 'plan:isModeActive failed' }
+    }
+  })
+
+  ipcMain.handle('plan:enterMode', async (_event, conversationId: string) => {
+    try {
+      if (typeof conversationId !== 'string' || !conversationId) {
+        return { success: false, error: 'conversationId is required' }
+      }
+      const ok = setPlanModeActive(conversationId, true)
+      if (ok) {
+        emitChatEvent('plan:mode-changed', { conversationId, active: true })
+      }
+      return { success: true, data: ok }
+    } catch (err: any) {
+      return { success: false, error: err?.message ?? 'plan:enterMode failed' }
+    }
+  })
+
+  ipcMain.handle('plan:exitMode', async (_event, conversationId: string) => {
+    try {
+      if (typeof conversationId !== 'string' || !conversationId) {
+        return { success: false, error: 'conversationId is required' }
+      }
+      const ok = setPlanModeActive(conversationId, false)
+      if (ok) {
+        emitChatEvent('plan:mode-changed', { conversationId, active: false })
+      }
+      return { success: true, data: ok }
+    } catch (err: any) {
+      return { success: false, error: err?.message ?? 'plan:exitMode failed' }
     }
   })
 }

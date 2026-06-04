@@ -94,6 +94,64 @@ export interface AgentStatusPayload {
   output?: string
 }
 
+/** Track 2 / C3 — plan-mode toggle event. Fires whenever the per-conversation
+ *  plan_mode_active flag flips via the `enter_plan_mode` / `exit_plan_mode`
+ *  tools or the `plan:enterMode` / `plan:exitMode` IPC channels. */
+export interface PlanModeChangedPayload {
+  conversationId: string
+  active: boolean
+}
+
+/** Track 2 / E1 — chapter marker. Fires when the model invokes `mark_chapter`
+ *  or the renderer writes via the `session:markChapter` IPC. The chapter
+ *  payload mirrors the Chapter shape from chapters-store. */
+export interface ChapterMarkedPayload {
+  conversationId: string
+  chapter: {
+    id: string
+    conversationId: string
+    title: string
+    summary: string | null
+    anchorMessageId: string
+    createdAt: number
+  }
+}
+
+/** Track 2 / E5 — context compression. Fires when the compressor folds the
+ *  oldest messages into a `<conversation_summary>` system message. The
+ *  renderer reloads the conversation's messages on receipt so the
+ *  CompressedRegionPill replaces the original turn cards. */
+export interface ChatCompressedPayload {
+  conversationId: string
+  summaryMessageId: string
+  compressedCount: number
+  reductionPct: number
+}
+
+/** Track 2 / E6 — async event bridge toast. The durable row lives in
+ *  async_events; this live event is just a user-visible nudge that the
+ *  model will see the same item on the next turn. */
+export interface AsyncEventReceivedPayload {
+  id: string
+  conversationId: string
+  kind: string
+  title: string
+  message: string
+  createdAt: number
+}
+
+/** Track 2 / E4 — spawned task chip. Fires when a source conversation
+ *  creates a child task conversation. */
+export interface TaskSpawnedPayload {
+  taskId: string
+  sourceConversationId: string
+  conversationId: string
+  title: string
+  tldr: string | null
+  worktreePath: string | null
+  branch: string | null
+}
+
 export interface ChatEventMap {
   'chat:chunk': ChatChunkPayload
   'chat:done': ChatDonePayload
@@ -102,6 +160,11 @@ export interface ChatEventMap {
   'chat:tool-call': ChatToolCallPayload
   'chat:tool-call-result': ChatToolCallResultPayload
   'plan:updated': PlanUpdatedPayload
+  'plan:mode-changed': PlanModeChangedPayload
+  'chat:chapter-marked': ChapterMarkedPayload
+  'chat:compressed': ChatCompressedPayload
+  'async-event:received': AsyncEventReceivedPayload
+  'tasks:spawned': TaskSpawnedPayload
   'memory:added': MemoryAddedPayload
   'agent:status': AgentStatusPayload
 }

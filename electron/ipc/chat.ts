@@ -11,7 +11,20 @@ import {
 import { boundedJsonPreview, recordEvent } from '../services/event-log'
 import { validateChatSendRequest } from './chat-validation'
 import * as convStore from '../services/conversation-store'
+import {
+  isPlanModeActive,
+  setPlanModeActive
+} from '../services/conversation-store'
 import * as memStore from '../services/memory-store'
+import { createChapter } from '../services/chapters-store'
+import {
+  compressOldestMessages,
+  getEffectiveMessages
+} from '../services/context-compressor'
+import {
+  buildTaskNotificationsBlock,
+  drainAsyncEventsForPrompt
+} from '../services/async-event-bridge'
 import { buildSystemPrompt } from '../services/system-prompt-builder'
 import { resolveAgentDispatch, runAgentPipeline } from '../services/agent-pipeline'
 import { readAgentsMd } from '../services/agents-md-loader'
@@ -19,7 +32,7 @@ import { fireHooks } from '../services/hooks-runner'
 import { mcpManager } from '../services/mcp-manager'
 import { listSkills, getSkillContent } from '../services/skill-loader'
 import { buildApiMessagesFromStoredMessages } from '../services/chat-history'
-import { toolRegistry } from '../services/tool-registry'
+import { toolRegistry, isMutatingDescriptor } from '../services/tool-registry'
 import {
   partitionToolCallWindows,
   type ProviderToolCall
@@ -183,14 +196,42 @@ export function registerChatHandlers(): void {
 
       emitPhase(conversationId, 'understanding')
 
-      fireHooks('promptSubmit', { conversationId, promptBody: content })
+      void fireHooks('promptSubmit', { conversationId, promptBody: content })
+
+      // Track 2 / E5 — auto context compression. Run BEFORE pulling
+      // history so the next turn's prompt sees the compressed view.
+      // The model's context window comes from the catalogue entry; an
+      // unknown model defaults to a conservative 128k cap. The compressor
+      // is a pure-SQL operation (no LLM call in v1), so the latency is
+      // negligible.
+      try {
+        const modelInfo = resolveModel(model)
+        const ctxWindow = modelInfo.contextWindow ?? 128_000
+        const r = compressOldestMessages(conversationId, ctxWindow)
+        if (r) {
+          emitChatEvent('chat:compressed', {
+            conversationId,
+            summaryMessageId: r.summaryMessageId,
+            compressedCount: r.compressedCount,
+            reductionPct: r.reductionPct
+          })
+        }
+      } catch (err) {
+        console.error('[chat] context compression failed:', err)
+      }
 
       const allMessages = convStore.getMessages(conversationId)
+      // The dispatcher uses the effective view (compressed messages
+      // hidden, summary inserted in their place) for the OpenAI API.
+      const promptHistory = getEffectiveMessages(conversationId)
       const memoryBlock = memStore.buildMemoryBlock()
       // D2: always-loaded `<memory_index>` block built from MEMORY.md.
       // Returns '' when the project has no entries, in which case
       // buildSystemPrompt drops the block entirely.
       const memoryIndexBlock = memStore.buildMemoryIndexBlock()
+      const taskNotificationsBlock = buildTaskNotificationsBlock(
+        drainAsyncEventsForPrompt(conversationId)
+      )
 
       const settingsRaw = readSettingsJson()
       const agentic = loadAgenticCodingConfig(settingsRaw)
@@ -230,7 +271,8 @@ export function registerChatHandlers(): void {
         // contract. When off, leave contractRole undefined so existing turn
         // shapes match pre-Prompt-14.
         agentic.mode ? 'coding' : undefined,
-        memoryIndexBlock
+        memoryIndexBlock,
+        taskNotificationsBlock
       )
 
       // Tools come from the unified registry — natives (memory_add today) plus
@@ -238,7 +280,7 @@ export function registerChatHandlers(): void {
       // OpenAI-compatible function schemas.
       const tools: ChatCompletionTool[] = toolRegistry.getOpenAITools()
 
-      const apiMessages = buildApiMessagesFromStoredMessages(systemPrompt, allMessages)
+      const apiMessages = buildApiMessagesFromStoredMessages(systemPrompt, promptHistory)
 
       const abortController = new AbortController()
       // Stash the abort controller + the correlationId generated above so
@@ -286,7 +328,8 @@ export function registerChatHandlers(): void {
           agentsMd,
           coderRoster.coder,
           'coding',
-          memoryIndexBlock
+          memoryIndexBlock,
+          taskNotificationsBlock
         )
         const priorWithoutLatestUser = apiMessages.filter(
           (m, idx) => idx !== 0 // drop the system entry; pipeline owns it
@@ -557,7 +600,7 @@ export async function runChatRound(
             if (!suppressDoneEvent) {
               emitPhase(conversationId, 'done')
               emitChatEvent('chat:done', { conversationId, message: assistantMsg })
-              fireHooks('agentStop', { conversationId })
+              void fireHooks('agentStop', { conversationId })
             }
             resolve({ message: assistantMsg })
             return
@@ -747,7 +790,17 @@ async function resolveSingleToolCall(
   if (descriptor) {
     emitPhase(conversationId, inferPhaseFromDescriptor(descriptor))
   }
-  const needsApproval = descriptorNeedsApproval(descriptor)
+
+  // Track 2 / C3 — plan-mode gate. Block mutating tools without asking
+  // for approval first: there is no point routing through the modal when
+  // the mode already says no, and a global 'deny destructive' policy
+  // shouldn't get to silently allow what plan-mode forbids. The
+  // enter/exit tools opt out of the gate via `mutates: false` on the
+  // descriptor, so the model can always flip the mode back off.
+  const planModeActive = isPlanModeActive(conversationId)
+  const blockedByPlanMode = planModeActive && isMutatingDescriptor(descriptor)
+
+  const needsApproval = !blockedByPlanMode && descriptorNeedsApproval(descriptor)
   const approvalOutcome =
     needsApproval && descriptor
       ? await permissionsService.requestApprovalDetailed({
@@ -763,49 +816,139 @@ async function resolveSingleToolCall(
         })
       : { decision: 'allow' as const, source: 'none' }
   const approvalDecision = approvalOutcome.decision
-  const approvalSource = approvalOutcome.source
+  const approvalSource = blockedByPlanMode ? 'plan-mode' : approvalOutcome.source
 
-  if (approvalDecision === 'deny') {
+  if (blockedByPlanMode) {
+    result =
+      'Blocked: plan mode is active for this conversation. Read-only tools are still available; call `exit_plan_mode` (or have the user click "Exit plan mode" in the banner) to allow mutating tools.'
+    explicitStatus = 'denied'
+  } else if (approvalDecision === 'deny') {
     result = 'Action denied by user.'
     explicitStatus = 'denied'
-  } else if (toolName === 'memory_add' && typeof args.content === 'string') {
-    const entry = memStore.addMemory(args.content, conversationId)
-    emitChatEvent('memory:added', entry)
-    result = 'Saved to memory.'
-  } else if (toolRegistry.hasHandler(toolName)) {
-    const dispatched = await dispatchNativeTool(() =>
-      toolRegistry.executeNative(toolName, args, {
-        conversationId,
-        workspacePath,
-        model,
-        signal,
-        callId: tc.id,
-        correlationId
-      })
-    )
-    result = dispatched.result
-    explicitStatus = dispatched.status
-    if (toolName === 'update_plan' && dispatched.status === 'done') {
-      try {
-        const snapshot = JSON.parse(result)
-        emitChatEvent('plan:updated', { conversationId, snapshot })
-      } catch {
-        // Snapshot shape drifted — renderer refetches on the next
-        // conversation switch.
-      }
-    }
-  } else if (toolName.includes('__')) {
-    const [serverId, ...nameParts] = toolName.split('__')
-    const mcpToolName = nameParts.join('__')
-    try {
-      const mcpResult = await mcpManager.callTool(serverId, mcpToolName, args)
-      result = typeof mcpResult === 'string' ? mcpResult : JSON.stringify(mcpResult)
-    } catch (err: any) {
-      result = `Error: ${err.message}`
-    }
   } else {
-    result = `Unknown tool: ${toolName}`
+    // Track 2 / C2 — preToolUse hooks run after approval but before dispatch.
+    // A throwing preToolUse hook BLOCKS the call: its message reaches the
+    // model as the synthetic tool result and the audit row records 'denied'
+    // with approvalSource left at the approval gate's value (the hook is
+    // its own provenance). Hook errors are also surfaced as logs for the
+    // UI's recent-runs view.
+    const preHook = await fireHooks('preToolUse', {
+      conversationId,
+      toolName,
+      args,
+      cwd: workspacePath
+    })
+    if (preHook.blocked) {
+      result = `Blocked by hook: ${preHook.blockReason ?? 'preToolUse refused'}`
+      explicitStatus = 'denied'
+    } else if (toolName === 'memory_add' && typeof args.content === 'string') {
+      const entry = memStore.addMemory(args.content, conversationId)
+      emitChatEvent('memory:added', entry)
+      result = 'Saved to memory.'
+    } else if (toolName === 'enter_plan_mode') {
+      // Track 2 / C3 — inline because the handler emits a renderer event.
+      // Persisted on the conversation row so it survives a restart.
+      setPlanModeActive(conversationId, true)
+      emitChatEvent('plan:mode-changed', { conversationId, active: true })
+      result =
+        'Plan mode is on. Mutating tools (apply_patch, shell_command, destructive MCP) are blocked until exit_plan_mode is called.'
+    } else if (toolName === 'exit_plan_mode') {
+      setPlanModeActive(conversationId, false)
+      emitChatEvent('plan:mode-changed', { conversationId, active: false })
+      result = 'Plan mode is off. Mutating tools are allowed again.'
+    } else if (toolName === 'mark_chapter') {
+      // Track 2 / E1 — anchor the chapter at the assistant turn that
+      // produced the call. The anchor message id is not yet persisted at
+      // this point in the dispatch loop (the post-tool assistant message
+      // gets persisted after this returns), so we anchor on the existing
+      // tool-call id — chat-history can map it back to its parent
+      // assistant turn. The renderer treats the anchor as the boundary
+      // marker; UI cosmetic, no behavioural dependency on exact mapping.
+      const titleRaw =
+        typeof args.title === 'string' ? args.title.trim() : ''
+      const summaryRaw =
+        typeof args.summary === 'string' ? args.summary.trim() : ''
+      if (!titleRaw) {
+        result = 'Error: mark_chapter requires a non-empty `title`.'
+        explicitStatus = 'error'
+      } else {
+        const chapter = createChapter({
+          conversationId,
+          title: titleRaw.slice(0, 80),
+          summary: summaryRaw ? summaryRaw.slice(0, 280) : null,
+          anchorMessageId: tc.id
+        })
+        emitChatEvent('chat:chapter-marked', { conversationId, chapter })
+        // Plan §2 invariant 10 — chapters also land on the event spine
+        // for the audit timeline.
+        try {
+          recordEvent({
+            type: 'chat.chapter.marked',
+            actorKind: 'model',
+            conversationId,
+            correlationId,
+            entityKind: 'chapter',
+            entityId: chapter.id,
+            payload: {
+              title: chapter.title,
+              summary: chapter.summary,
+              anchorMessageId: chapter.anchorMessageId
+            }
+          })
+        } catch (err) {
+          console.error('[chat] chat.chapter.marked spine event failed:', err)
+        }
+        result = `Chapter marked: "${chapter.title}"`
+      }
+    } else if (toolRegistry.hasHandler(toolName)) {
+      const dispatched = await dispatchNativeTool(() =>
+        toolRegistry.executeNative(toolName, args, {
+          conversationId,
+          workspacePath,
+          model,
+          signal,
+          callId: tc.id,
+          correlationId
+        })
+      )
+      result = dispatched.result
+      explicitStatus = dispatched.status
+      if (toolName === 'update_plan' && dispatched.status === 'done') {
+        try {
+          const snapshot = JSON.parse(result)
+          emitChatEvent('plan:updated', { conversationId, snapshot })
+        } catch {
+          // Snapshot shape drifted — renderer refetches on the next
+          // conversation switch.
+        }
+      }
+    } else if (toolName.includes('__')) {
+      const [serverId, ...nameParts] = toolName.split('__')
+      const mcpToolName = nameParts.join('__')
+      try {
+        const mcpResult = await mcpManager.callTool(serverId, mcpToolName, args)
+        result = typeof mcpResult === 'string' ? mcpResult : JSON.stringify(mcpResult)
+      } catch (err: any) {
+        result = `Error: ${err.message}`
+      }
+    } else {
+      result = `Unknown tool: ${toolName}`
+    }
   }
+
+  // Track 2 / C2 — postToolUse fires after the handler completes (whether
+  // it succeeded, failed, or was denied by approval/hook). Hooks here can
+  // log every invocation but never block — we are past the dispatch point.
+  // Awaited so the synchronous JS sandbox completes before the next call
+  // in the same window starts.
+  if (result === undefined) result = ''
+  await fireHooks('postToolUse', {
+    conversationId,
+    toolName,
+    args,
+    result,
+    cwd: workspacePath
+  })
 
   const duration = Date.now() - startTime
   const finishedAt = startTime + duration

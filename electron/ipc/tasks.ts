@@ -4,6 +4,9 @@ import {
   getLiveHandle,
   type AgentRunNotifyEvent
 } from '../services/subagent-runner'
+import { enqueueAgentRunNotification } from '../services/async-event-bridge'
+import { spawnTask } from '../services/spawn-task'
+import { getActiveWorkspace } from '../services/workspace-state'
 
 // Track 1 / A2: tasks:* IPC + agent:run:notify broadcast wiring.
 //
@@ -21,9 +24,42 @@ export function broadcastAgentRunEvent(event: AgentRunNotifyEvent): void {
   for (const win of BrowserWindow.getAllWindows()) {
     win.webContents.send('agent:run:notify', event)
   }
+  try {
+    enqueueAgentRunNotification(event)
+  } catch (err) {
+    console.error('[tasks] async agent notification enqueue failed:', err)
+  }
 }
 
 export function registerTasksHandlers(): void {
+  ipcMain.handle('tasks:spawn', async (_e, payload) => {
+    try {
+      if (!payload || typeof payload !== 'object') {
+        return { success: false, error: 'payload must be an object' }
+      }
+      const input = payload as {
+        sourceConversationId?: unknown
+        title?: unknown
+        prompt?: unknown
+        tldr?: unknown
+        cwd?: unknown
+        model?: unknown
+      }
+      const result = await spawnTask({
+        sourceConversationId:
+          typeof input.sourceConversationId === 'string' ? input.sourceConversationId : '',
+        title: typeof input.title === 'string' ? input.title : '',
+        prompt: typeof input.prompt === 'string' ? input.prompt : '',
+        tldr: typeof input.tldr === 'string' ? input.tldr : null,
+        cwd: typeof input.cwd === 'string' ? input.cwd : getActiveWorkspace(),
+        model: typeof input.model === 'string' ? input.model : null
+      })
+      return { success: true, data: result }
+    } catch (err: unknown) {
+      return { success: false, error: messageFor(err, 'spawn failed') }
+    }
+  })
+
   ipcMain.handle('tasks:list', async (_e, filter?: store.AgentRunListFilter) => {
     try {
       return { success: true, data: store.listRuns(filter ?? {}) }
