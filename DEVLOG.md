@@ -1,5 +1,36 @@
 # Lamprey Harness Dev Log
 
+## [Track 3 — Prompt D3] Memory UI typed view + linking — 2026-06-03
+
+**Files changed:**
+- `src/lib/types.ts` — exports `MemoryType`, `MemoryFile`, `BrokenMemoryLink`; `MemoryEntry` extended with optional typed fields (`name`, `description`, `type`, `projectSlug`, `filePath`) so existing `id: number` callers keep compiling.
+- `src/stores/memory-store.ts` (rewrite) — adds `entries: MemoryFile[]`, `brokenLinks`, `loading`, typed CRUD (`writeMemory`, `deleteEntry`, `duplicateEntry`), `countsByType()` selector for tab badges, and `receiveChanged()` for the `memory:changed` broadcast. Legacy methods (`addMemory`, `updateMemory`, `deleteMemory(id)`, etc.) and pin-by-conversation surface preserved for the Sources panel + RAG sidebar.
+- `src/components/memory/MemoryTypeBadge.tsx` (new) — small colored chip per type (blue/amber/emerald/violet); ships `MEMORY_TYPE_LABELS` for reuse.
+- `src/components/memory/MemoryLinkPicker.tsx` (new) — floating autocomplete that hooks the editor's textarea: detects `[[` typing, reads partial-match prefix, lists matching entries (name + description + type), arrow-key navigation + enter to insert `[[name]]` and close.
+- `src/components/memory/MemoryEditor.tsx` (new) — typed entry editor with type/name/description/body fields, save+cancel+delete actions, body textarea wired to `MemoryLinkPicker`. Name field locks when editing an existing entry so the file is never orphaned on rename.
+- `src/components/memory/MemoryPanel.tsx` (rewrite) — tabs across the top (All/User/Feedback/Project/Reference) with live counts; click an entry → open MemoryEditor; per-row duplicate + delete actions on hover; broken-link pip from `MemoryLinkGraph` (D2) re-wired to open the editor with the missing target pre-seeded as a `reference` entry; Import/Export/Clear menu preserved.
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- vitest full suite ✓ (842 passed | 5 skipped — unchanged)
+- user-verification-needed (Electron-shell UI, preview tools can't reach an Electron window):
+  1. open Memory modal → tabs show All/User/Feedback/Project/Reference with counts;
+  2. click `+` from each tab → MemoryEditor opens with that type pre-selected;
+  3. create one of each type with a name + body → list/tabs update + MEMORY.md file contains a line per entry;
+  4. click an entry → editor opens with frontmatter populated; edit body and save → file rewritten with same name + new body;
+  5. type `[[` in the body → autocomplete lists known entries; arrow-down + enter inserts `[[name]]`;
+  6. duplicate-action on a row → opens editor with `<name>_copy`;
+  7. drop a `[[unknown-target]]` reference into a body → after save, "To write" pip surfaces in the panel; click pip → editor opens pre-seeded with `name=unknown-target`, `type=reference`;
+  8. badges scan correctly by color.
+
+**Notes:**
+- Editor renders inline (replaces the list view rather than opening a side pane) to fit the existing 720px modal. The Integration Phase can promote it to a split-pane layout if needed.
+- The pip "to-write" target defaults to `type: reference` because the most common cross-reference use case is pointing at an external system or fact rather than a feedback rule.
+- The legacy `MemoryEntry` shape (numeric id) survives intact for the Sources panel + RAG attach UI. D3 doesn't migrate those callers — they continue to function with the legacy view loaded from `memory:list()` (no-arg) which returns the rowid-bearing shape.
+
+**Commit:** see git log on `feat/track-3-memory-verify`.
+
 ## [Track 3 — Prompt D2] MEMORY.md always-loaded index — 2026-06-03
 
 **Files changed:**

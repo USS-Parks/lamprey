@@ -45,12 +45,38 @@ export interface Skill {
   enabled: boolean
 }
 
+export type MemoryType = 'user' | 'feedback' | 'project' | 'reference'
+
 export interface MemoryEntry {
   id: number
   content: string
   createdAt: number
   updatedAt: number
   sourceConversationId?: string
+  // D1 typed-shape additions. Optional so pre-D3 callers keep compiling.
+  name?: string
+  description?: string
+  type?: MemoryType
+  projectSlug?: string
+  filePath?: string
+}
+
+export interface MemoryFile {
+  name: string
+  projectSlug: string
+  description: string
+  type: MemoryType
+  body: string
+  filePath: string
+  sourceConversationId: string | null
+  createdAt: number
+  updatedAt: number
+}
+
+export interface BrokenMemoryLink {
+  from: string
+  fromFilePath: string
+  target: string
 }
 
 export interface McpServerConfig {
