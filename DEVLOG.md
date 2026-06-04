@@ -1,5 +1,38 @@
 # Lamprey Harness Dev Log
 
+## [Audit Remediation — Prompt 5] Test foundation (jsdom + stores) — 2026-06-04
+
+Closes TEST-1, TEST-2. No production code touched — test infra + new tests only.
+
+- **devDeps**: `jsdom`, `@testing-library/react`, `@testing-library/jest-dom`.
+- **`@` alias in vitest** — `vitest.config.ts` gained `resolve.alias` (`@`→`src`,
+  `@assets`→`ASSETS`). This was the real blocker: existing `src` tests only ever
+  imported `@/lib/types` as *erased type-only* imports, so the missing alias was
+  invisible; any renderer store/component test that imports `@/...` at runtime
+  needs it.
+- **jest-dom** — `vitest.setup.ts` registers the matchers (runtime);
+  `src/types/jest-dom.d.ts` makes their types visible to `tsconfig.web`.
+- **environment** — vitest 4 removed `environmentMatchGlobs`, so the default
+  stays `node` and DOM tests opt in per-file with `// @vitest-environment
+  jsdom`. Documented in the config header.
+- **New tests**:
+  - `src/stores/settings-store.test.ts` (4, jsdom) — load merges over defaults +
+    marks loaded; failed IPC is a no-op; updateSettings persists exactly the
+    partial; toggleThemeMode flips + persists. Exercises the `window.api` stub
+    pattern.
+  - `src/stores/chat-store.test.ts` (8, jsdom) — stream transitions
+    (append/finish/error), tool-call lifecycle incl. terminal-error status
+    (not hard-coded success), getRecentUserPrompts ordering.
+  - `src/lib/jsdom-foundation.test.tsx` (1) — proves the jsdom + RTL render +
+    jest-dom matcher stack end to end (the stack Prompts 6/8 build on).
+
+Verify: tsc node ✓ · tsc web ✓ · lint 0 errors / 384 warnings (no new) ✓ ·
+vitest 103 files / 1294 pass + 11 skip (+12) ✓. Coverage rose to
+25.38 / 22.37 / 20.46 / 26.19 % (from ~15.6 / 14.6 / 11.9 / 16.0), comfortably
+above the 13 / 12 / 9 / 14 floors. Bundle smokes skipped (no bundle change).
+
+---
+
 ## [Audit Remediation — Prompt 4] Streaming & connection bugs — 2026-06-04
 
 Closes BUG-1 and BUG-2.
