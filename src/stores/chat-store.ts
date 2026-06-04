@@ -67,6 +67,17 @@ interface ChatState {
   removeAttachment: (index: number) => void
   clearAttachments: () => void
   setAttachmentsProcessing: (v: boolean) => void
+  /** Dispatcher for RAG ingest progress events. Wired in App.tsx from
+   *  window.api.rag.document.onProgress so the store doesn't own the IPC
+   *  subscription lifecycle. */
+  _updateRagAttachmentProgress: (event: {
+    jobId: string
+    documentId: string
+    phase: string
+    progress: number
+    chunkCount?: number
+    error?: string
+  }) => void
 }
 
 function extOf(name: string): string {
@@ -87,6 +98,21 @@ function buildAttachmentBlock(file: ProcessedFile): string {
   }
   if (file.kind === 'binary') {
     return `\n\n[Attachment ${file.name}: ${file.previewText || 'binary file, content not included.'}]`
+  }
+  if (file.kind === 'rag-pending') {
+    // The file's content reaches the model via augmentForChat's
+    // <retrieved_context> block at chat-send time, not inline here. We
+    // leave a one-line marker so the model knows a corpus is attached
+    // and can reason about citation expectations even before the first
+    // <retrieved_context> arrives.
+    const phase = file.ragPhase ?? 'queued'
+    if (phase === 'ready') {
+      return `\n\n[Indexed corpus: ${file.name} — ${file.ragChunkCount ?? '?'} chunks available via retrieval]`
+    }
+    if (phase === 'error') {
+      return `\n\n[Attachment ${file.name}: indexing failed${file.error ? ` — ${file.error}` : ''}]`
+    }
+    return `\n\n[Indexing ${file.name} — chunks not yet available for this turn]`
   }
   return ''
 }
@@ -351,15 +377,120 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   addAttachments: (files: ProcessedFile[]) => {
     if (!files.length) return
-    set((state) => ({ pendingAttachments: [...state.pendingAttachments, ...files] }))
+    // Seed rag-pending files with a queued phase so the chip can render an
+    // "Indexing…" state immediately, before the auto-attach IPC returns.
+    const seeded = files.map((f) =>
+      f.kind === 'rag-pending' && !f.ragPhase
+        ? { ...f, ragPhase: 'queued' as const, ragProgress: 0 }
+        : f
+    )
+    set((state) => ({ pendingAttachments: [...state.pendingAttachments, ...seeded] }))
     for (const f of files) {
       if (f.error) toast.warning(`${f.name}: ${f.error}`)
+    }
+
+    // Route oversized files through the RAG ingest pipeline. Fired async —
+    // each call ensures a per-conversation auto-collection, submits the
+    // ingest job, and stamps the returned jobId onto the matching chip so
+    // progress events can update it. The auto-attach IPC requires a
+    // conversationId; if none exists yet we create one first.
+    for (const f of seeded) {
+      if (f.kind !== 'rag-pending') continue
+      if (!f.sourcePath) {
+        console.warn('[chat-store] rag-pending file missing sourcePath:', f.name)
+        continue
+      }
+      void (async () => {
+        let convId = get().activeConversationId
+        if (!convId) {
+          convId = await get().createConversation()
+          if (!convId) return
+        }
+        try {
+          const res = await window.api.rag.autoAttach({
+            conversationId: convId,
+            filePath: f.sourcePath!,
+            displayName: f.name
+          })
+          if (!res?.success) {
+            const errMsg = res?.error ?? 'auto-attach failed'
+            toast.error(`${f.name}: ${errMsg}`)
+            set((state) => ({
+              pendingAttachments: state.pendingAttachments.map((a) =>
+                a.name === f.name && a.size === f.size && a.kind === 'rag-pending'
+                  ? { ...a, ragPhase: 'error' as const, error: errMsg }
+                  : a
+              )
+            }))
+            return
+          }
+          const { jobId, collectionId } = res.data as {
+            jobId: string
+            collectionId: string
+          }
+          set((state) => ({
+            pendingAttachments: state.pendingAttachments.map((a) =>
+              a.name === f.name && a.size === f.size && a.kind === 'rag-pending'
+                ? { ...a, ingestJobId: jobId, collectionId }
+                : a
+            )
+          }))
+        } catch (err) {
+          const msg = (err as Error)?.message ?? 'auto-attach threw'
+          toast.error(`${f.name}: ${msg}`)
+        }
+      })()
     }
   },
 
   removeAttachment: (index: number) => {
+    const removed = get().pendingAttachments[index]
     set((state) => ({
       pendingAttachments: state.pendingAttachments.filter((_, i) => i !== index)
+    }))
+    // If a rag-pending chip is removed mid-ingest, drop the conversation→
+    // collection link so augmentForChat stops querying it. We deliberately
+    // do NOT delete the ingested document — it stays in the auto-collection
+    // (cheap to keep, expensive to redo); the user can re-add the file later
+    // by drag-drop and the dedupe-by-hash path in ingest will reuse it.
+    if (
+      removed?.kind === 'rag-pending' &&
+      removed.collectionId &&
+      window.api?.rag?.attachments
+    ) {
+      const convId = get().activeConversationId
+      if (convId) {
+        void window.api.rag.attachments.remove({
+          conversationId: convId,
+          collectionId: removed.collectionId
+        })
+      }
+    }
+  },
+
+  /** Internal: progress dispatcher for RAG ingest events. Wired from App.tsx
+   *  to `window.api.rag.document.onProgress`. Matches by jobId; no-ops if
+   *  the chip was already removed from pendingAttachments. */
+  _updateRagAttachmentProgress: (event: {
+    jobId: string
+    documentId: string
+    phase: string
+    progress: number
+    chunkCount?: number
+    error?: string
+  }) => {
+    set((state) => ({
+      pendingAttachments: state.pendingAttachments.map((a) => {
+        if (a.kind !== 'rag-pending' || a.ingestJobId !== event.jobId) return a
+        return {
+          ...a,
+          documentId: event.documentId || a.documentId,
+          ragPhase: event.phase as ProcessedFile['ragPhase'],
+          ragProgress: event.progress,
+          ragChunkCount: event.chunkCount ?? a.ragChunkCount,
+          error: event.error ?? a.error
+        }
+      })
     }))
   },
 

@@ -203,6 +203,34 @@ function App(): React.ReactElement {
     })
   }, [])
 
+  // RAG ingest progress → forwarded to chat-store so rag-pending attachment
+  // chips update live (queued → loading → chunking → embedding → ready).
+  // The Library UI subscribes to the same channel separately; both
+  // subscribers are independent, no fan-in conflict.
+  useEffect(() => {
+    if (!window.api?.rag?.document?.onProgress) return
+    const unsubscribe = window.api.rag.document.onProgress((e: unknown) => {
+      const evt = e as {
+        jobId?: unknown
+        documentId?: unknown
+        phase?: unknown
+        progress?: unknown
+        chunkCount?: unknown
+        error?: unknown
+      }
+      if (typeof evt?.jobId !== 'string' || typeof evt?.phase !== 'string') return
+      useChatStore.getState()._updateRagAttachmentProgress({
+        jobId: evt.jobId,
+        documentId: typeof evt.documentId === 'string' ? evt.documentId : '',
+        phase: evt.phase,
+        progress: typeof evt.progress === 'number' ? evt.progress : 0,
+        chunkCount: typeof evt.chunkCount === 'number' ? evt.chunkCount : undefined,
+        error: typeof evt.error === 'string' ? evt.error : undefined
+      })
+    })
+    return unsubscribe
+  }, [])
+
   useEffect(() => {
     const init = async () => {
       if (!window.api) {

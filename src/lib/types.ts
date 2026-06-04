@@ -435,7 +435,15 @@ export interface ArtifactBounds {
 
 export type ArtifactType = 'html' | 'svg' | 'mermaid' | 'jsx' | 'react' | 'markdown'
 
-export type AttachmentKind = 'text' | 'image' | 'pdf' | 'binary'
+export type AttachmentKind = 'text' | 'image' | 'pdf' | 'binary' | 'rag-pending'
+
+export type RagPendingPhase =
+  | 'queued'      // waiting for auto-attach IPC to fire
+  | 'loading'
+  | 'chunking'
+  | 'embedding'
+  | 'ready'
+  | 'error'
 
 export interface ProcessedFile {
   name: string
@@ -445,6 +453,17 @@ export interface ProcessedFile {
   content: string
   previewText: string
   error?: string
+  /** Absolute path on disk. Set on `kind: 'rag-pending'` so the renderer
+   *  can hand the path to window.api.rag.autoAttach. */
+  sourcePath?: string
+  /** Ingest tracking — populated after the auto-attach IPC returns. The
+   *  renderer subscribes to rag.document.onProgress and matches by jobId. */
+  ingestJobId?: string
+  collectionId?: string
+  documentId?: string
+  ragPhase?: RagPendingPhase
+  ragProgress?: number
+  ragChunkCount?: number
 }
 
 // Right-side workspace system. `home` shows the 4 rounded pill subpanels;

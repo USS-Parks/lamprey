@@ -617,6 +617,16 @@ const api = {
         documentId?: string
       }) => ipcRenderer.invoke('rag:attachments:remove', input)
     },
+    // Auto-route a large file through the RAG ingest pipeline into a
+    // per-conversation auto-collection. The renderer calls this when a
+    // ProcessedFile arrives with kind: 'rag-pending'. Progress updates flow
+    // over the existing rag.document.onProgress subscription — match the
+    // returned jobId to the IngestProgressEvent.jobId.
+    autoAttach: (input: {
+      conversationId: string
+      filePath: string
+      displayName?: string
+    }) => ipcRenderer.invoke('rag:auto-attach', input),
     chunk: {
       get: (chunkId: string) => ipcRenderer.invoke('rag:chunk:get', chunkId)
     }

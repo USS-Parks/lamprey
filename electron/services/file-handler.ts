@@ -1,7 +1,7 @@
 import { readFile, stat } from 'fs/promises'
 import { basename, extname } from 'path'
 
-export type AttachmentKind = 'text' | 'image' | 'pdf' | 'binary'
+export type AttachmentKind = 'text' | 'image' | 'pdf' | 'binary' | 'rag-pending'
 
 export interface ProcessedFile {
   name: string
@@ -11,6 +11,11 @@ export interface ProcessedFile {
   content: string
   previewText: string
   error?: string
+  /** Absolute path on disk for files that aren't read inline. Populated for
+   *  `kind: 'rag-pending'` so the auto-attach IPC can hand the path to the
+   *  ingest manager without re-resolving it. Undefined for inline-read files
+   *  (their content is already in `content`). */
+  sourcePath?: string
 }
 
 const TEXT_EXTS = new Set([
@@ -66,8 +71,15 @@ const IMAGE_EXTS: Record<string, string> = {
   '.webp': 'image/webp'
 }
 
-const MAX_BYTES_PER_FILE = 10 * 1024 * 1024
-const MAX_BYTES_TOTAL = 25 * 1024 * 1024
+// Inline ingest threshold. At or below this size the file's content is read,
+// previewed, and sent inline in the user message. Above it (up to the
+// per-file hard cap below) the file is marked `kind: 'rag-pending'`: the
+// renderer routes it through the RAG ingest pipeline into a per-conversation
+// auto-collection, and augmentForChat retrieves only the relevant chunks at
+// send time. This keeps prompt budgets bounded for large PDFs / corpora.
+const INLINE_THRESHOLD_BYTES = 5 * 1024 * 1024
+const MAX_BYTES_PER_FILE = 100 * 1024 * 1024
+const MAX_BYTES_TOTAL = 250 * 1024 * 1024
 const PREVIEW_CHARS = 200
 
 function previewOf(text: string): string {
@@ -106,7 +118,22 @@ async function processOne(filePath: string): Promise<ProcessedFile> {
       size,
       content: '',
       previewText: '',
-      error: `File exceeds 10MB limit (${Math.round(size / 1024 / 1024)} MB).`
+      error: `File exceeds 100MB limit (${Math.round(size / 1024 / 1024)} MB). Split into smaller files.`
+    }
+  }
+
+  // Images always go inline (base64 in the request body); vision models need
+  // the bytes, RAG can't index them. The 100 MB cap above still applies.
+  // Everything else over the inline threshold gets routed to RAG ingest.
+  if (size > INLINE_THRESHOLD_BYTES && !IMAGE_EXTS[ext]) {
+    return {
+      name,
+      kind: 'rag-pending',
+      mimeType: ext === '.pdf' ? 'application/pdf' : 'application/octet-stream',
+      size,
+      content: '',
+      previewText: '',
+      sourcePath: filePath
     }
   }
 
@@ -214,7 +241,7 @@ export async function processFiles(paths: string[]): Promise<ProcessedFile[]> {
         size: 0,
         content: '',
         previewText: '',
-        error: 'Skipped — combined attachment size would exceed 25MB.'
+        error: 'Skipped — combined attachment size would exceed 250MB.'
       })
       continue
     }

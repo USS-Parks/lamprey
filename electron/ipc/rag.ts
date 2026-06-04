@@ -16,6 +16,7 @@ import {
   type CollectionInput,
   type CollectionPatch
 } from '../services/rag/store'
+import { ensureConversationCollection } from '../services/conversation-rag'
 import { recordEvent } from '../services/event-log'
 import { isVecAvailable, getVecLoadError } from '../services/rag/vec-loader'
 import {
@@ -437,6 +438,89 @@ export function registerRagHandlers(): void {
       return {
         success: false,
         error: (err as Error)?.message ?? 'rag:attachments:remove failed'
+      }
+    }
+  })
+
+  // ──────────────────── auto-attach (large file → RAG ingest) ────────────────────
+  //
+  // Drop-replacement entry point for the renderer's "this file is too big to
+  // inline" path. Idempotently ensures a per-conversation auto-collection,
+  // attaches the conversation to it (so augmentForChat at chat-send time
+  // pulls from this scope), and submits the file to the ingest manager.
+  //
+  // Returns the jobId + collectionId immediately. Progress streams over the
+  // existing `rag:document:progress` channel — the renderer matches events
+  // by jobId to update its per-attachment chip.
+  //
+  // The attachment record is added BEFORE ingest completes. That way, if
+  // the user sends a chat turn while ingest is still in-flight, augmentForChat
+  // sees the collection but finds no chunks yet and emits an empty
+  // <retrieved_context> block — safer than retroactively wiring attachments
+  // post-ingest, where a race could yield "attached but never queried."
+  ipcMain.handle('rag:auto-attach', async (_event, raw: unknown) => {
+    try {
+      const input = (raw ?? {}) as {
+        conversationId?: unknown
+        filePath?: unknown
+        displayName?: unknown
+      }
+      if (typeof input.conversationId !== 'string' || !input.conversationId) {
+        return { success: false, error: 'conversationId is required' }
+      }
+      if (typeof input.filePath !== 'string' || !input.filePath) {
+        return { success: false, error: 'filePath is required' }
+      }
+      const displayName =
+        typeof input.displayName === 'string' && input.displayName
+          ? input.displayName
+          : input.filePath
+
+      // 1. Ensure the per-conversation auto-collection exists. Emits the
+      //    rag.collection.created event on first call.
+      const collection = ensureConversationCollection(input.conversationId)
+      const isFresh =
+        // Heuristic: if we just got back a collection with zero docs we'll
+        // emit the created event; if it already had docs from prior turns
+        // the listCollections lookup hit. We don't strictly track this here
+        // because createCollection itself doesn't tell us "I created vs.
+        // returned existing"; instead the timeline records the first-create
+        // event via emitCollectionEvent if we did create. Cheap to skip the
+        // event when collection.createdAt is older than 5s (i.e. existed
+        // before this call).
+        Date.now() - collection.createdAt < 5_000
+      if (isFresh) {
+        emitCollectionEvent('rag.collection.created', collection.id, {
+          name: collection.name,
+          embedderId: collection.embedderId,
+          auto: true,
+          conversationId: input.conversationId
+        })
+      }
+
+      // 2. Wire the conversation → collection attachment. Idempotent —
+      //    addAttachment dedupes by (conversationId, collectionId, null).
+      addAttachment({
+        conversationId: input.conversationId,
+        collectionId: collection.id
+      })
+
+      // 3. Submit to the ingest manager. Progress streams via the existing
+      //    rag:document:progress channel, which the renderer is already
+      //    subscribed to for the Library UI.
+      const mgr = ensureIngestWired()
+      const jobId = mgr.submit(collection.id, [
+        { path: input.filePath, name: displayName, sourceKind: 'file' }
+      ])
+
+      return {
+        success: true,
+        data: { jobId, collectionId: collection.id }
+      }
+    } catch (err) {
+      return {
+        success: false,
+        error: (err as Error)?.message ?? 'rag:auto-attach failed'
       }
     }
   })
