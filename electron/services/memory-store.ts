@@ -48,7 +48,7 @@ const MEMORY_INDEX_MAX_LINES = 200
 // `[[link-name]]` pattern — link targets are memory slugs so we accept
 // the same chars `memorySlug()` emits. Spaces inside the brackets are
 // tolerated and slug-normalized on resolve.
-const MEMORY_LINK_RE = /\[\[([^\[\]\n]+?)\]\]/g
+const MEMORY_LINK_RE = /\[\[([^[\]\n]+?)\]\]/g
 
 export interface MemoryFile {
   name: string

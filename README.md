@@ -56,6 +56,18 @@ It is **not** a SaaS. There is no Lamprey cloud. Your prompts go to whichever pr
 
 ## Feature tour
 
+### Claude Code parity layer
+
+Lamprey now includes the UI Mastery parity surfaces:
+
+- **Activity dashboard**: live sidebar tree for conversations, workflows, subagents, cron jobs, wake-ups, loops, and hooks, with status chips and a watch tray.
+- **Workflow palette and runtime**: `Ctrl+K` opens built-in and saved workflows; author workflows with validation, dry-run previews, journaling, resume, memory helpers, and structured `askUser(...)` pauses.
+- **Sessions continuity**: grouped sessions, unread background-result badges, pin ordering, duplicate/archive/delete actions, and workflow resume affordances.
+- **Plan-mode gate**: mutating tools are blocked at dispatch while read-only tools still run; the UI provides editable plan goals, approve/reject controls, and `Exit & Execute`.
+- **Spawn-task tray**: spawned tasks collect in a persistent tray with per-task open, source-session link-back, open-all, and dismiss-all.
+- **Hooks and skills management**: hook templates, sandbox test payloads, inline errors, skill hot-reload status, frontmatter validation, dry-run preview, and URL import.
+- **Status line and AskUserQuestion UI**: configurable bottom status line plus chip-style user-choice modal for agents and workflows.
+
 ### Chat surface
 
 - **Streaming markdown** with syntax-highlighted code (Shiki), reasoning blocks (DeepSeek R1), token ticker, and inline thinking/coding animations (the lamprey icon swap).
@@ -86,7 +98,7 @@ Type in the chat input:
 
 ### Plan mode
 
-`Shift+Tab` toggles plan mode anywhere in the chat input. When ON: a banner appears above the input and every prompt is prepended with `[PLAN MODE — produce a plan first, list assumptions and steps, then await my confirmation before executing.]`. Works against any provider; no backend change required.
+`Shift+Tab` toggles plan mode anywhere in the chat input. When ON, Lamprey blocks mutating tools at dispatch while read-only tools keep working. The chat shows a sticky `Exit & Execute` banner and an editable plan-goals panel; approve all marks the plan done and exits the gate, while reject clears the current plan.
 
 ### Worktrees + thread kinds
 
@@ -100,14 +112,14 @@ If your repo has `AGENTS.md` (or `agents.md`/`Agents.md`) at its root, Lamprey r
 
 ### Hooks (Settings → Hooks)
 
-User-defined shell commands that fire on lifecycle events:
+User-defined JavaScript sandbox hooks that fire on lifecycle events:
 
 - `sessionStart` — once on app launch
-- `promptSubmit` — every chat send (context passed via `LAMPREY_HOOK_PROMPT_BODY` env var)
-- `agentStop` — every chat completion (context: `LAMPREY_HOOK_CONVERSATION_ID`)
-- `preToolUse` / `postToolUse` — registered, not yet wired into the MCP path
+- `promptSubmit` — every chat send
+- `agentStop` — every chat completion
+- `preToolUse` / `postToolUse` — before and after tool dispatch
 
-Fire-and-forget. Context arrives as `LAMPREY_HOOK_*` env vars. Use for desktop notifications, logging, kicking off side jobs.
+`preToolUse` hooks can block a tool by throwing. Settings includes templates, timeout controls, sandbox test payloads, and inline error output.
 
 ### Automations (Settings → Automations)
 
@@ -115,7 +127,7 @@ Fire-and-forget. Context arrives as `LAMPREY_HOOK_*` env vars. Use for desktop n
 
 ### Skills + MCP
 
-- **Skills**: hot-reloading markdown system-prompt fragments (chokidar watcher, grey-matter frontmatter, ~150 ms reload). Drop a `.md` in `userData/skills/`, toggle it on, it's part of the system prompt.
+- **Skills**: hot-reloading markdown system-prompt fragments (chokidar watcher, grey-matter frontmatter, ~150 ms reload). Drop a `.md` in `userData/skills/`, toggle it on, it's part of the system prompt. Settings includes a skill manager with validation, dry-run preview, and URL import.
 - **MCP servers**: SSE + stdio transports. Gmail + Drive (Google OAuth) and Chrome (Playwright) ship by default. Destructive Chrome actions require explicit user approval with a 30-second timeout.
 
 ---
@@ -218,6 +230,12 @@ Built and shipped (v0.1.38):
 - ✅ Narrow-viewport drawer for the right panel
 - ✅ Codex-style left sidebar: first-class Projects, nested sessions, "Show more", back/forward, Plugins + Automations rows
 
+UI Mastery parity sprint:
+
+- Complete activity dashboard, workflow palette, sessions sidebar, hook editor, skill manager, plan-mode UX, spawn-task tray, status line, and AskUserQuestion modal.
+- Workflow library and runner support parallel agents, journaling/resume, model-tier routing, memory consolidation, and structured user questions.
+- Background agents, async task notifications, cross-session messaging, self-paced wake-ups, cron scheduling, and session archive/search are wired into the desktop surface.
+
 Codex toolset parity sprint (v0.1.26):
 
 - ✅ Codex Agent contract + live run-phase state (gathering → working → verifying → summarizing)
@@ -235,7 +253,6 @@ Codex toolset parity sprint (v0.1.26):
 Next up:
 
 - Reasoning-level selector on the model switcher
-- Wire `preToolUse` / `postToolUse` hooks into the MCP path
 - Real PTY (node-pty) terminal — pending a path-without-spaces or a switchable native build
 - Browser: open-in-system-Chrome toggle, cookie isolation per tab
 - Cross-device sync for plan + goal state (persisted locally today)

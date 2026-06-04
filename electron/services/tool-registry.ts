@@ -755,6 +755,61 @@ toolRegistry.registerNative({
   mutates: false
 })
 
+// Integration / H6 — ask_user_question. Pauses the calling agent / workflow
+// until the user picks one of 2-4 chip options in the renderer modal. The
+// handler is wired in chat.ts because it has to route through the singleton
+// ask-user-runtime (which only the main-process side can broadcast through).
+// Mutates is false: the question is session-scoped UX, not workspace state.
+toolRegistry.registerNative({
+  id: 'ask_user_question',
+  name: 'ask_user_question',
+  title: 'Ask the user a question',
+  description:
+    'Pause the current run and ask the user a structured question. Returns the label of the option they pick (or `null` on timeout). Use this only when blocked on a decision genuinely the user\'s to make — one you cannot resolve from the request, the code, or sensible defaults. Provide 2-4 mutually-exclusive options; "Other" is added automatically.',
+  providerKind: 'native',
+  providerId: 'internal',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      question: {
+        type: 'string',
+        description: 'The complete question to ask. Clear, specific, ends with a question mark.'
+      },
+      header: {
+        type: 'string',
+        description: 'Short chip label (max 12 chars). Examples: "Auth method", "Library", "Approach".'
+      },
+      options: {
+        type: 'array',
+        minItems: 2,
+        maxItems: 4,
+        items: {
+          type: 'object',
+          properties: {
+            label: { type: 'string', description: 'Display text (1-5 words).' },
+            description: { type: 'string', description: 'Brief explanation of this choice.' },
+            preview: { type: 'string', description: 'Optional markdown preview when focused.' }
+          },
+          required: ['label']
+        }
+      },
+      multiSelect: {
+        type: 'boolean',
+        description: 'When true, the user can pick more than one option.'
+      },
+      timeoutMs: {
+        type: 'number',
+        description: 'Timeout in milliseconds. Defaults to 30000.'
+      }
+    },
+    required: ['question', 'header', 'options']
+  },
+  risks: [],
+  requiresApproval: false,
+  enabled: true,
+  mutates: false
+})
+
 // Tool packs are loaded by electron/services/tool-packs.ts (imported from
 // electron/ipc/index.ts), not from this file. Side-effect imports at the
 // bottom of a module are not safe — bundlers can hoist them above

@@ -76,7 +76,8 @@ export const skills = {
     skill: { name: string; description: string; content: string }
   ): Promise<IpcResponse<Skill>> => api.skills.update(id, skill),
   delete: (id: string): Promise<IpcResponse<void>> => api.skills.delete(id),
-  onChanged: (cb: (skills: Skill[]) => void) => api.skills.onChanged(cb as any)
+  onChanged: (cb: (skills: Skill[]) => void): (() => void) | undefined =>
+    api.skills.onChanged(cb as any)
 }
 
 export const memory = {
@@ -260,6 +261,36 @@ export const loops = {
     limit?: number
   }): Promise<IpcResponse<unknown[]>> => api.loops.list(filter),
   onFired: (cb: (event: unknown) => void): (() => void) => api.loops.onFired(cb)
+}
+
+export const notifications = {
+  push: (input: { title: string; body: string; deepLink?: string | null }): Promise<IpcResponse<unknown>> =>
+    api.notifications.push(input),
+  onClicked: (cb: (event: unknown) => void): (() => void) => api.notifications.onClicked(cb)
+}
+
+export const sessionsMessaging = {
+  sendMessage: (input: {
+    targetSessionId: string
+    body: string
+    fromSessionId?: string | null
+  }): Promise<IpcResponse<unknown>> => api.sessionsMessaging.sendMessage(input),
+  onIncoming: (cb: (event: unknown) => void): (() => void) => api.sessionsMessaging.onIncoming(cb)
+}
+
+export const askUser = {
+  respond: (payload: { requestId: string; answer: unknown }): Promise<IpcResponse<unknown>> =>
+    api.askUser.respond(payload),
+  list: (): Promise<IpcResponse<unknown>> => api.askUser.list(),
+  cancelAll: (): Promise<IpcResponse<unknown>> => api.askUser.cancelAll(),
+  onAwaiting: (cb: (event: unknown) => void): (() => void) => api.askUser.onAwaiting(cb)
+}
+
+export const statusline = {
+  get: (): Promise<IpcResponse<unknown>> => api.statusline.get(),
+  set: (input: { slots?: string[]; formats?: Record<string, string> }): Promise<IpcResponse<unknown>> =>
+    api.statusline.set(input),
+  availableSlots: (): Promise<IpcResponse<unknown>> => api.statusline.availableSlots()
 }
 
 export const artifact = {

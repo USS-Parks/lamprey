@@ -7,12 +7,8 @@ import {
   type HookLanguage,
   type HookSampleContext
 } from '@/stores/hooks-store'
-
-// Track 2 / C2 — HooksSettings. Per-event tab strip with count badges,
-// per-hook editor pane (label, code, language, timeout, enabled), and a
-// test-run panel beneath the editor. Hooks created here default to the
-// JavaScript sandbox; legacy shell hooks created before C2 keep showing
-// up with a 'shell' badge and stay read-only here.
+import { HookTemplatesGallery, type HookTemplate } from './HookTemplatesGallery'
+import { HookTestRunner } from './HookTestRunner'
 
 const EVENT_OPTIONS: HookEvent[] = [
   'sessionStart',
@@ -26,44 +22,19 @@ const EVENT_DESCRIPTIONS: Record<HookEvent, string> = {
   sessionStart: 'Fires once when the app launches.',
   promptSubmit: 'Fires when a user prompt is submitted. Sandbox: `promptBody`, `conversationId`.',
   preToolUse:
-    'Fires before any tool runs. Sandbox: `toolName`, `args`, `conversationId`. Throw any value to BLOCK the call — the thrown message reaches the model as the tool result.',
+    'Fires before any tool runs. Sandbox: `toolName`, `args`, `conversationId`. Throw any value to BLOCK the call - the thrown message reaches the model as the tool result.',
   postToolUse:
     'Fires after a tool returns. Sandbox: `toolName`, `args`, `result`, `conversationId`. Throws are logged but cannot unblock the call.',
   agentStop:
     'Fires when a model finishes streaming. Sandbox: `conversationId`. Useful for chime-on-done style hooks.'
 }
 
-const SAMPLE_CONTEXT: Record<HookEvent, HookSampleContext> = {
-  sessionStart: { cwd: 'C:\\workspace' },
-  promptSubmit: {
-    conversationId: 'sample-conv',
-    promptBody: 'Refactor the auth module.',
-    cwd: 'C:\\workspace'
-  },
-  preToolUse: {
-    conversationId: 'sample-conv',
-    toolName: 'shell_command',
-    args: { command: 'rm -rf node_modules' },
-    cwd: 'C:\\workspace'
-  },
-  postToolUse: {
-    conversationId: 'sample-conv',
-    toolName: 'shell_command',
-    args: { command: 'ls' },
-    result: 'file_a.ts\nfile_b.ts',
-    cwd: 'C:\\workspace'
-  },
-  agentStop: { conversationId: 'sample-conv' }
-}
-
 const STARTER_TEMPLATE: Record<HookEvent, string> = {
   sessionStart: '// Lamprey just started.\nlog("session started at", new Date().toISOString())',
-  promptSubmit:
-    '// Inspect or log the submitted prompt.\nlog("prompt:", promptBody?.slice(0, 80))',
+  promptSubmit: '// Inspect or log the submitted prompt.\nlog("prompt:", promptBody?.slice(0, 80))',
   preToolUse:
     '// Block dangerous shell commands.\nif (toolName === "shell_command" && /rm\\s+-rf/.test(args?.command ?? "")) {\n  throw "rm -rf blocked by hook"\n}',
-  postToolUse:
-    '// Log every tool call.\nlog(toolName, "→", (result ?? "").slice(0, 120))',
+  postToolUse: '// Log every tool call.\nlog(toolName, "->", (result ?? "").slice(0, 120))',
   agentStop: '// Notify on completion.\nlog("run finished for", conversationId)'
 }
 
@@ -116,6 +87,7 @@ export function HooksSettings() {
   const [editor, setEditor] = useState<EditorState>(() => emptyEditor('preToolUse'))
   const [saving, setSaving] = useState(false)
   const [testing, setTesting] = useState(false)
+  const [applyingTemplateId, setApplyingTemplateId] = useState<string | null>(null)
 
   useEffect(() => {
     void load()
@@ -125,26 +97,28 @@ export function HooksSettings() {
     () => hooks.filter((h) => h.event === activeEvent),
     [hooks, activeEvent]
   )
+
   const countsByEvent = useMemo(() => {
-    const m: Record<HookEvent, number> = {
+    const counts: Record<HookEvent, number> = {
       sessionStart: 0,
       promptSubmit: 0,
       preToolUse: 0,
       postToolUse: 0,
       agentStop: 0
     }
-    for (const h of hooks) m[h.event]++
-    return m
+    for (const hook of hooks) counts[hook.event]++
+    return counts
   }, [hooks])
 
-  const switchTab = (ev: HookEvent) => {
-    setActiveEvent(ev)
-    setEditor(emptyEditor(ev))
+  const switchTab = (event: HookEvent) => {
+    setActiveEvent(event)
+    setEditor(emptyEditor(event))
     clearLastTest()
   }
 
-  const editHook = (h: Hook) => {
-    setEditor(editorFromHook(h))
+  const editHook = (hook: Hook) => {
+    setActiveEvent(hook.event)
+    setEditor(editorFromHook(hook))
     clearLastTest()
   }
 
@@ -194,16 +168,16 @@ export function HooksSettings() {
     }
   }
 
-  const runTest = async () => {
+  const runTest = async (context: HookSampleContext) => {
     setTesting(true)
     try {
-      const r = await test({
+      const result = await test({
         code: editor.code,
         event: editor.event,
-        context: SAMPLE_CONTEXT[editor.event],
+        context,
         timeoutMs: editor.timeoutMs
       })
-      if (!r) toast.error('test failed')
+      if (!result) toast.error('test failed')
     } finally {
       setTesting(false)
     }
@@ -220,9 +194,32 @@ export function HooksSettings() {
     }
   }
 
-  const toggleEnabled = async (h: Hook) => {
-    await update(h.id, { enabled: !h.enabled })
-    if (editor.hookId === h.id) setEditor((e) => ({ ...e, enabled: !h.enabled }))
+  const toggleEnabled = async (hook: Hook) => {
+    await update(hook.id, { enabled: !hook.enabled })
+    if (editor.hookId === hook.id) setEditor((state) => ({ ...state, enabled: !hook.enabled }))
+  }
+
+  const applyTemplate = async (template: HookTemplate) => {
+    setApplyingTemplateId(template.id)
+    clearLastTest()
+    try {
+      const created = await create({
+        event: template.event,
+        label: template.id,
+        command: template.code,
+        language: 'js',
+        timeoutMs: template.timeoutMs
+      })
+      if (!created) {
+        toast.error('template create failed')
+        return
+      }
+      setActiveEvent(template.event)
+      setEditor(editorFromHook(created))
+      toast.success(`created ${template.label}`)
+    } finally {
+      setApplyingTemplateId(null)
+    }
   }
 
   return (
@@ -231,30 +228,36 @@ export function HooksSettings() {
         <h2 className="text-[14px] font-medium text-[var(--text-primary)]">Hooks</h2>
         <p className="mt-1 text-[12px] text-[var(--text-muted)]">
           Run JavaScript inside a sandboxed <code className="font-mono">vm</code> on lifecycle
-          events. <code className="font-mono">preToolUse</code> hooks can <em>block</em> a tool
-          call by throwing — the message is surfaced to the model. Bindings: <code>event</code>,{' '}
-          <code>conversationId</code>, <code>toolName</code>, <code>args</code>, <code>result</code>,{' '}
-          <code>promptBody</code>, <code>cwd</code>, <code>log(...)</code>.
+          events. <code className="font-mono">preToolUse</code> hooks can <em>block</em> a tool call
+          by throwing - the message is surfaced to the model. Bindings: <code>event</code>,{' '}
+          <code>conversationId</code>, <code>toolName</code>, <code>args</code>, <code>result</code>
+          , <code>promptBody</code>, <code>cwd</code>, <code>log(...)</code>.
         </p>
       </div>
 
+      <HookTemplatesGallery
+        activeEvent={activeEvent}
+        applyingId={applyingTemplateId}
+        onApply={(template) => void applyTemplate(template)}
+      />
+
       <div className="flex flex-wrap gap-1 rounded-md border border-[var(--border)] bg-[var(--bg-primary)] p-1">
-        {EVENT_OPTIONS.map((ev) => {
-          const active = ev === activeEvent
-          const count = countsByEvent[ev]
+        {EVENT_OPTIONS.map((event) => {
+          const active = event === activeEvent
+          const count = countsByEvent[event]
           return (
             <button
-              key={ev}
-              onClick={() => switchTab(ev)}
+              key={event}
+              onClick={() => switchTab(event)}
               className={
                 'rounded px-3 py-1 text-[12px] transition-colors ' +
                 (active
                   ? 'bg-[var(--bg-secondary)] text-[var(--text-primary)] ring-1 ring-[var(--accent)]'
                   : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]')
               }
-              title={EVENT_DESCRIPTIONS[ev]}
+              title={EVENT_DESCRIPTIONS[event]}
             >
-              {ev}
+              {event}
               <span className="ml-1.5 inline-block min-w-[1.25rem] rounded-full bg-[var(--bg-secondary)] px-1.5 text-center text-[10px] text-[var(--text-muted)]">
                 {count}
               </span>
@@ -276,20 +279,20 @@ export function HooksSettings() {
               + new
             </button>
           </div>
-          <div className="max-h-[300px] overflow-y-auto p-1">
+          <div className="max-h-[420px] overflow-y-auto p-1">
             {!loaded && (
-              <div className="px-2 py-3 text-[11px] text-[var(--text-muted)]">Loading…</div>
+              <div className="px-2 py-3 text-[11px] text-[var(--text-muted)]">Loading...</div>
             )}
             {loaded && hooksForEvent.length === 0 && (
               <div className="px-2 py-3 text-[11px] text-[var(--text-muted)]">
                 No hooks for this event yet.
               </div>
             )}
-            {hooksForEvent.map((h) => {
-              const active = editor.hookId === h.id
+            {hooksForEvent.map((hook) => {
+              const active = editor.hookId === hook.id
               return (
                 <div
-                  key={h.id}
+                  key={hook.id}
                   className={
                     'mb-1 flex items-center gap-2 rounded px-2 py-1 text-[12px] ' +
                     (active
@@ -299,21 +302,18 @@ export function HooksSettings() {
                 >
                   <input
                     type="checkbox"
-                    checked={h.enabled}
-                    onChange={(e) => {
-                      e.stopPropagation()
-                      void toggleEnabled(h)
+                    checked={hook.enabled}
+                    onChange={(event) => {
+                      event.stopPropagation()
+                      void toggleEnabled(hook)
                     }}
-                    onClick={(e) => e.stopPropagation()}
-                    title={h.enabled ? 'enabled' : 'disabled'}
+                    onClick={(event) => event.stopPropagation()}
+                    title={hook.enabled ? 'enabled' : 'disabled'}
                   />
-                  <button
-                    onClick={() => editHook(h)}
-                    className="min-w-0 flex-1 text-left"
-                  >
-                    <span className="block truncate font-medium">{h.label}</span>
+                  <button onClick={() => editHook(hook)} className="min-w-0 flex-1 text-left">
+                    <span className="block truncate font-medium">{hook.label}</span>
                     <span className="block truncate text-[10px] text-[var(--text-muted)]">
-                      {h.language === 'shell' ? 'shell' : 'js'} · {h.timeoutMs} ms
+                      {hook.language === 'shell' ? 'shell' : 'js'} / {hook.timeoutMs} ms
                     </span>
                   </button>
                 </div>
@@ -331,39 +331,64 @@ export function HooksSettings() {
               Label
               <input
                 value={editor.label}
-                onChange={(e) => setEditor((s) => ({ ...s, label: e.target.value }))}
+                onChange={(event) =>
+                  setEditor((state) => ({ ...state, label: event.target.value }))
+                }
                 placeholder="block-rm-rf"
                 className="rounded border border-[var(--border)] bg-[var(--bg-secondary)] px-2 py-1 text-[12px] text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
               />
             </label>
             <label className="flex flex-col gap-1 text-[11px] text-[var(--text-muted)]">
               Timeout (ms)
-              <input
-                type="number"
-                min={100}
-                max={60000}
-                value={editor.timeoutMs}
-                onChange={(e) =>
-                  setEditor((s) => ({
-                    ...s,
-                    timeoutMs: Math.max(100, Math.min(60000, Number(e.target.value) || 5000))
-                  }))
-                }
-                className="rounded border border-[var(--border)] bg-[var(--bg-secondary)] px-2 py-1 text-[12px] text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
-              />
+              <div className="rounded border border-[var(--border)] bg-[var(--bg-secondary)] px-2 py-1">
+                <div className="mb-1 flex items-center justify-between gap-2">
+                  <span className="text-[12px] text-[var(--text-primary)]">{editor.timeoutMs}</span>
+                  <input
+                    type="number"
+                    min={100}
+                    max={60000}
+                    value={editor.timeoutMs}
+                    onChange={(event) =>
+                      setEditor((state) => ({
+                        ...state,
+                        timeoutMs: Math.max(
+                          100,
+                          Math.min(60000, Number(event.target.value) || 5000)
+                        )
+                      }))
+                    }
+                    className="w-20 rounded border border-[var(--border)] bg-[var(--bg-primary)] px-1 py-0.5 text-right text-[11px] text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+                  />
+                </div>
+                <input
+                  type="range"
+                  min={500}
+                  max={30000}
+                  step={500}
+                  value={Math.max(500, Math.min(30000, editor.timeoutMs))}
+                  onChange={(event) =>
+                    setEditor((state) => ({
+                      ...state,
+                      timeoutMs: Number(event.target.value) || 5000
+                    }))
+                  }
+                  className="w-full accent-[var(--accent)]"
+                />
+              </div>
             </label>
           </div>
 
           {editor.language === 'shell' && (
             <p className="mt-2 rounded border border-[var(--warning)] bg-[var(--bg-secondary)] px-2 py-1 text-[11px] text-[var(--warning)]">
-              Legacy shell hook (pre-C2). Edits keep the shell runtime; new hooks use the JS sandbox.
+              Legacy shell hook (pre-C2). Edits keep the shell runtime; new hooks use the JS
+              sandbox.
             </p>
           )}
 
           <label className="mt-3 block text-[11px] text-[var(--text-muted)]">Body (JS)</label>
           <textarea
             value={editor.code}
-            onChange={(e) => setEditor((s) => ({ ...s, code: e.target.value }))}
+            onChange={(event) => setEditor((state) => ({ ...state, code: event.target.value }))}
             spellCheck={false}
             className="mt-1 h-[200px] w-full resize-y rounded border border-[var(--border)] bg-[var(--bg-secondary)] p-2 font-mono text-[12px] leading-relaxed text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
           />
@@ -374,15 +399,7 @@ export function HooksSettings() {
               disabled={saving}
               className="rounded border border-[var(--border)] bg-[var(--bg-secondary)] px-3 py-1 text-[12px] hover:border-[var(--accent)] disabled:opacity-50"
             >
-              {saving ? 'Saving…' : editor.hookId ? 'Save' : 'Create'}
-            </button>
-            <button
-              onClick={runTest}
-              disabled={testing || editor.language !== 'js'}
-              title={editor.language !== 'js' ? 'test-run is JS-only' : undefined}
-              className="rounded border border-[var(--border)] bg-[var(--bg-secondary)] px-3 py-1 text-[12px] hover:border-[var(--accent)] disabled:opacity-50"
-            >
-              {testing ? 'Running…' : 'Test'}
+              {saving ? 'Saving...' : editor.hookId ? 'Save' : 'Create'}
             </button>
             {editor.hookId && (
               <button
@@ -396,58 +413,25 @@ export function HooksSettings() {
               <input
                 type="checkbox"
                 checked={editor.enabled}
-                onChange={(e) => setEditor((s) => ({ ...s, enabled: e.target.checked }))}
+                onChange={(event) =>
+                  setEditor((state) => ({ ...state, enabled: event.target.checked }))
+                }
               />
               enabled
             </label>
           </div>
 
-          {lastTest && (
-            <div className="mt-3 rounded border border-[var(--border)] bg-[var(--bg-secondary)] p-2 text-[11px]">
-              <div className="mb-1 flex items-center gap-2">
-                <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--accent)]">
-                  test {lastTest.event}
-                </span>
-                {lastTest.result.thrown ? (
-                  <span className="rounded bg-[var(--error)] px-1.5 py-0.5 text-[10px] text-white">
-                    BLOCKED
-                  </span>
-                ) : (
-                  <span className="rounded bg-[var(--success)] px-1.5 py-0.5 text-[10px] text-white">
-                    OK
-                  </span>
-                )}
-                <button
-                  onClick={() => clearLastTest()}
-                  className="ml-auto text-[10px] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
-                >
-                  clear
-                </button>
-              </div>
-              {lastTest.result.thrown && (
-                <pre className="m-0 mb-1 whitespace-pre-wrap break-all font-mono text-[11px] text-[var(--error)]">
-                  thrown: {lastTest.result.thrown}
-                </pre>
-              )}
-              {lastTest.result.logs.length === 0 && !lastTest.result.thrown && (
-                <p className="m-0 text-[var(--text-muted)]">(no log output)</p>
-              )}
-              {lastTest.result.logs.map((l, i) => (
-                <pre
-                  key={i}
-                  className={
-                    'm-0 whitespace-pre-wrap break-all font-mono text-[11px] ' +
-                    (l.kind === 'error'
-                      ? 'text-[var(--error)]'
-                      : 'text-[var(--text-muted)]')
-                  }
-                >
-                  {l.kind === 'error' ? '⚠ ' : '› '}
-                  {l.message}
-                </pre>
-              ))}
-            </div>
-          )}
+          <HookTestRunner
+            key={editor.event}
+            event={editor.event}
+            language={editor.language}
+            code={editor.code}
+            timeoutMs={editor.timeoutMs}
+            testing={testing}
+            lastTest={lastTest}
+            onRun={(context) => void runTest(context)}
+            onClear={clearLastTest}
+          />
         </div>
       </div>
     </div>

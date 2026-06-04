@@ -27,6 +27,7 @@ export function MemoryPanel() {
 
   const [activeTab, setActiveTab] = useState<TabKey>('all')
   const [menuOpen, setMenuOpen] = useState(false)
+  const [consolidating, setConsolidating] = useState(false)
   const [editor, setEditor] = useState<EditorState>({ open: false })
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -85,6 +86,27 @@ export function MemoryPanel() {
     await clearAll()
   }
 
+  const handleConsolidate = async () => {
+    if (activeTab === 'all' || consolidating) return
+    setConsolidating(true)
+    try {
+      const typedEntries = entries.filter((entry) => entry.type === activeTab)
+      const result = await window.api.workflows.run({
+        name: 'consolidate-memory',
+        args: { type: activeTab, entries: typedEntries }
+      })
+      if (!result.success) {
+        toast.error(`Consolidation failed: ${result.error}`)
+        return
+      }
+      toast.success(`Consolidating ${TAB_LABEL[activeTab].toLowerCase()} memory`)
+    } catch (err) {
+      toast.error(`Consolidation failed: ${(err as Error).message}`)
+    } finally {
+      setConsolidating(false)
+    }
+  }
+
   const openNew = (type?: MemoryType) => {
     setEditor({ open: true, draft: { type: type ?? (activeTab === 'all' ? 'feedback' : activeTab) } })
   }
@@ -119,6 +141,17 @@ export function MemoryPanel() {
           )}
         </div>
         <div className="flex items-center gap-1">
+          {activeTab !== 'all' && (
+            <button
+              type="button"
+              onClick={handleConsolidate}
+              disabled={consolidating || (tabCounts[activeTab] ?? 0) < 2}
+              title="Consolidate this memory type"
+              className="rounded px-1.5 py-0.5 text-xs text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-tertiary)] hover:text-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Consolidate
+            </button>
+          )}
           <button
             onClick={() => openNew()}
             title="Add memory entry"

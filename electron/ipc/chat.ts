@@ -49,6 +49,7 @@ import {
   summarizeRun
 } from '../services/final-response-composer'
 import { getPlanSnapshot } from '../services/plan-goal-store'
+import { getAskUserRuntime } from '../services/ask-user-runtime'
 import type { ChatCompletionMessageParam, ChatCompletionTool } from 'openai/resources/chat/completions'
 
 interface ModelParams {
@@ -899,6 +900,61 @@ async function resolveSingleToolCall(
           console.error('[chat] chat.chapter.marked spine event failed:', err)
         }
         result = `Chapter marked: "${chapter.title}"`
+      }
+    } else if (toolName === 'ask_user_question') {
+      // Integration / H6 — route through the singleton ask-user-runtime.
+      // The handler returns the chosen option label (multi-select returns a
+      // comma-separated list); a timeout returns the literal "(timed out)"
+      // so the model can detect non-interactive contexts and proceed.
+      const question = typeof args.question === 'string' ? args.question.trim() : ''
+      const header = typeof args.header === 'string' ? args.header.trim() : ''
+      const optionsRaw = Array.isArray(args.options) ? args.options : []
+      const options: Array<{ label: string; description?: string; preview?: string }> = []
+      for (const o of optionsRaw) {
+        if (!o || typeof o !== 'object') continue
+        const opt = o as Record<string, unknown>
+        const label = typeof opt.label === 'string' ? opt.label.trim() : ''
+        if (!label) continue
+        const entry: { label: string; description?: string; preview?: string } = { label }
+        if (typeof opt.description === 'string') entry.description = opt.description
+        if (typeof opt.preview === 'string') entry.preview = opt.preview
+        options.push(entry)
+      }
+      if (!question || !header || options.length < 2 || options.length > 4) {
+        result =
+          'Error: ask_user_question requires `question`, `header`, and 2-4 `options` with non-empty `label`s.'
+        explicitStatus = 'error'
+      } else {
+        try {
+          const runtime = getAskUserRuntime()
+          if (!runtime) {
+            throw new Error('ask-user runtime not initialised')
+          }
+          const answer = await runtime.ask({
+            question,
+            header,
+            options,
+            multiSelect: !!args.multiSelect,
+            timeoutMs:
+              typeof args.timeoutMs === 'number' && Number.isFinite(args.timeoutMs)
+                ? args.timeoutMs
+                : undefined
+          })
+          if (answer.kind === 'timeout') {
+            result = '(timed out — user did not respond)'
+          } else if (answer.kind === 'cancelled') {
+            result = '(cancelled by user)'
+          } else if (answer.kind === 'single') {
+            result = answer.notes ? `${answer.label} — ${answer.notes}` : answer.label
+          } else {
+            const joined = answer.labels.join(', ')
+            result = answer.notes ? `${joined} — ${answer.notes}` : joined
+          }
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err)
+          result = `Error: ${msg}`
+          explicitStatus = 'error'
+        }
       }
     } else if (toolRegistry.hasHandler(toolName)) {
       const dispatched = await dispatchNativeTool(() =>

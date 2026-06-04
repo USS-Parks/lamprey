@@ -7,6 +7,7 @@ import { ApiKeySettings } from './ApiKeySettings'
 import { AgentSettings } from './AgentSettings'
 import { AgenticCodingSettings } from './AgenticCodingSettings'
 import { HooksSettings } from './HooksSettings'
+import { SkillsManager } from './SkillsManager'
 import { AutomationsSettings } from './AutomationsSettings'
 import { WebToolsSettings } from './WebToolsSettings'
 import { CurrentInfoSettings } from './CurrentInfoSettings'
@@ -38,6 +39,7 @@ const TABS = [
   { id: 'permissions', label: 'Permissions' },
   { id: 'planGoal', label: 'Plans & Goals' },
   { id: 'hooks', label: 'Hooks' },
+  { id: 'skills', label: 'Skills' },
   { id: 'automations', label: 'Automations' },
   { id: 'library', label: 'Library' },
   { id: 'rag', label: 'RAG' },
@@ -73,12 +75,21 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
         {/* Content */}
         <div className="flex flex-1 flex-col">
           <div className="flex h-10 items-center justify-between border-b border-[var(--border)] px-4">
-            <span className="font-mono text-xs font-semibold text-[var(--text-primary)]">Settings</span>
+            <span className="font-mono text-xs font-semibold text-[var(--text-primary)]">
+              Settings
+            </span>
             <button
               onClick={onClose}
               className="rounded p-1 text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]"
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
                 <path d="M18 6L6 18M6 6l12 12" />
               </svg>
             </button>
@@ -99,6 +110,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
             {activeTab === 'permissions' && <PermissionsSettings />}
             {activeTab === 'planGoal' && <PlanGoalSettings />}
             {activeTab === 'hooks' && <HooksSettings />}
+            {activeTab === 'skills' && <SkillsManager />}
             {activeTab === 'automations' && <AutomationsSettings />}
             {activeTab === 'library' && <LibraryView />}
             {activeTab === 'rag' && <RagSettings />}

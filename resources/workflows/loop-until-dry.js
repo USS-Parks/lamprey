@@ -1,3 +1,5 @@
+/* global agent, args, log, phase */
+
 export const meta = {
   name: 'loop-until-dry',
   description:

@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync, statSync, mkdirSync } from 'fs'
+import { existsSync, readdirSync, readFileSync, statSync, mkdirSync, writeFileSync } from 'fs'
 import { join, basename, resolve } from 'path'
 import { app } from 'electron'
 import { is } from '@electron-toolkit/utils'
@@ -97,6 +97,38 @@ export function getWorkflow(name: string): LibraryEntry | null {
 export function listWorkflows(): LibraryEntry[] {
   if (!initialised) initializeWorkflowLibrary()
   return [...library.values()].sort((a, b) => a.name.localeCompare(b.name))
+}
+
+function workflowFileName(name: string): string {
+  const slug = name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+  return `${slug || 'workflow'}.js`
+}
+
+export function validateWorkflowSource(source: string): WorkflowMeta {
+  return parseWorkflowScript(source).meta
+}
+
+export function saveUserWorkflow(source: string): LibraryEntry {
+  if (!initialised) initializeWorkflowLibrary()
+  const parsed = parseWorkflowScript(source)
+  const dir = userDir()
+  ensureDir(dir)
+  const filePath = join(dir, workflowFileName(parsed.meta.name))
+  writeFileSync(filePath, source, 'utf-8')
+  const entry: LibraryEntry = {
+    name: parsed.meta.name,
+    description: parsed.meta.description,
+    filePath,
+    meta: parsed.meta,
+    source,
+    origin: 'user'
+  }
+  library.set(entry.name, entry)
+  return entry
 }
 
 // Test seam — bypass disk discovery and inject entries directly.

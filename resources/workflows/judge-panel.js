@@ -1,3 +1,5 @@
+/* global agent, args, parallel, phase */
+
 export const meta = {
   name: 'judge-panel',
   description:
@@ -75,7 +77,7 @@ phase('Synthesise')
 const synthesis = await agent(
   `Synthesise a final plan starting from the WINNER, grafting useful ideas from the runners-up.\n\nWINNER (score ${winner.score}):\n${typeof winner.candidate === 'string' ? winner.candidate : JSON.stringify(winner.candidate)}\n\nRUNNERS-UP:\n${runners
     .map(
-      (r, i) =>
+      (r) =>
         '- (score ' + r.score + ') ' + (typeof r.candidate === 'string' ? r.candidate : JSON.stringify(r.candidate))
     )
     .join('\n')}`,

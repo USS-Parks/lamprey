@@ -10,7 +10,13 @@ vi.mock('@electron-toolkit/utils', () => ({
   is: { dev: true }
 }))
 
-import { __workflowLibraryTest } from './workflow-library'
+import {
+  __workflowLibraryTest,
+  getWorkflow,
+  listWorkflows,
+  saveUserWorkflow,
+  validateWorkflowSource
+} from './workflow-library'
 import { runWorkflow, type WorkflowForkSeam } from './workflow-runner'
 import { forkAgent } from './subagent-runner'
 import { BUILT_IN_SUBAGENT_TYPES } from './subagent-types'
@@ -26,10 +32,16 @@ beforeEach(() => {
 // ---------------------------------------------------------------------------
 
 describe('workflow-library — built-ins ship and parse', () => {
-  it('ships all four built-in workflow files', () => {
+  it('ships all five built-in workflow files', () => {
     const names = __workflowLibraryTest.builtinFileNames().sort()
     expect(names).toEqual(
-      ['adversarial-verify.js', 'judge-panel.js', 'loop-until-dry.js', 'multi-modal-sweep.js'].sort()
+      [
+        'adversarial-verify.js',
+        'consolidate-memory.js',
+        'judge-panel.js',
+        'loop-until-dry.js',
+        'multi-modal-sweep.js'
+      ].sort()
     )
   })
 
@@ -40,6 +52,104 @@ describe('workflow-library — built-ins ship and parse', () => {
       expect(entry.meta.description.length).toBeGreaterThan(20)
       expect(entry.source).toContain('export const meta')
     }
+  })
+
+  it('validates and saves a user-authored workflow into the library', () => {
+    const source = `export const meta = {
+      name: 'h2-test-user-workflow',
+      description: 'Saved from the H2 authoring surface.'
+    }
+    return { ok: true }
+    `
+    const meta = validateWorkflowSource(source)
+    expect(meta.name).toBe('h2-test-user-workflow')
+
+    const saved = saveUserWorkflow(source)
+    expect(saved.origin).toBe('user')
+    expect(saved.filePath.endsWith('h2-test-user-workflow.js')).toBe(true)
+    expect(getWorkflow('h2-test-user-workflow')?.source).toBe(source)
+    expect(listWorkflows().some((entry) => entry.name === 'h2-test-user-workflow')).toBe(true)
+  })
+
+  it('rejects non-literal meta while validating author input', () => {
+    const source = "export const meta = { name: `bad-${Date.now()}`, description: 'bad' }"
+    expect(() => validateWorkflowSource(source)).toThrow(/backticks|template/i)
+  })
+})
+
+describe('consolidate-memory built-in', () => {
+  it('merges a known duplicate set through the workflow memory API', async () => {
+    const source = __workflowLibraryTest.parsePath(join(RESOURCES, 'consolidate-memory.js')).source
+    const writes: unknown[] = []
+    const deletes: string[] = []
+    const seam = makeRoutedSeam([
+      {
+        test: (p) => /consolidating Lamprey memory files/i.test(p),
+        respond: () =>
+          JSON.stringify({
+            entries: [
+              {
+                name: 'preferred_editor',
+                projectSlug: '__global__',
+                description: 'Preferred editor',
+                body: 'The preferred editor is VS Code.'
+              }
+            ],
+            deleteNames: ['preferred_editor_duplicate']
+          })
+      }
+    ])
+
+    const result = await runWorkflow(
+      {
+        script: source,
+        args: {
+          type: 'user',
+          entries: [
+            {
+              name: 'preferred_editor',
+              type: 'user',
+              projectSlug: '__global__',
+              description: 'Editor preference',
+              body: 'The preferred editor is VS Code.'
+            },
+            {
+              name: 'preferred_editor_duplicate',
+              type: 'user',
+              projectSlug: '__global__',
+              description: 'Editor preference duplicate',
+              body: 'User likes VS Code as the editor.'
+            }
+          ]
+        }
+      },
+      {
+        forkSeam: seam,
+        memory: {
+          list: () => [],
+          write: (input) => {
+            writes.push(input)
+            return input
+          },
+          delete: (name) => {
+            deletes.push(name)
+            return true
+          }
+        }
+      }
+    ).promise
+
+    expect(writes).toEqual([
+      {
+        name: 'preferred_editor',
+        projectSlug: '__global__',
+        description: 'Preferred editor',
+        type: 'user',
+        body: 'The preferred editor is VS Code.'
+      }
+    ])
+    expect(deletes).toEqual(['preferred_editor_duplicate'])
+    expect(result.output).toMatchObject({ type: 'user', scanned: 2, written: 1, deleted: 1 })
   })
 })
 
@@ -281,7 +391,7 @@ describe('multi-modal-sweep built-in', () => {
       {
         test: (p) => /Search angle:/i.test(p),
         respond: (p) => {
-          const lens = (p.match(/Search angle:\s*(\S+)/) ?? [, ''])[1]
+          const lens = p.match(/Search angle:\s*(\S+)/)?.[1] ?? ''
           // Two lenses surface the same finding "common"; the rest are unique.
           if (lens === 'by-container') return JSON.stringify({ findings: ['common', 'unique-c'] })
           if (lens === 'by-content') return JSON.stringify({ findings: ['common', 'unique-co'] })

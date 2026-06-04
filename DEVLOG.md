@@ -1,5 +1,138 @@
 # Lamprey Harness Dev Log
 
+## [Integration Phase Complete] UI Mastery wrap-up - 2026-06-04
+
+**Prompts completed:** H1 Activity dashboard, H2 Workflow command palette + author UX, H3 Session sidebar + resume polish, H4 Hook editor + skill manager polish, H5 Plan-mode UX + spawn-task tray, H6 Status line + AskUserQuestion UI.
+
+**Files changed in this wrap-up:** `README.md`, `.gitignore`, `DEVLOG.md`, `package.json`
+
+**Verify gate:**
+- tsc node OK
+- tsc web OK
+- vitest OK (87 files passed, 2 skipped; 1168 tests passed, 16 skipped)
+- production build OK
+- smoke-renderer OK against fresh `out/` bundle
+- smoke-bundle OK against fresh `out/` bundle
+- user-verification-needed: launch Electron and exercise the full UI stack end to end: Activity dashboard, Workflow palette/editor, Sessions sidebar, Hooks + Skills manager, Plan mode + Spawn-task tray, Status line, and AskUserQuestion modal blocking/resuming a workflow.
+
+**Notes:** All Integration Phase rows are marked complete in `PLANNING/LAMPREY_PARITY_PLAN.md`. README now documents the completed parity layer and removes the stale hook-wiring roadmap item. `.tmp-test-user-data/` is ignored because the integration tests generate it under the workspace. Package version is bumped to `0.1.44`.
+
+**Commit:** pending
+
+---
+
+## [Integration — Prompt H6] Status line + AskUserQuestion UI — 2026-06-04
+
+The last Integration-phase prompt: a persistent status bar at the bottom of
+the main window plus a structured "ask the user a question" path that pauses
+a workflow or subagent until the user picks a chip.
+
+**Files changed:**
+- `electron/services/ask-user-runtime.ts` (new) — pure runtime: holds the
+  pending-promise registry, emits an `ask-user:awaiting` event, resolves on
+  `respond(requestId, answer)`, defaults to a 30s timeout (clamped at 10m)
+  resolving with `{kind: 'timeout'}`.
+- `electron/ipc/ask-user.ts` (new) — wires the runtime to the renderer via
+  Electron's BrowserWindow broadcast; exposes `ask-user:respond`,
+  `ask-user:list`, `ask-user:cancelAll`.
+- `electron/services/statusline-config.ts` (new) — loads / saves
+  `userData/statusline.md` (YAML frontmatter `{slots[], formats{}}`); drops
+  unknown slot ids silently so user edits never crash the renderer.
+- `electron/ipc/statusline.ts` (new) — `statusline:get`, `statusline:set`,
+  `statusline:availableSlots`.
+- `electron/services/tool-registry.ts` — registers `ask_user_question`
+  native tool descriptor; handler routes through chat.ts dispatch into the
+  ask-user-runtime singleton.
+- `electron/ipc/chat.ts` — dispatch branch for `ask_user_question`; returns
+  the chosen label, multi-select labels, or a `(timed out)` / `(cancelled
+  by user)` string the model can read.
+- `electron/services/workflow-runner.ts` — sandbox exposes `askUser({...})`
+  routed through `deps.askUser` (the IPC layer injects the runtime); throws
+  if no runtime is wired so headless workflow runs surface the failure.
+- `electron/ipc/workflows.ts` — injects the `askUser` runtime dep alongside
+  the existing memory dep.
+- `electron/ipc/index.ts` — registers both new handler sets.
+- `electron/preload.ts` — exposes `askUser` and `statusline` namespaces.
+- `src/lib/ipc-client.ts` — typed pass-throughs for both.
+- `src/components/layout/StatusLine.tsx` (new) — five-slot bar (model,
+  workflow, wakeups, tokens, rag) reading from existing stores + polling
+  `loops:list` for pending wake-up count; mounted at the bottom of App.tsx
+  flex column.
+- `src/components/chat/AskUserModal.tsx` (new) — chip-style modal with
+  split-pane preview (markdown), keyboard nav (↑/↓ + Enter + Space for
+  multi-select toggle + Escape to cancel), inline notes field. Submits the
+  chosen labels back via `ask-user:respond`.
+- `src/App.tsx` — mounts `<StatusLine />` and `<AskUserModal />`.
+
+**Verify gate:**
+- tsc node ok
+- tsc web ok
+- vitest run: 1168 passed / 16 skipped (+16 new tests: 11 ask-user-runtime,
+  3 statusline-config, 2 workflow-runner askUser sandbox)
+- Manual smoke (user-verification-needed for the Electron-shell-only bits):
+  launch Electron, confirm StatusLine renders at the bottom with the model
+  slot populated; drop a `userData/statusline.md` overriding slot order
+  + format strings, confirm the bar picks up the file on next launch; run
+  a workflow that calls `askUser({question, header, options})`, confirm
+  the modal opens, picking an option resumes the workflow with the right
+  label; let the modal sit for 30s, confirm timeout sentinel reaches the
+  workflow.
+
+**Notes:**
+- The parity-plan example `agent.askUser({...})` is achieved via the
+  top-level sandbox helper `askUser({...})`; the workflow-runner sandbox
+  exposes it next to `agent`, `parallel`, `pipeline`, `phase`, `log`,
+  `workflow`, `memory`, `args`, `budget`.
+- Subagents use `ask_user_question` via the tool descriptor, dispatched
+  through chat.ts — the same path other native tools take. No separate
+  programmatic helper was needed on `subagent-runner.ts`.
+- Statusline customisation is forgiving: empty `slots: []` falls back to
+  DEFAULTS, unknown ids are dropped, duplicates collapsed. Tests cover all
+  three branches.
+- Renderer JSX return-type annotations were dropped to avoid the React 19
+  global-JSX-namespace import requirement; the tsx files now infer return
+  type via the JSX expression.
+
+**Commit:** this commit
+
+---
+
+## [Integration — Post-merge fixups] H1-H4 merge correctness — 2026-06-04
+
+Three semantic regressions came in with the H1-H4 merge (commit `b585ccb`,
+which folded `codex-t3-final-four` into `main`). Git auto-merged textually
+but landed three behavior bugs that the verify gate caught.
+
+**Files changed:**
+- `electron/ipc/chat.ts` — removed double-injection of `taskNotificationsBlock`.
+  `buildSystemPrompt` already places the block per the locked block order
+  (`memory_index → skills → retrieved_context → chapters → conversation`),
+  so the second concatenation duplicated the `<task-notifications>` block on
+  every turn that had async events pending.
+- `src/hooks/useSkills.ts` + `src/lib/ipc-client.ts` — H4's `SkillsManager.tsx`
+  changed `window.api.skills.onChanged` to return an unsubscriber, but
+  `useSkills` discarded it. Effect cleanup now disposes the listener so
+  re-mounting the renderer does not stack handlers.
+- `src/components/layout/Sidebar.tsx` — H3's new "Sessions" NavRow and the
+  pre-existing "Automations" NavRow both rendered the same `ClockIcon`,
+  producing two visually identical adjacent rows. Added a distinct
+  `SessionsIcon` (list-with-bookmark) for the Sessions row.
+
+**Verify gate:**
+- tsc node ok
+- tsc web ok
+- vitest run: 1152 passed / 16 skipped (no regressions)
+- UI smoke: user-verification-needed for the icon swap (Electron-shell-only).
+
+**Notes:**
+- Parallel session is mid-implementation of H5 (PlanGoalsPanel + `plan:update`
+  IPC). Their unstaged edits to `plan.ts`, `plan-store.ts`, `preload.ts`,
+  and `PlanGoalsPanel.tsx` were intentionally left out of this commit.
+
+**Commit:** this commit
+
+---
+
 ## [Track 2 - COMPLETE] Tool Layer + Continuity track shipped - 2026-06-04
 
 All 9 prompts (C1 -> C2 -> C3 -> C4 -> E1 -> E2 -> E5 -> E6 -> E4) are implemented on `feat/track-2-tool-layer`.
@@ -738,6 +871,67 @@ All 8 prompts (A1 → A2 → A3 → B1 → B2 → B3 → B4 → B5) committed on
 **Notes:** The automation path reuses the existing `runAutomation()` function. Full cron isolation can call the same headless service later, but this prompt does not rewrite the cron runner to spawn a child process.
 
 **Commit:** see git log on `codex-t3-final-four`.
+
+## [Track 3 — Prompt G4] Push notifications + cross-session messaging — 2026-06-03
+
+**Files changed:**
+- `electron/services/notifications-service.ts` (new) — wraps Electron `Notification`, no-ops gracefully when unsupported, and emits a renderer click event carrying `deepLink`.
+- `electron/ipc/notifications.ts` (new), `electron/preload.ts`, `src/lib/ipc-client.ts`, `src/App.tsx` — added `notifications:push` plus click handling for `conversation:<id>` / `lamprey://conversation/<id>` deep links.
+- `electron/services/cross-session-messaging.ts` (new) — lists active sessions and sends messages by enqueuing Track 2 `async_events` rows with kind `sessions:incoming-message`.
+- `electron/ipc/sessions-messaging.ts` (new), `electron/ipc/index.ts`, `electron/preload.ts`, `src/lib/ipc-client.ts`, `src/App.tsx` — added `sessions:list-active`, `sessions-messaging:sendMessage`, and an incoming-message toast.
+- `electron/services/notifications-tool-pack.ts` (new), `electron/services/tool-packs.ts` — registered `push_notification` and `send_to_session`.
+- `electron/services/cross-session-messaging.test.ts` (new) — verifies active-session listing and async-event enqueue integration.
+- `PLANNING/LAMPREY_PARITY_PLAN.md` — marked G4 complete.
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- vitest `electron/services/cross-session-messaging.test.ts electron/services/async-event-bridge.test.ts` ✓ (5 tests)
+- manual smoke: user-verification-needed: OS notification click/deep-link behavior needs the Electron shell running with desktop notifications enabled
+
+**Notes:** Cross-session delivery now uses the real Track 2 async-event bridge on main; no duplicate task-notification drain path is carried.
+
+**Commit:** see git log on `codex-t3-final-four`.
+
+## [Track 3 - Prompt D4] Memory consolidation primitive - 2026-06-04
+
+**Files changed:**
+- `resources/workflows/consolidate-memory.js` (new) - built-in workflow that loads typed memories, asks the model for a JSON merge/prune plan, writes consolidated entries through the workflow memory API, and deletes obsolete entries.
+- `electron/services/workflow-runner.ts` - exposes a frozen `memory` helper in workflow scripts with `list`, `write`, and `delete`.
+- `electron/ipc/workflows.ts` - wires the workflow memory helper to the existing file-backed memory store, so `memory.write` / `memory.delete` trigger normal `MEMORY.md` regeneration and renderer broadcasts.
+- `src/components/memory/MemoryPanel.tsx` - adds a type-tab "Consolidate" button that launches `consolidate-memory`; live progress flows through the existing `WorkflowsPanel` subscription.
+- `electron/services/workflow-runner.test.ts` - verifies workflow scripts can call the memory helper.
+- `electron/services/workflow-library.test.ts` - updates built-in discovery expectations and runs `consolidate-memory` against a known duplicate set with stubbed model/memory APIs.
+- `PLANNING/LAMPREY_PARITY_PLAN.md` - marked D4 complete.
+
+**Verify gate:**
+- tsc node pass
+- tsc web pass
+- vitest `electron/services/workflow-runner.test.ts electron/services/workflow-library.test.ts` pass (44 tests)
+- manual smoke: user-verification-needed: launch the Electron shell, open a typed memory tab with duplicates, click Consolidate, and confirm the Workflows panel shows the live run while the memory view refreshes after writes/deletes
+
+**Notes:** The duplicate-set unit test verifies the merge/delete behavior directly. `MEMORY.md` regeneration is covered through production wiring to `writeMemoryFile` / `deleteMemoryFile`; the full shell smoke is still needed because the renderer button and WorkflowsPanel are Electron UI surfaces.
+
+**Commit:** `ade8398`.
+
+## [Track 3 completion] Memory + Verification + Scheduling - 2026-06-04
+
+All 13 Track 3 prompts are complete:
+- D1 - `5d9646e` - file-backed memory with typed frontmatter + SQLite mirror
+- D2 - `940999d` - MEMORY.md always-loaded index + broken-link graph
+- D3 - `9159a1d` - typed memory panel with tabs, editor, and link autocomplete
+- E3 - `b60160d` - cross-session FTS5 + archive/pin + Sessions sidebar
+- F1 - `bd9a74d` - dev-server lifecycle + preview verification tools
+- F2 - `a7213a3` - PR review threading + inline review post
+- F3 - `56147b6` - PR + Issues panels with inline review composer + status checks
+- F4 - `dc3f096` - background shell + line-buffered monitor primitive
+- G1 - `e02d22f` - cron UI with live validation + run-now + history
+- G2 - `272dd61` / main `b0bdf5f` - self-paced wakeups
+- G3 - `8afb649` / main `0251188` - headless remote run mode
+- G4 - `8b8630c` - push notifications + cross-session messaging
+- D4 - `ade8398` - memory consolidation workflow
+
+Final verification for the final-four branch: node/web tsc passed for D4; focused workflow tests passed; full `npx vitest run` passed on retry (85 files passed, 2 skipped; 1150 tests passed, 16 skipped). G2/G3/G4 verification details are in their prompt entries above. Remaining manual user-verification-needed items are Electron-shell/runtime smoke checks for delayed wake-ups, headless real-model execution, OS notification click behavior, and the renderer Consolidate button.
 
 ## [Track 3 — Prompt F4] Monitor primitive + background shell — 2026-06-03
 
@@ -2407,3 +2601,86 @@ Verification: `npx tsc --noEmit -p tsconfig.node.json` and `npx tsc --noEmit -p 
 ## Prompt 12 — Google OAuth and MCP Live Testing (2026-05-30)
 
 Implemented the full Google OAuth flow in `electron/ipc/mcp.ts`. The `mcp:setupGoogleOAuth` handler reads client_id and client_secret from keychain, builds the Google authorization URL with Gmail + Drive scopes and `access_type=offline` + `prompt=consent`, opens it via `shell.openExternal()`, and starts an HTTP server on `localhost:9876` to receive the callback. On callback: extracts the authorization code, exchanges it via POST to `https://oauth2.googleapis.com/token`, stores access_token, refresh_token, and computed expiry in keychain, then calls `mcpManager.reconnect()` for both gmail and drive servers. The callback server has a 2-minute timeout and returns user-friendly HTML ("Lamprey connected!" or "Authorization denied."). Updated `electron/services/mcp-manager.ts` to add 5-minute early token refresh — SSE connections now refresh if the token expires within 5 minutes, not just when already expired. Updated `src/components/settings/McpSettings.tsx` to include masked input fields for client_id and client_secret with a "Save credentials" button (calls `settings:saveGoogleCredentials` IPC), plus the existing "Connect Google Account" button which now shows "Waiting for authorization..." during the flow and reloads the server list on success. Created `scripts/setup-oauth.ts` as CLI fallback: accepts client_id and client_secret as args, prints the auth URL to console, starts localhost:9876, exchanges the code, and prints the tokens for manual paste if the in-app flow fails. Verification: `tsc --noEmit` passes both configs with zero errors. Production build succeeds (53.96 KB main, 4.38 KB preload). Full OAuth flow requires Google Cloud OAuth credentials configured per the Prerequisites section. Gmail and Drive will connect after the user authorizes.
+## [Integration — Prompt H3] Session sidebar + resume polish — 2026-06-04
+
+**Files changed:** `src/components/layout/SessionsSidebar.tsx`, `src/components/layout/Sidebar.tsx`, `src/components/sessions/SessionDetailPane.tsx`, `src/stores/sessions-store.ts`, `PLANNING/LAMPREY_PARITY_PLAN.md`
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- vitest ✓ (1152 passed, 16 skipped)
+- production build ✓
+- smoke-renderer ✓
+- smoke-bundle ✓
+- user-verification-needed: launch Electron, open the sidebar Sessions toggle, verify 20+ sessions group by project, pinned sessions can be drag-reordered, right-click exposes Resume/Duplicate/Archive/Delete, background agent completion on an inactive session shows an unread badge, and workflow-titled sessions show the Resume workflow affordance.
+
+**Notes:** Made the E3 SessionsSidebar embeddable and reachable from the main sidebar. Sessions are grouped by project, carry last-active/message metadata, support context-menu duplicate/archive/delete, clear unread badges on resume, and persist pinned drag order in localStorage. Added a compact SessionDetailPane footer with Resume/Duplicate/Archive plus workflow-resume affordance for workflow sessions.
+
+**Commit:** pending
+
+## [Integration - Prompt H4] Hook editor + skill manager polish - 2026-06-04
+
+**Files changed:** `electron/preload.ts`, `src/components/settings/HooksSettings.tsx`, `src/components/settings/HookTemplatesGallery.tsx`, `src/components/settings/HookTestRunner.tsx`, `src/components/settings/SkillsManager.tsx`, `src/components/settings/SettingsDialog.tsx`, `src/stores/ui-store.ts`
+
+**Verify gate:**
+- tsc node OK
+- tsc web OK
+- smoke-renderer OK against existing `out/` bundle
+- smoke-bundle OK against existing `out/` bundle
+- blocked: `npx vitest run` failed at config load with `spawn EPERM`; escalation was requested and rejected by the app usage limiter.
+- blocked: `npm run build` failed at config load with `spawn EPERM`; not retried with escalation because the same escalation path is currently unavailable.
+- user-verification-needed: launch Electron, open Settings > Hooks, apply each template and confirm a hook is created, run sample payloads and confirm logs/blocking errors appear inline, open Settings > Skills, import a valid markdown skill URL, confirm frontmatter validation/dry-run output, then edit a skill file on disk and confirm hot-reload status increments.
+
+**Notes:** H4 implementation is in place but the prompt remains unchecked until the full vitest/build gate can be run. Hooks now have one-click templates, a timeout slider, and a sample-payload test runner with inline sandbox errors. Settings now has a Skills tab with hot-reload status, URL import, frontmatter validation, prompt dry-run preview, enable/disable, save, and delete.
+
+**Commit:** pending
+
+## [Integration - Prompt H5] Plan-mode UX + spawn-task tray + design pass - 2026-06-04
+
+**Files changed:** `electron/ipc/plan.ts`, `electron/preload.ts`, `src/stores/plan-store.ts`, `src/components/chat/PlanModeBanner.tsx`, `src/components/chat/PlanGoalsPanel.tsx`, `src/components/chat/SpawnTaskTray.tsx`, `src/components/chat/SpawnTaskChip.tsx`, `src/components/chat/ChatView.tsx`, `PLANNING/LAMPREY_PARITY_PLAN.md`
+
+**Verify gate:**
+- tsc node OK
+- tsc web OK
+- smoke-renderer OK against existing `out/` bundle
+- smoke-bundle OK against existing `out/` bundle
+- user-verification-needed: launch Electron, enter plan mode, confirm the sticky warning banner shows `Exit & Execute`, edit a plan step inline and confirm it persists, use Approve all / Reject, spawn three tasks and confirm the right-side tray supports open-all, dismiss-all, per-task open, and source-session link-back.
+
+**Notes:** Added `plan:update` IPC so inline plan edits are persisted through the same plan-goal store as the model-facing `update_plan` tool. Replaced the compact checklist with an editable PlanGoalsPanel, upgraded the banner CTA, and changed spawned-task notifications into a persistent tray with batch controls and source-session navigation. H6 is being handled in a parallel session and was not touched here.
+
+**Commit:** pending
+
+## [Integration — Prompt H2] Workflow command palette + author UX — 2026-06-04
+
+**Files changed:** `electron/ipc/workflows.ts`, `electron/preload.ts`, `electron/services/workflow-library.ts`, `electron/services/workflow-library.test.ts`, `src/App.tsx`, `src/components/workflows/WorkflowPalette.tsx`, `src/components/workflows/WorkflowEditor.tsx`, `src/components/workflows/MetaScaffolder.tsx`, `src/components/workflows/DryRunPanel.tsx`, `src/stores/workflows-store.ts`, `src/stores/ui-store.ts`, `src/hooks/useKeyboardShortcuts.ts`, `PLANNING/LAMPREY_PARITY_PLAN.md`
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- vitest ✓ (1152 passed, 16 skipped)
+- workflow-library focused tests ✓ (31 tests)
+- production build ✓
+- smoke-renderer ✓
+- smoke-bundle ✓
+- user-verification-needed: launch Electron, press Ctrl+K, confirm the workflow palette opens, run `adversarial-verify`, create/save a new workflow, confirm it lands in the Library after refresh, and confirm the dry-run panel shows agent/workflow call shapes without invoking a model.
+
+**Notes:** Added `workflows:validate` and `workflows:save` IPC so the authoring UI persists user workflows to `userData/workflows/scripts/` using the existing literal-meta parser. Ctrl+K now opens the workflow palette; file quick-open remains on Ctrl+P and the sidebar Search row still focuses conversation filtering. The editor uses a textarea-backed code surface rather than adding the heavy Monaco dependency in this prompt; validation, scaffolding, registry suggestions, save-as-meta-name, and static dry-run are wired.
+
+**Commit:** pending
+
+## [Integration — Prompt H1] Activity dashboard live agent tree — 2026-06-04
+
+**Files changed:** `src/stores/activity-store.ts`, `src/components/activity/ActivityDashboard.tsx`, `src/components/activity/ActivityNode.tsx`, `src/components/activity/ActivityTray.tsx`, `src/components/layout/Sidebar.tsx`, `PLANNING/LAMPREY_PARITY_PLAN.md`
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- vitest ✓ (1150 passed, 16 skipped)
+- production build ✓
+- smoke-renderer ✓
+- smoke-bundle ✓
+- user-verification-needed: launch Electron, start one chat stream, one workflow, one background agent, one pending wake-up, and one cron task; confirm all appear in the sidebar Activity dashboard, status chips flip live, stop/cancel buttons work, and pinning persists in the Watching tray after restart.
+
+**Notes:** Added a sidebar-mounted operational activity dashboard with normalized chat, workflow, subagent, cron, loop, and hook nodes. The store polls persisted task/loop/automation/hook surfaces and listens to workflow, task, and loop events for live refresh. Workflow child agents are folded under their workflow run while standalone background agents stay top-level. Pin state and collapse state persist in localStorage.
+
+**Commit:** pending

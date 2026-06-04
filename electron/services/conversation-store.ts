@@ -163,7 +163,7 @@ export function listSessions(opts: ListSessionsOptions = {}) {
     if (ids.length === 0) return []
   }
 
-  let where = ''
+  let where: string
   let order = 'updated_at DESC'
   if (tab === 'recent') {
     where = 'archived = 0 AND pinned_at IS NULL'
@@ -343,7 +343,7 @@ function ftsInsertMessage(messageId: string, conversationId: string, body: strin
  */
 export function backfillSessionsFts(force = false): { rebuilt: boolean; rows: number } {
   const db = getDb()
-  let existing = 0
+  let existing: number
   try {
     existing = (db.prepare('SELECT COUNT(*) AS cnt FROM sessions_fts').get() as { cnt: number }).cnt
   } catch (err) {

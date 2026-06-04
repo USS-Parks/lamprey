@@ -1,3 +1,5 @@
+/* global agent, args, log, parallel, phase */
+
 export const meta = {
   name: 'multi-modal-sweep',
   description:
@@ -20,7 +22,7 @@ if (!target) return { findings: [], lensesRun: 0, note: 'no target supplied' }
 
 phase('Sweep')
 const sweeps = await parallel(
-  lenses.map((lens, i) => () =>
+  lenses.map((lens) => () =>
     agent(
       `Search angle: ${lens}\n\nFind everything you can about: ${target}\n\nReply with JSON {findings: array}. Use only the search angle you were assigned; do not duplicate other angles' work.`,
       {

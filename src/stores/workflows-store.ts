@@ -53,9 +53,25 @@ export interface WorkflowRunState {
   finalResult?: unknown
 }
 
+export interface WorkflowLibraryEntry {
+  name: string
+  description: string
+  origin: 'builtin' | 'user'
+  filePath?: string
+}
+
 interface WorkflowsStoreState {
   /** Most-recent-first list of runs (live + finished). */
   runs: WorkflowRunState[]
+  library: WorkflowLibraryEntry[]
+  libraryLoading: boolean
+  libraryError: string | null
+  refreshLibrary: () => Promise<void>
+  runWorkflow: (name: string, args?: unknown) => Promise<string | null>
+  saveWorkflow: (script: string) => Promise<WorkflowLibraryEntry | null>
+  validateWorkflow: (
+    script: string
+  ) => Promise<{ ok: true; meta: unknown } | { ok: false; error: string }>
   /** Apply a single workflow:progress event. */
   applyProgress: (event: WorkflowProgressEvent) => void
   /** Stop a run via window.api.workflows.stop. */
@@ -130,6 +146,52 @@ let syntheticCounter = 0
 
 export const useWorkflowsStore = create<WorkflowsStoreState>((set, get) => ({
   runs: [],
+  library: [],
+  libraryLoading: false,
+  libraryError: null,
+
+  refreshLibrary: async () => {
+    if (typeof window === 'undefined' || !window.api?.workflows?.list) return
+    set({ libraryLoading: true, libraryError: null })
+    const result = await window.api.workflows.list()
+    if (result.success) {
+      const data = result.data as { library?: WorkflowLibraryEntry[] }
+      set({ library: data.library ?? [], libraryLoading: false })
+    } else {
+      set({ libraryError: result.error ?? 'workflows:list failed', libraryLoading: false })
+    }
+  },
+
+  runWorkflow: async (name: string, args?: unknown) => {
+    if (typeof window === 'undefined' || !window.api?.workflows?.run) return null
+    const result = await window.api.workflows.run({ name, args })
+    if (!result.success) {
+      set({ libraryError: result.error ?? 'workflow run failed' })
+      return null
+    }
+    const data = result.data as { runId?: string }
+    return data.runId ?? null
+  },
+
+  saveWorkflow: async (script: string) => {
+    if (typeof window === 'undefined' || !window.api?.workflows?.save) return null
+    const result = await window.api.workflows.save({ script })
+    if (!result.success) {
+      set({ libraryError: result.error ?? 'workflow save failed' })
+      return null
+    }
+    await get().refreshLibrary()
+    return result.data as WorkflowLibraryEntry
+  },
+
+  validateWorkflow: async (script: string) => {
+    if (typeof window === 'undefined' || !window.api?.workflows?.validate) {
+      return { ok: false, error: 'workflow validation unavailable' }
+    }
+    const result = await window.api.workflows.validate({ script })
+    if (!result.success) return { ok: false, error: result.error ?? 'validation failed' }
+    return { ok: true, meta: result.data }
+  },
 
   applyProgress: (event: WorkflowProgressEvent) => {
     if (!event || typeof event.runId !== 'string') return
@@ -284,7 +346,7 @@ export const useWorkflowsStore = create<WorkflowsStoreState>((set, get) => ({
   },
 
   reset: () => {
-    set({ runs: [] })
+    set({ runs: [], library: [], libraryLoading: false, libraryError: null })
     syntheticCounter = 0
   }
 }))

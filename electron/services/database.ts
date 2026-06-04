@@ -303,6 +303,7 @@ function initSchema(db: Database.Database): void {
       ON loop_wakeups(status, fire_at ASC);
     CREATE INDEX IF NOT EXISTS idx_loop_wakeups_conversation
       ON loop_wakeups(conversation_id, fire_at DESC);
+
   `)
 
   // Migrations for older DBs that predate kind/worktree_path/project_id columns.

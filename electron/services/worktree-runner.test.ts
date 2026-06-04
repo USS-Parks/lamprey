@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { mkdtempSync, rmSync } from 'fs'
+import { mkdtempSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import {
@@ -173,10 +173,3 @@ describe('createAgentWorktreeManager validation', () => {
     ).toThrow(/absolute/)
   })
 })
-
-// Cleanup of tmp workspacesRoots happens via the OS; we don't bother in
-// these tests since the dirs are tiny and unique per-test.
-function _silenceLint(): void {
-  rmSync // referenced so tsc's noUnusedLocals doesn't flag the import
-}
-_silenceLint()

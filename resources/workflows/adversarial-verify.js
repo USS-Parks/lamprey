@@ -1,3 +1,5 @@
+/* global agent, args, log, parallel, phase */
+
 export const meta = {
   name: 'adversarial-verify',
   description:

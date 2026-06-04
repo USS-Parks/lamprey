@@ -11,7 +11,16 @@ import globals from 'globals'
 export default [
   // resources/vendor/** holds third-party minified bundles (mermaid, babel) that
   // must not be linted — the legacy `eslint --ext .ts,.tsx` never reached them.
-  { ignores: ['out/**', 'dist/**', 'node_modules/**', 'resources/vendor/**', '*.config.{js,mjs,cjs,ts}'] },
+  {
+    ignores: [
+      'out/**',
+      'dist/**',
+      'node_modules/**',
+      'resources/vendor/**',
+      '.claude/**',
+      '*.config.{js,mjs,cjs,ts}'
+    ]
+  },
 
   js.configs.recommended,
   // Wires the @typescript-eslint parser + plugin and the eslint-recommended
@@ -55,6 +64,15 @@ export default [
       // ruleset, which we deliberately do not enable here.)
       'react-hooks/rules-of-hooks': 'error',
       'react-hooks/exhaustive-deps': 'warn'
+    }
+  },
+
+  // Electron/services use helpers such as `useDb()` that are not React hooks.
+  {
+    files: ['electron/**/*.{ts,tsx}', 'scripts/**/*.{ts,tsx}'],
+    rules: {
+      'react-hooks/rules-of-hooks': 'off',
+      'react-hooks/exhaustive-deps': 'off'
     }
   },
 

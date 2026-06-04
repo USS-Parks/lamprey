@@ -8,7 +8,7 @@ import { FileDropZone } from './FileDropZone'
 import { WelcomeScreen } from './WelcomeScreen'
 import { TokenTicker } from './TokenTicker'
 import { AgentRunBanner } from './AgentRunBanner'
-import { PlanChecklist } from './PlanChecklist'
+import { PlanGoalsPanel } from './PlanGoalsPanel'
 import { PlanModeBanner } from './PlanModeBanner'
 import { ChapterSidebar } from './ChapterSidebar'
 import { ChapterQuickJumper } from './ChapterQuickJumper'
@@ -56,9 +56,7 @@ export function ChatView({ rightInset = 0 }: ChatViewProps = {}) {
       className="chat-column relative flex flex-1 flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--bg-primary)]"
       style={{
         paddingRight: rightInset,
-        transition: reducedMotion
-          ? undefined
-          : 'padding-right 220ms cubic-bezier(0.2, 0.8, 0.2, 1)'
+        transition: reducedMotion ? undefined : 'padding-right 220ms cubic-bezier(0.2, 0.8, 0.2, 1)'
       }}
     >
       <FileDropZone />
@@ -91,7 +89,7 @@ export function ChatView({ rightInset = 0 }: ChatViewProps = {}) {
 
       <div className="flex justify-center bg-[var(--bg-primary)] pt-3 pb-4">
         <div className={CHAT_COLUMN_CLASS}>
-          <PlanChecklist />
+          <PlanGoalsPanel conversationId={activeConversationId} />
           <AgentRunBanner />
           <SpawnTaskTray />
           <TokenTicker />

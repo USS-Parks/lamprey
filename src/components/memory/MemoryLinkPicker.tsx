@@ -44,7 +44,7 @@ export function MemoryLinkPicker({ textarea, onPicked }: Props) {
       const value = textarea.value
       const caret = textarea.selectionStart ?? value.length
       const prefix = value.slice(0, caret)
-      const match = /\[\[([^\[\]\n]{0,40})$/.exec(prefix)
+      const match = /\[\[([^[\]\n]{0,40})$/.exec(prefix)
       if (!match) {
         setOpen(false)
         return
@@ -81,7 +81,7 @@ export function MemoryLinkPicker({ textarea, onPicked }: Props) {
       const caret = textarea.selectionStart ?? value.length
       const prefix = value.slice(0, caret)
       const tail = value.slice(caret)
-      const replaced = prefix.replace(/\[\[([^\[\]\n]*)$/, `[[${slug}]]`)
+      const replaced = prefix.replace(/\[\[([^[\]\n]*)$/, `[[${slug}]]`)
       textarea.value = replaced + tail
       const newCaret = replaced.length
       textarea.setSelectionRange(newCaret, newCaret)

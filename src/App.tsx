@@ -6,6 +6,7 @@ import { ArtifactPanel } from '@/components/artifacts/ArtifactPanel'
 import { RightPanelHome } from '@/components/artifacts/RightPanelHome'
 import { ToolsPanel } from '@/components/tools/ToolsPanel'
 import { QuickOpenPalette } from '@/components/tools/QuickOpenPalette'
+import { WorkflowPalette } from '@/components/workflows/WorkflowPalette'
 import { WorktreeManagerModal } from '@/components/worktree/WorktreeManagerModal'
 import { ApiKeyModal } from '@/components/settings/ApiKeyModal'
 import { SettingsDialog } from '@/components/settings/SettingsDialog'
@@ -29,6 +30,8 @@ import { useMediaQuery, NARROW_VIEWPORT_QUERY } from '@/hooks/useMediaQuery'
 import { UpdateBanner } from '@/components/ui/UpdateBanner'
 import { SecurityBanner } from '@/components/ui/SecurityBanner'
 import { AsyncEventToast } from '@/components/chat/AsyncEventToast'
+import { StatusLine } from '@/components/layout/StatusLine'
+import { AskUserModal } from '@/components/chat/AskUserModal'
 import { useThemedIcon } from '@/lib/themed-icon'
 import artifactsPlaceholderLight from '@assets/Lamprey Code Window Icon.png'
 import artifactsPlaceholderDark from '@assets/Lamprey Code Window Icon Dark View.png'
@@ -249,6 +252,30 @@ function App(): React.ReactElement {
   }, [])
 
   useEffect(() => {
+    if (!window.api?.notifications?.onClicked) return
+    const unsubscribe = window.api.notifications.onClicked((e: unknown) => {
+      const event = e as { deepLink?: unknown }
+      const deepLink = typeof event.deepLink === 'string' ? event.deepLink : ''
+      const match = deepLink.match(/^(?:conversation:|lamprey:\/\/conversation\/)(.+)$/)
+      const conversationId = match?.[1]
+      if (conversationId) void useChatStore.getState().selectConversation(conversationId)
+    })
+    return unsubscribe
+  }, [])
+
+  useEffect(() => {
+    if (!window.api?.sessionsMessaging?.onIncoming) return
+    const unsubscribe = window.api.sessionsMessaging.onIncoming((e: unknown) => {
+      const event = e as { targetSessionId?: string }
+      const chat = useChatStore.getState()
+      if (event.targetSessionId && chat.activeConversationId === event.targetSessionId) {
+        toast.info('Incoming session message queued for the next turn')
+      }
+    })
+    return unsubscribe
+  }, [])
+
+  useEffect(() => {
     const init = async () => {
       if (!window.api) {
         setNeedsApiKey(true)
@@ -415,9 +442,13 @@ function App(): React.ReactElement {
         </>
       )}
 
+      <StatusLine />
+
       <QuickOpenPalette />
+      <WorkflowPalette />
       <WorktreeManagerModal />
       <AsyncEventToast />
+      <AskUserModal />
 
       {/* Viewport-fixed floating overlay. Anchored to viewport coords so
           when the right panel expands the card stays put and retreats

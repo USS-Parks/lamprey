@@ -22,8 +22,7 @@ const api = {
       ipcRenderer.on('chat:tool-call-result', (_, e) => cb(e)),
     onPhase: (cb: (e: { conversationId: string; phase: string }) => void) =>
       ipcRenderer.on('chat:phase', (_, e) => cb(e)),
-    onAgentStatus: (cb: (e: unknown) => void) =>
-      ipcRenderer.on('agent:status', (_, e) => cb(e)),
+    onAgentStatus: (cb: (e: unknown) => void) => ipcRenderer.on('agent:status', (_, e) => cb(e)),
     onAsyncEvent: (cb: (e: unknown) => void): (() => void) => {
       const handler = (_: unknown, e: unknown): void => cb(e)
       ipcRenderer.on('async-event:received', handler)
@@ -81,8 +80,8 @@ const api = {
       ipcRenderer.invoke('sessions:archive', id, archived),
     setPinned: (id: string, pinned: boolean) =>
       ipcRenderer.invoke('sessions:setPinned', id, pinned),
-    search: (query: string, limit?: number) =>
-      ipcRenderer.invoke('sessions:search', query, limit)
+    search: (query: string, limit?: number) => ipcRenderer.invoke('sessions:search', query, limit),
+    listActive: (limit?: number) => ipcRenderer.invoke('sessions:list-active', limit)
   },
 
   conversation: {
@@ -102,8 +101,7 @@ const api = {
     getMessages: (id: string) => ipcRenderer.invoke('conversation:getMessages', id),
     appendSystem: (id: string, content: string) =>
       ipcRenderer.invoke('conversation:appendSystem', id, content),
-    setModel: (id: string, model: string) =>
-      ipcRenderer.invoke('conversation:setModel', id, model),
+    setModel: (id: string, model: string) => ipcRenderer.invoke('conversation:setModel', id, model),
     fork: (id: string) => ipcRenderer.invoke('conversation:fork', id),
     compact: (id: string) => ipcRenderer.invoke('conversation:compact', id)
   },
@@ -115,10 +113,8 @@ const api = {
     listProviderKeys: () => ipcRenderer.invoke('settings:listProviderKeys'),
     saveProviderKey: (provider: string, key: string) =>
       ipcRenderer.invoke('settings:saveProviderKey', provider, key),
-    hasProviderKey: (provider: string) =>
-      ipcRenderer.invoke('settings:hasProviderKey', provider),
-    testProviderKey: (provider: string) =>
-      ipcRenderer.invoke('settings:testProviderKey', provider),
+    hasProviderKey: (provider: string) => ipcRenderer.invoke('settings:hasProviderKey', provider),
+    testProviderKey: (provider: string) => ipcRenderer.invoke('settings:testProviderKey', provider),
     deleteProviderKey: (provider: string) =>
       ipcRenderer.invoke('settings:deleteProviderKey', provider),
 
@@ -157,8 +153,13 @@ const api = {
     update: (id: string, skill: { name: string; description: string; content: string }) =>
       ipcRenderer.invoke('skills:update', id, skill),
     delete: (id: string) => ipcRenderer.invoke('skills:delete', id),
-    onChanged: (cb: (skills: unknown[]) => void) =>
-      ipcRenderer.on('skills:changed', (_, skills) => cb(skills))
+    onChanged: (cb: (skills: unknown[]) => void) => {
+      const listener = (_: unknown, skills: unknown[]): void => cb(skills)
+      ipcRenderer.on('skills:changed', listener)
+      return () => {
+        ipcRenderer.removeListener('skills:changed', listener)
+      }
+    }
   },
 
   memory: {
@@ -184,12 +185,10 @@ const api = {
       sourceConversationId?: string
     }) => ipcRenderer.invoke('memory:write', payload),
     read: (name: string) => ipcRenderer.invoke('memory:read', name),
-    search: (query: string, limit?: number) =>
-      ipcRenderer.invoke('memory:search', query, limit),
+    search: (query: string, limit?: number) => ipcRenderer.invoke('memory:search', query, limit),
     // D2: read the on-disk MEMORY.md for a project, plus the broken-link
     // list so D3's sidebar pip can surface "to-write" suggestions.
-    readIndex: (projectSlug?: string) =>
-      ipcRenderer.invoke('memory:readIndex', projectSlug),
+    readIndex: (projectSlug?: string) => ipcRenderer.invoke('memory:readIndex', projectSlug),
     listBrokenLinks: (projectSlug?: string) =>
       ipcRenderer.invoke('memory:listBrokenLinks', projectSlug),
     onAdded: (cb: (entry: unknown) => void) =>
@@ -267,6 +266,13 @@ const api = {
 
   plan: {
     get: (conversationId: string) => ipcRenderer.invoke('plan:get', conversationId),
+    update: (
+      conversationId: string,
+      input: {
+        replace?: boolean
+        steps?: Array<{ id?: string; text?: string; status?: 'pending' | 'in_progress' | 'done' }>
+      }
+    ) => ipcRenderer.invoke('plan:update', conversationId, input),
     listAllState: () => ipcRenderer.invoke('plan:listAllState'),
     clearConversationState: (conversationId: string) =>
       ipcRenderer.invoke('plan:clearConversationState', conversationId),
@@ -282,17 +288,10 @@ const api = {
     // enter_plan_mode / exit_plan_mode tools mid-turn).
     isModeActive: (conversationId: string) =>
       ipcRenderer.invoke('plan:isModeActive', conversationId),
-    enterMode: (conversationId: string) =>
-      ipcRenderer.invoke('plan:enterMode', conversationId),
-    exitMode: (conversationId: string) =>
-      ipcRenderer.invoke('plan:exitMode', conversationId),
-    onModeChanged: (
-      cb: (e: { conversationId: string; active: boolean }) => void
-    ): (() => void) => {
-      const handler = (
-        _: unknown,
-        e: { conversationId: string; active: boolean }
-      ) => cb(e)
+    enterMode: (conversationId: string) => ipcRenderer.invoke('plan:enterMode', conversationId),
+    exitMode: (conversationId: string) => ipcRenderer.invoke('plan:exitMode', conversationId),
+    onModeChanged: (cb: (e: { conversationId: string; active: boolean }) => void): (() => void) => {
+      const handler = (_: unknown, e: { conversationId: string; active: boolean }) => cb(e)
       ipcRenderer.on('plan:mode-changed', handler)
       return () => ipcRenderer.removeListener('plan:mode-changed', handler)
     }
@@ -341,10 +340,7 @@ const api = {
     onChapterMarked: (
       cb: (e: { conversationId: string; chapter: unknown }) => void
     ): (() => void) => {
-      const handler = (
-        _: unknown,
-        e: { conversationId: string; chapter: unknown }
-      ) => cb(e)
+      const handler = (_: unknown, e: { conversationId: string; chapter: unknown }) => cb(e)
       ipcRenderer.on('chat:chapter-marked', handler)
       return () => ipcRenderer.removeListener('chat:chapter-marked', handler)
     }
@@ -372,6 +368,8 @@ const api = {
   // events arrive over `workflow:progress`.
   workflows: {
     list: () => ipcRenderer.invoke('workflows:list'),
+    validate: (input: { script: string }) => ipcRenderer.invoke('workflows:validate', input),
+    save: (input: { script: string }) => ipcRenderer.invoke('workflows:save', input),
     runInline: (input: {
       script: string
       args?: unknown
@@ -379,8 +377,7 @@ const api = {
       concurrencyCap?: number
       timeoutMs?: number
     }) => ipcRenderer.invoke('workflows:runInline', input),
-    run: (input: { name: string; args?: unknown }) =>
-      ipcRenderer.invoke('workflows:run', input),
+    run: (input: { name: string; args?: unknown }) => ipcRenderer.invoke('workflows:run', input),
     stop: (runId: string) => ipcRenderer.invoke('workflows:stop', runId),
     onProgress: (listener: (event: unknown) => void): (() => void) => {
       const wrapped = (_e: unknown, event: unknown): void => listener(event)
@@ -403,7 +400,12 @@ const api = {
       model?: string | null
     }) => ipcRenderer.invoke('tasks:spawn', payload),
     list: (filter?: {
-      status?: 'running' | 'done' | 'error' | 'aborted' | Array<'running' | 'done' | 'error' | 'aborted'>
+      status?:
+        | 'running'
+        | 'done'
+        | 'error'
+        | 'aborted'
+        | Array<'running' | 'done' | 'error' | 'aborted'>
       parentConvId?: string | null
       parentRunId?: string | null
       background?: boolean
@@ -469,7 +471,13 @@ const api = {
       ipcRenderer.invoke('automations:create', input),
     update: (
       id: string,
-      patch: Partial<{ label: string; cron: string; prompt: string; model: string; enabled: boolean }>
+      patch: Partial<{
+        label: string
+        cron: string
+        prompt: string
+        model: string
+        enabled: boolean
+      }>
     ) => ipcRenderer.invoke('automations:update', id, patch),
     delete: (id: string) => ipcRenderer.invoke('automations:delete', id),
     runNow: (id: string) => ipcRenderer.invoke('automations:runNow', id),
@@ -486,7 +494,12 @@ const api = {
     cancel: (id: string) => ipcRenderer.invoke('loops:cancel', id),
     list: (filter?: {
       conversationId?: string
-      status?: 'pending' | 'fired' | 'cancelled' | 'error' | Array<'pending' | 'fired' | 'cancelled' | 'error'>
+      status?:
+        | 'pending'
+        | 'fired'
+        | 'cancelled'
+        | 'error'
+        | Array<'pending' | 'fired' | 'cancelled' | 'error'>
       limit?: number
     }) => ipcRenderer.invoke('loops:list', filter),
     onFired: (cb: (event: unknown) => void): (() => void) => {
@@ -494,6 +507,48 @@ const api = {
       ipcRenderer.on('loop:wakeup:fired', handler)
       return () => ipcRenderer.removeListener('loop:wakeup:fired', handler)
     }
+  },
+
+  notifications: {
+    push: (input: { title: string; body: string; deepLink?: string | null }) =>
+      ipcRenderer.invoke('notifications:push', input),
+    onClicked: (cb: (event: unknown) => void): (() => void) => {
+      const handler = (_: unknown, event: unknown): void => cb(event)
+      ipcRenderer.on('notifications:clicked', handler)
+      return () => ipcRenderer.removeListener('notifications:clicked', handler)
+    }
+  },
+
+  sessionsMessaging: {
+    sendMessage: (input: {
+      targetSessionId: string
+      body: string
+      fromSessionId?: string | null
+    }) => ipcRenderer.invoke('sessions-messaging:sendMessage', input),
+    onIncoming: (cb: (event: unknown) => void): (() => void) => {
+      const handler = (_: unknown, event: unknown): void => cb(event)
+      ipcRenderer.on('sessions:incoming-message', handler)
+      return () => ipcRenderer.removeListener('sessions:incoming-message', handler)
+    }
+  },
+
+  askUser: {
+    respond: (payload: { requestId: string; answer: unknown }) =>
+      ipcRenderer.invoke('ask-user:respond', payload),
+    list: () => ipcRenderer.invoke('ask-user:list'),
+    cancelAll: () => ipcRenderer.invoke('ask-user:cancelAll'),
+    onAwaiting: (cb: (event: unknown) => void): (() => void) => {
+      const handler = (_: unknown, event: unknown): void => cb(event)
+      ipcRenderer.on('ask-user:awaiting', handler)
+      return () => ipcRenderer.removeListener('ask-user:awaiting', handler)
+    }
+  },
+
+  statusline: {
+    get: () => ipcRenderer.invoke('statusline:get'),
+    set: (input: { slots?: string[]; formats?: Record<string, string> }) =>
+      ipcRenderer.invoke('statusline:set', input),
+    availableSlots: () => ipcRenderer.invoke('statusline:availableSlots')
   },
 
   worktree: {
@@ -505,8 +560,7 @@ const api = {
   },
 
   projects: {
-    list: (args?: { includeArchived?: boolean }) =>
-      ipcRenderer.invoke('projects:list', args),
+    list: (args?: { includeArchived?: boolean }) => ipcRenderer.invoke('projects:list', args),
     get: (id: string) => ipcRenderer.invoke('projects:get', id),
     create: (input: { name: string; path?: string | null }) =>
       ipcRenderer.invoke('projects:create', input),
@@ -532,8 +586,7 @@ const api = {
     unstage: (args: { cwd?: string; path: string }) => ipcRenderer.invoke('review:unstage', args),
     discard: (args: { cwd?: string; path: string }) => ipcRenderer.invoke('review:discard', args),
     branches: (args?: { cwd?: string }) => ipcRenderer.invoke('review:branches', args),
-    checkout: (args: { cwd?: string; name: string }) =>
-      ipcRenderer.invoke('review:checkout', args),
+    checkout: (args: { cwd?: string; name: string }) => ipcRenderer.invoke('review:checkout', args),
     createBranch: (args: { cwd?: string; name: string }) =>
       ipcRenderer.invoke('review:createBranch', args),
     summary: (args?: { cwd?: string }) => ipcRenderer.invoke('review:summary', args),
@@ -582,18 +635,36 @@ const api = {
 
   // F4 — Background shell + monitor primitive.
   shellBg: {
-    spawn: (args: { command: string; cwd?: string; env?: Record<string, string>; emitLines?: boolean }) =>
-      ipcRenderer.invoke('shell:bg:spawn', args),
+    spawn: (args: {
+      command: string
+      cwd?: string
+      env?: Record<string, string>
+      emitLines?: boolean
+    }) => ipcRenderer.invoke('shell:bg:spawn', args),
     list: () => ipcRenderer.invoke('shell:bg:list'),
     get: (processId: string) => ipcRenderer.invoke('shell:bg:get', processId),
     kill: (processId: string) => ipcRenderer.invoke('shell:bg:kill', processId),
     destroy: (processId: string) => ipcRenderer.invoke('shell:bg:destroy', processId),
-    onLine: (cb: (evt: { processId: string; stream: 'stdout' | 'stderr'; line: string; at: number }) => void) => {
+    onLine: (
+      cb: (evt: {
+        processId: string
+        stream: 'stdout' | 'stderr'
+        line: string
+        at: number
+      }) => void
+    ) => {
       const h = (_: unknown, evt: any) => cb(evt)
       ipcRenderer.on('shell:bg:line', h)
       return () => ipcRenderer.removeListener('shell:bg:line', h)
     },
-    onExit: (cb: (evt: { processId: string; exitCode: number | null; signal: string | null; durationMs: number }) => void) => {
+    onExit: (
+      cb: (evt: {
+        processId: string
+        exitCode: number | null
+        signal: string | null
+        durationMs: number
+      }) => void
+    ) => {
       const h = (_: unknown, evt: any) => cb(evt)
       ipcRenderer.on('shell:bg:exit', h)
       return () => ipcRenderer.removeListener('shell:bg:exit', h)
@@ -612,12 +683,21 @@ const api = {
       ipcRenderer.on('monitor:line', h)
       return () => ipcRenderer.removeListener('monitor:line', h)
     },
-    onMatched: (cb: (evt: { streamId: string; processId: string; matchedLine: string; entry: unknown }) => void) => {
+    onMatched: (
+      cb: (evt: {
+        streamId: string
+        processId: string
+        matchedLine: string
+        entry: unknown
+      }) => void
+    ) => {
       const h = (_: unknown, evt: any) => cb(evt)
       ipcRenderer.on('monitor:matched', h)
       return () => ipcRenderer.removeListener('monitor:matched', h)
     },
-    onExit: (cb: (evt: { streamId: string; processId: string; exitCode: number | null }) => void) => {
+    onExit: (
+      cb: (evt: { streamId: string; processId: string; exitCode: number | null }) => void
+    ) => {
       const h = (_: unknown, evt: any) => cb(evt)
       ipcRenderer.on('monitor:exit', h)
       return () => ipcRenderer.removeListener('monitor:exit', h)
@@ -651,8 +731,7 @@ const api = {
   },
 
   artifact: {
-    render: (type: string, content: string) =>
-      ipcRenderer.invoke('artifact:render', type, content),
+    render: (type: string, content: string) => ipcRenderer.invoke('artifact:render', type, content),
     hide: () => ipcRenderer.invoke('artifact:hide'),
     resize: (bounds: { x: number; y: number; width: number; height: number }) =>
       ipcRenderer.invoke('artifact:resize', bounds),
@@ -680,8 +759,7 @@ const api = {
   },
 
   tray: {
-    onNewConversation: (cb: () => void) =>
-      ipcRenderer.on('tray:newConversation', () => cb())
+    onNewConversation: (cb: () => void) => ipcRenderer.on('tray:newConversation', () => cb())
   },
 
   clipboard: {
@@ -754,8 +832,7 @@ const api = {
       repo: string
       localPath?: string | null
     }) => ipcRenderer.invoke('github:assignRepoToProject', args),
-    unlinkRepo: (args: { projectId: string }) =>
-      ipcRenderer.invoke('github:unlinkRepo', args),
+    unlinkRepo: (args: { projectId: string }) => ipcRenderer.invoke('github:unlinkRepo', args),
     compare: (args: { owner: string; repo: string; base: string; head: string }) =>
       ipcRenderer.invoke('github:compare', args),
     createPullRequest: (args: {
@@ -889,8 +966,7 @@ const api = {
     // function so effect cleanup (hot reload, tab switch) detaches the
     // listener without duplicating progress event handling.
     document: {
-      list: (collectionId: string) =>
-        ipcRenderer.invoke('rag:document:list', collectionId),
+      list: (collectionId: string) => ipcRenderer.invoke('rag:document:list', collectionId),
       ingest: (
         collectionId: string,
         files: Array<{
@@ -900,12 +976,9 @@ const api = {
           sourceKind?: string
         }>
       ) => ipcRenderer.invoke('rag:document:ingest', collectionId, files),
-      reingest: (documentId: string) =>
-        ipcRenderer.invoke('rag:document:reingest', documentId),
-      delete: (documentId: string) =>
-        ipcRenderer.invoke('rag:document:delete', documentId),
-      cancel: (jobId: string) =>
-        ipcRenderer.invoke('rag:document:cancel', jobId),
+      reingest: (documentId: string) => ipcRenderer.invoke('rag:document:reingest', documentId),
+      delete: (documentId: string) => ipcRenderer.invoke('rag:document:delete', documentId),
+      cancel: (jobId: string) => ipcRenderer.invoke('rag:document:cancel', jobId),
       onProgress: (cb: (e: unknown) => void): (() => void) => {
         const handler = (_: unknown, e: unknown): void => cb(e)
         ipcRenderer.on('rag:document:progress', handler)
@@ -913,44 +986,30 @@ const api = {
       }
     },
     query: {
-      run: (input: {
-        query: string
-        collectionIds: string[]
-        topN?: number
-      }) => ipcRenderer.invoke('rag:query:run', input)
+      run: (input: { query: string; collectionIds: string[]; topN?: number }) =>
+        ipcRenderer.invoke('rag:query:run', input)
     },
     attachments: {
-      list: (conversationId: string) =>
-        ipcRenderer.invoke('rag:attachments:list', conversationId),
-      add: (input: {
-        conversationId: string
-        collectionId?: string
-        documentId?: string
-      }) => ipcRenderer.invoke('rag:attachments:add', input),
-      remove: (input: {
-        conversationId: string
-        collectionId?: string
-        documentId?: string
-      }) => ipcRenderer.invoke('rag:attachments:remove', input)
+      list: (conversationId: string) => ipcRenderer.invoke('rag:attachments:list', conversationId),
+      add: (input: { conversationId: string; collectionId?: string; documentId?: string }) =>
+        ipcRenderer.invoke('rag:attachments:add', input),
+      remove: (input: { conversationId: string; collectionId?: string; documentId?: string }) =>
+        ipcRenderer.invoke('rag:attachments:remove', input)
     },
     // Auto-route a large file through the RAG ingest pipeline into a
     // per-conversation auto-collection. The renderer calls this when a
     // ProcessedFile arrives with kind: 'rag-pending'. Progress updates flow
     // over the existing rag.document.onProgress subscription — match the
     // returned jobId to the IngestProgressEvent.jobId.
-    autoAttach: (input: {
-      conversationId: string
-      filePath: string
-      displayName?: string
-    }) => ipcRenderer.invoke('rag:auto-attach', input),
+    autoAttach: (input: { conversationId: string; filePath: string; displayName?: string }) =>
+      ipcRenderer.invoke('rag:auto-attach', input),
     chunk: {
       get: (chunkId: string) => ipcRenderer.invoke('rag:chunk:get', chunkId)
     }
   },
 
   app: {
-    onError: (cb: (e: { message: string }) => void) =>
-      ipcRenderer.on('app:error', (_, e) => cb(e)),
+    onError: (cb: (e: { message: string }) => void) => ipcRenderer.on('app:error', (_, e) => cb(e)),
     onWarning: (cb: (e: { message: string }) => void) =>
       ipcRenderer.on('app:warning', (_, e) => cb(e)),
     getWorkingFolder: () => ipcRenderer.invoke('app:getWorkingFolder'),

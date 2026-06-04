@@ -6,8 +6,9 @@ export function useSkills(): void {
   useEffect(() => {
     if (!window.api) return
     useSkillsStore.getState().loadSkills()
-    window.api.skills.onChanged((skills) => {
+    const dispose = window.api.skills.onChanged((skills) => {
       useSkillsStore.getState().setSkillsFromEvent(skills as Skill[])
     })
+    return typeof dispose === 'function' ? dispose : undefined
   }, [])
 }

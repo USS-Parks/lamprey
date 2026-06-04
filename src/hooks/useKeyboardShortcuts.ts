@@ -23,10 +23,10 @@ export function useKeyboardShortcuts(): void {
         return
       }
 
-      // Ctrl/Cmd+K — focus search
+      // Ctrl/Cmd+K - workflow command palette
       if (mod && (e.key === 'k' || e.key === 'K')) {
         e.preventDefault()
-        useUiStore.getState().requestSearchFocus()
+        useUiStore.getState().toggleWorkflowPalette()
         return
       }
 

@@ -349,7 +349,7 @@ export async function executePreviewStart(args: PreviewStartArgs): Promise<strin
     return `Error: dev server failed to start — ${handle.output.trim()}`
   }
 
-  let url: string | null = null
+  let url: string | null
   try {
     url = await waitForOutput(handle.id, readyPattern, timeoutMs)
   } catch (err: any) {
