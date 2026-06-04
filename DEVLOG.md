@@ -1,5 +1,38 @@
 # Lamprey Harness Dev Log
 
+## [Track 3 — Prompt E3] Cross-session search + archive — 2026-06-03
+
+**Files changed:**
+- `electron/services/database.ts` — `archived` + `pinned_at` columns on `conversations`; new `sessions_fts` plain-content FTS5 vtable indexed by `source ∈ (conversation, message)`, `conversation_id`, `message_id`, `title`, `body` (Porter stemming + unicode61); indexes on `(archived, updated_at)` and `(pinned_at)`.
+- `electron/services/conversation-store.ts` — `listSessions({ tab, query?, limit, offset })` for Recent / Pinned / Archived bucket pagination; `setConversationArchived()` / `setConversationPinned()` mutators; `searchSessions(query, limit)` returns FTS hits with `snippet()` markup; `backfillSessionsFts(force)` re-fills the index from scratch (called once on boot when the vtable is empty); `clearConversationMessages()` collapses messages + their FTS rows together so `conversation:compact` doesn't leave stale matches.
+- `electron/ipc/conversation.ts` — new `sessions:list` / `sessions:archive` / `sessions:setPinned` / `sessions:search` handlers; the existing `conversation:compact` now delegates message clearing to the new helper.
+- `electron/main.ts` — `backfillSessionsFts(false)` runs once after `initializeMemoryStore`; logs row count when it fires.
+- `electron/preload.ts` — new `window.api.sessions.*` namespace exposing the four IPC methods.
+- `src/stores/sessions-store.ts` (new) — typed store owning `tab`, `query`, paginated `entries`, FTS `hits`, `archive` / `setPinned` mutations, and a 50-entry-per-page `loadMore()` for infinite scroll.
+- `src/components/layout/SessionSearchBar.tsx` (new) — 200ms debounced query input wired to `sessions-store.setQuery`.
+- `src/components/layout/SessionsSidebar.tsx` (new) — Recent / Pinned / Archived tabs above a scrolling list; per-row pin + archive actions; when a query is active, surfaces top FTS hits with `<<…>>` snippet markup (rewritten into `<mark>` highlights), and clicking a hit deep-links to the conversation via the existing chat-store selector.
+- `electron/services/sessions-search.test.ts` (new) — 6 store-level tests covering archive/pin bucketing, FTS title + body search, query-restricted bucket pagination, backfill repair after a `DELETE FROM sessions_fts`, and the `clearConversationMessages` FTS-coherence path. Tests run under `it.skipIf(!nativeOk())` so they cleanly skip when better-sqlite3's Electron-ABI binding can't load from system Node.
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- vitest full suite ✓ (842 passed | 11 skipped — 6 new sessions-search tests skipped under the binding constraint; previous 5 baseline skips unchanged)
+- user-verification-needed (better-sqlite3 ABI mismatch in test env + Electron-shell UI):
+  1. launch Electron and mount `<SessionsSidebar />` somewhere reachable;
+  2. create 3+ conversations with distinct titles + a few messages each, including one verbatim phrase like `canary-xyz789`;
+  3. switch to the Sessions sidebar; confirm Recent lists all three with message counts + relative timestamps;
+  4. type `canary-xyz789` into the search bar; confirm an FTS hit row appears above the list with the `<mark>`-highlighted snippet; click it → chat opens that conversation;
+  5. pin one row → it disappears from Recent and appears under Pinned (newest pin first);
+  6. archive one row → disappears from Recent / Pinned, appears under Archived;
+  7. scrolling to the bottom of a 100-entry list triggers `loadMore` and another page of 50 appears.
+
+**Notes:**
+- Chapter titles are referenced in the parity-plan verify gate ("FTS5 over conversation titles + message bodies + chapter titles") but the `chapters` table is owned by T2:E1. The FTS vtable shape already supports a third `source = 'chapter'` value; T2:E1 just adds a `ftsInsertChapter()` helper and the `backfillSessionsFts` loop picks them up on the next boot. No schema change needed when E1 lands.
+- The Sessions sidebar is built as a standalone mountable component — the existing left sidebar (`Sidebar.tsx`) stays unchanged. Integration Phase H3 wires the mount + polish (project grouping, drag-to-reorder pins, right-click menu, "Resume here" button).
+- FTS sync hooks fire from `saveMessage()` for user/assistant rows only; system/tool messages are plumbing and would inflate the index without improving the search experience.
+
+**Commit:** see git log on `feat/track-3-memory-verify`.
+
 ## [Track 3 — Prompt D3] Memory UI typed view + linking — 2026-06-03
 
 **Files changed:**

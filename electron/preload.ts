@@ -63,6 +63,23 @@ const api = {
     }
   },
 
+  // E3 — cross-session search + archive surface. Separate namespace so
+  // the legacy `conversation.*` calls stay untouched.
+  sessions: {
+    list: (opts?: {
+      tab?: 'recent' | 'pinned' | 'archived'
+      query?: string
+      limit?: number
+      offset?: number
+    }) => ipcRenderer.invoke('sessions:list', opts),
+    archive: (id: string, archived: boolean) =>
+      ipcRenderer.invoke('sessions:archive', id, archived),
+    setPinned: (id: string, pinned: boolean) =>
+      ipcRenderer.invoke('sessions:setPinned', id, pinned),
+    search: (query: string, limit?: number) =>
+      ipcRenderer.invoke('sessions:search', query, limit)
+  },
+
   conversation: {
     list: () => ipcRenderer.invoke('conversation:list'),
     get: (id: string) => ipcRenderer.invoke('conversation:get', id),

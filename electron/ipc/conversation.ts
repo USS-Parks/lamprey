@@ -12,6 +12,48 @@ export function registerConversationHandlers(): void {
     }
   })
 
+  // E3 — sessions sidebar.
+  ipcMain.handle(
+    'sessions:list',
+    async (
+      _event,
+      opts?: { tab?: 'recent' | 'pinned' | 'archived'; query?: string; limit?: number; offset?: number }
+    ) => {
+      try {
+        return { success: true, data: store.listSessions(opts) }
+      } catch (err: any) {
+        return { success: false, error: err.message }
+      }
+    }
+  )
+
+  ipcMain.handle('sessions:archive', async (_event, id: string, archived: boolean) => {
+    try {
+      store.setConversationArchived(id, archived)
+      return { success: true, data: null }
+    } catch (err: any) {
+      return { success: false, error: err.message }
+    }
+  })
+
+  ipcMain.handle('sessions:setPinned', async (_event, id: string, pinned: boolean) => {
+    try {
+      store.setConversationPinned(id, pinned)
+      return { success: true, data: null }
+    } catch (err: any) {
+      return { success: false, error: err.message }
+    }
+  })
+
+  ipcMain.handle('sessions:search', async (_event, query: string, limit?: number) => {
+    try {
+      const lim = typeof limit === 'number' && limit > 0 ? Math.min(limit, 200) : 50
+      return { success: true, data: store.searchSessions(query, lim) }
+    } catch (err: any) {
+      return { success: false, error: err.message }
+    }
+  })
+
   ipcMain.handle('conversation:get', async (_event, id) => {
     try {
       const conv = store.getConversation(id)
@@ -144,8 +186,7 @@ export function registerConversationHandlers(): void {
         return { success: false, error: 'Summarizer returned empty output.' }
       }
       // Replace messages with a single system marker holding the summary.
-      const db = (await import('../services/database')).getDb()
-      db.prepare('DELETE FROM messages WHERE conversation_id = ?').run(id)
+      store.clearConversationMessages(id)
       store.saveMessage({
         id: randomUUID(),
         conversationId: id,

@@ -12,6 +12,8 @@ export interface ConversationRow {
   kind?: string
   worktree_path?: string | null
   project_id?: string | null
+  archived?: number
+  pinned_at?: number | null
 }
 
 export interface MessageRow {
@@ -63,6 +65,22 @@ export function createConversation(
   }
 }
 
+function rowToConversation(row: ConversationRow, count: number) {
+  return {
+    id: row.id,
+    title: row.title || 'New conversation',
+    model: row.model,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    messageCount: count,
+    kind: (row.kind as 'local' | 'cloud' | 'worktree' | undefined) ?? 'local',
+    worktreePath: row.worktree_path ?? null,
+    projectId: row.project_id ?? null,
+    archived: row.archived === 1,
+    pinnedAt: row.pinned_at ?? null
+  }
+}
+
 export function getConversation(id: string) {
   const db = getDb()
   const row = db.prepare('SELECT * FROM conversations WHERE id = ?').get(id) as
@@ -72,39 +90,286 @@ export function getConversation(id: string) {
   const count = db.prepare(
     'SELECT COUNT(*) as cnt FROM messages WHERE conversation_id = ?'
   ).get(id) as { cnt: number }
-  return {
-    id: row.id,
-    title: row.title || 'New conversation',
-    model: row.model,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-    messageCount: count.cnt,
-    kind: (row.kind as 'local' | 'cloud' | 'worktree' | undefined) ?? 'local',
-    worktreePath: row.worktree_path ?? null,
-    projectId: row.project_id ?? null
-  }
+  return rowToConversation(row, count.cnt)
 }
 
 export function listConversations() {
   const db = getDb()
-  const rows = db.prepare('SELECT * FROM conversations ORDER BY updated_at DESC').all() as ConversationRow[]
+  const rows = db
+    .prepare('SELECT * FROM conversations ORDER BY updated_at DESC')
+    .all() as ConversationRow[]
   return rows.map((row) => {
     const count = db.prepare(
       'SELECT COUNT(*) as cnt FROM messages WHERE conversation_id = ?'
     ).get(row.id) as { cnt: number }
-    return {
-      id: row.id,
-      title: row.title || 'New conversation',
-      model: row.model,
-      createdAt: row.created_at,
-      updatedAt: row.updated_at,
-      messageCount: count.cnt,
-      kind: (row.kind as 'local' | 'cloud' | 'worktree' | undefined) ?? 'local',
-      worktreePath: row.worktree_path ?? null,
-      projectId: row.project_id ?? null
-    }
+    return rowToConversation(row, count.cnt)
   })
 }
+
+// E3 — Sessions sidebar uses three buckets: Recent (not archived,
+// not pinned), Pinned (pinned_at IS NOT NULL), Archived (archived = 1).
+// The optional `query` arg restricts by FTS hit, and `limit`/`offset`
+// support infinite-scroll pagination.
+export type SessionsTab = 'recent' | 'pinned' | 'archived'
+
+export interface ListSessionsOptions {
+  tab?: SessionsTab
+  query?: string
+  limit?: number
+  offset?: number
+}
+
+export function listSessions(opts: ListSessionsOptions = {}) {
+  const db = getDb()
+  const tab: SessionsTab = opts.tab ?? 'recent'
+  const limit = Math.min(Math.max(opts.limit ?? 50, 1), 500)
+  const offset = Math.max(opts.offset ?? 0, 0)
+
+  let ids: string[] | null = null
+  if (opts.query && opts.query.trim()) {
+    // FTS scan returns the candidate conversation ids; we then join
+    // back to the canonical row for the bucket filter so we don't
+    // double-implement archive/pin logic in the FTS query.
+    try {
+      const matches = db
+        .prepare(
+          `SELECT DISTINCT conversation_id
+             FROM sessions_fts
+            WHERE sessions_fts MATCH ?
+            ORDER BY rank
+            LIMIT ?`
+        )
+        .all(opts.query.trim(), 500) as { conversation_id: string }[]
+      ids = matches.map((m) => m.conversation_id)
+    } catch (err) {
+      // Malformed FTS query — fall back to a LIKE scan on titles only.
+      console.warn('[conversation-store] FTS query failed:', (err as Error).message)
+      const like = `%${opts.query.trim().replace(/[\\%_]/g, '')}%`
+      const matches = db
+        .prepare(
+          `SELECT id FROM conversations
+            WHERE title LIKE ?
+            ORDER BY updated_at DESC
+            LIMIT 500`
+        )
+        .all(like) as { id: string }[]
+      ids = matches.map((m) => m.id)
+    }
+    if (ids.length === 0) return []
+  }
+
+  let where = ''
+  let order = 'updated_at DESC'
+  if (tab === 'recent') {
+    where = 'archived = 0 AND pinned_at IS NULL'
+  } else if (tab === 'pinned') {
+    where = 'pinned_at IS NOT NULL'
+    order = 'pinned_at DESC'
+  } else {
+    where = 'archived = 1'
+  }
+
+  let sql = `SELECT * FROM conversations WHERE ${where}`
+  const params: any[] = []
+  if (ids) {
+    const placeholders = ids.map(() => '?').join(',')
+    sql += ` AND id IN (${placeholders})`
+    params.push(...ids)
+  }
+  sql += ` ORDER BY ${order} LIMIT ? OFFSET ?`
+  params.push(limit, offset)
+
+  const rows = db.prepare(sql).all(...params) as ConversationRow[]
+  return rows.map((row) => {
+    const count = db
+      .prepare('SELECT COUNT(*) as cnt FROM messages WHERE conversation_id = ?')
+      .get(row.id) as { cnt: number }
+    return rowToConversation(row, count.cnt)
+  })
+}
+
+export function setConversationArchived(id: string, archived: boolean): void {
+  const db = getDb()
+  db.prepare('UPDATE conversations SET archived = ?, updated_at = ? WHERE id = ?').run(
+    archived ? 1 : 0,
+    Date.now(),
+    id
+  )
+}
+
+export function setConversationPinned(id: string, pinned: boolean): void {
+  const db = getDb()
+  db.prepare('UPDATE conversations SET pinned_at = ?, updated_at = ? WHERE id = ?').run(
+    pinned ? Date.now() : null,
+    Date.now(),
+    id
+  )
+}
+
+// Cross-session FTS — returns a flat list of hits keyed by source so
+// the renderer can render "matched in title" vs "matched in message"
+// distinctly. Snippets are taken from the FTS5 snippet() helper.
+export interface SessionSearchHit {
+  conversationId: string
+  source: 'conversation' | 'message'
+  messageId: string | null
+  snippet: string
+  rank: number
+}
+
+export function searchSessions(query: string, limit = 50): SessionSearchHit[] {
+  const q = query.trim()
+  if (!q) return []
+  const db = getDb()
+  try {
+    const rows = db
+      .prepare(
+        `SELECT source, conversation_id, message_id,
+                snippet(sessions_fts, 4, '<<', '>>', '…', 24) AS snippet,
+                rank
+           FROM sessions_fts
+          WHERE sessions_fts MATCH ?
+          ORDER BY rank
+          LIMIT ?`
+      )
+      .all(q, limit) as any[]
+    return rows.map((r) => ({
+      conversationId: r.conversation_id,
+      source: r.source,
+      messageId: r.message_id ?? null,
+      snippet: r.snippet ?? '',
+      rank: r.rank
+    }))
+  } catch (err) {
+    console.warn('[conversation-store] FTS search failed:', (err as Error).message)
+    return []
+  }
+}
+
+// ────────────── FTS sync helpers ──────────────
+
+function ftsDeleteConversation(id: string): void {
+  const db = getDb()
+  try {
+    db.prepare(
+      "DELETE FROM sessions_fts WHERE source = 'conversation' AND conversation_id = ?"
+    ).run(id)
+  } catch (err) {
+    console.warn('[conversation-store] FTS delete-conv failed:', (err as Error).message)
+  }
+}
+
+function ftsDeleteAllForConversation(id: string): void {
+  const db = getDb()
+  try {
+    db.prepare('DELETE FROM sessions_fts WHERE conversation_id = ?').run(id)
+  } catch (err) {
+    console.warn('[conversation-store] FTS delete-all failed:', (err as Error).message)
+  }
+}
+
+function ftsDeleteMessagesForConversation(conversationId: string): void {
+  const db = getDb()
+  try {
+    db.prepare(
+      "DELETE FROM sessions_fts WHERE source = 'message' AND conversation_id = ?"
+    ).run(conversationId)
+  } catch (err) {
+    console.warn(
+      '[conversation-store] FTS delete-messages-for-conv failed:',
+      (err as Error).message
+    )
+  }
+}
+
+// Bulk clear a conversation's messages + the matching FTS rows. Used by
+// the compact path which collapses a long conversation into a single
+// summary message; reusing this helper keeps the FTS index from
+// re-surfacing the discarded content.
+export function clearConversationMessages(conversationId: string): void {
+  const db = getDb()
+  db.prepare('DELETE FROM messages WHERE conversation_id = ?').run(conversationId)
+  ftsDeleteMessagesForConversation(conversationId)
+}
+
+function ftsDeleteMessage(messageId: string): void {
+  const db = getDb()
+  try {
+    db.prepare(
+      "DELETE FROM sessions_fts WHERE source = 'message' AND message_id = ?"
+    ).run(messageId)
+  } catch (err) {
+    console.warn('[conversation-store] FTS delete-message failed:', (err as Error).message)
+  }
+}
+
+function ftsUpsertConversation(id: string, title: string | null): void {
+  if (!title) return
+  const db = getDb()
+  try {
+    ftsDeleteConversation(id)
+    db.prepare(
+      `INSERT INTO sessions_fts (source, conversation_id, message_id, title, body)
+       VALUES ('conversation', ?, NULL, ?, '')`
+    ).run(id, title)
+  } catch (err) {
+    console.warn('[conversation-store] FTS upsert-conv failed:', (err as Error).message)
+  }
+}
+
+function ftsInsertMessage(messageId: string, conversationId: string, body: string): void {
+  if (!body || !body.trim()) return
+  const db = getDb()
+  try {
+    db.prepare(
+      `INSERT INTO sessions_fts (source, conversation_id, message_id, title, body)
+       VALUES ('message', ?, ?, '', ?)`
+    ).run(conversationId, messageId, body)
+  } catch (err) {
+    console.warn('[conversation-store] FTS insert-message failed:', (err as Error).message)
+  }
+}
+
+/**
+ * One-shot index repair. Empties `sessions_fts` and re-fills it from
+ * the conversation + message tables. Called on first boot after the E3
+ * migration runs so any pre-existing conversations are searchable
+ * immediately. Subsequent boots see a non-empty index and skip.
+ */
+export function backfillSessionsFts(force = false): { rebuilt: boolean; rows: number } {
+  const db = getDb()
+  let existing = 0
+  try {
+    existing = (db.prepare('SELECT COUNT(*) AS cnt FROM sessions_fts').get() as { cnt: number }).cnt
+  } catch (err) {
+    // If the FTS vtable isn't there yet (binding unavailable), bail.
+    console.warn('[conversation-store] FTS backfill skipped:', (err as Error).message)
+    return { rebuilt: false, rows: 0 }
+  }
+  if (existing > 0 && !force) return { rebuilt: false, rows: existing }
+  try {
+    db.exec('DELETE FROM sessions_fts')
+    const convs = db
+      .prepare('SELECT id, title FROM conversations WHERE title IS NOT NULL AND title <> ""')
+      .all() as { id: string; title: string }[]
+    for (const c of convs) ftsUpsertConversation(c.id, c.title)
+    const msgs = db
+      .prepare(
+        "SELECT id, conversation_id, content FROM messages WHERE role IN ('user','assistant') AND content IS NOT NULL"
+      )
+      .all() as { id: string; conversation_id: string; content: string }[]
+    for (const m of msgs) ftsInsertMessage(m.id, m.conversation_id, m.content)
+    const rows = (db.prepare('SELECT COUNT(*) AS cnt FROM sessions_fts').get() as { cnt: number }).cnt
+    return { rebuilt: true, rows }
+  } catch (err) {
+    console.error('[conversation-store] FTS backfill failed:', (err as Error).message)
+    return { rebuilt: false, rows: 0 }
+  }
+}
+
+// Suppress unused-import flag — `ftsDeleteMessage` is exposed for
+// future per-message-edit support (T2:E5 compression will need it).
+void ftsDeleteMessage
 
 export function deleteConversation(id: string) {
   const db = getDb()
@@ -112,6 +377,7 @@ export function deleteConversation(id: string) {
   // plan_steps / goals have no FK to conversations (the '__global__' bucket and
   // ephemeral runs need rows without a conversation row), so clear them here.
   clearConversationState(id)
+  ftsDeleteAllForConversation(id)
 }
 
 export function updateConversationTitle(id: string, title: string) {
@@ -121,6 +387,7 @@ export function updateConversationTitle(id: string, title: string) {
     Date.now(),
     id
   )
+  ftsUpsertConversation(id, title)
 }
 
 export function updateConversationModel(id: string, model: string) {
@@ -179,6 +446,12 @@ export function saveMessage(msg: {
     now
   )
   touchConversation(msg.conversationId)
+  // E3: keep the cross-session FTS index in sync. User/assistant
+  // bodies are the ones worth searching; system/tool messages are
+  // usually plumbing and would inflate the index with noise.
+  if (msg.role === 'user' || msg.role === 'assistant') {
+    ftsInsertMessage(msg.id, msg.conversationId, msg.content)
+  }
   return {
     id: msg.id,
     conversationId: msg.conversationId,

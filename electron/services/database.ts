@@ -260,6 +260,11 @@ function initSchema(db: Database.Database): void {
   safeAddColumn(db, 'conversations', "kind TEXT NOT NULL DEFAULT 'local'")
   safeAddColumn(db, 'conversations', 'worktree_path TEXT')
   safeAddColumn(db, 'conversations', 'project_id TEXT')
+  // E3: archive flag + pin timestamp for the Sessions sidebar
+  // (Recent / Pinned / Archived tabs). pinned_at is NULL when the
+  // conversation isn't pinned so the index stays small.
+  safeAddColumn(db, 'conversations', 'archived INTEGER NOT NULL DEFAULT 0')
+  safeAddColumn(db, 'conversations', 'pinned_at INTEGER')
 
   // Persisted tool_calls on assistant messages. Without this, replaying a
   // conversation that includes a tool round drops the assistant's tool_calls
@@ -468,6 +473,27 @@ function initSchema(db: Database.Database): void {
 
     CREATE INDEX IF NOT EXISTS idx_conversation_rag_attachments_conv
       ON conversation_rag_attachments(conversation_id);
+
+    -- E3: cross-session FTS5 over conversation titles + message bodies.
+    -- Plain-content vtable (not external-content) so we can fan the
+    -- two source tables into a single search index keyed by source
+    -- (conversation | message). Conversation rows hold
+    -- conversation_id + title; message rows hold conversation_id +
+    -- message_id + body. The store keeps it in sync on every
+    -- title-update / message insert / conversation delete.
+    CREATE VIRTUAL TABLE IF NOT EXISTS sessions_fts USING fts5(
+      source UNINDEXED,
+      conversation_id UNINDEXED,
+      message_id UNINDEXED,
+      title,
+      body,
+      tokenize='porter unicode61 remove_diacritics 2'
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_conversations_archived
+      ON conversations(archived, updated_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_conversations_pinned
+      ON conversations(pinned_at DESC);
   `)
 
   // The sqlite-vec virtual table is created separately and is gated on the
