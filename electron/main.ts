@@ -67,11 +67,29 @@ function extractErrorMeta(reason: unknown): { msg: string; stack: string; code: 
 
 function isUpdaterNoise(reason: unknown): boolean {
   const { msg, stack, code } = extractErrorMeta(reason)
-  if (/electron-updater|ElectronHttpExecutor|SimpleURLLoaderWrapper/.test(stack)) return true
+  // Stack-based: any frame that originated inside electron-updater, the
+  // ElectronHttpExecutor (its HTTP adapter), or the SimpleURLLoaderWrapper
+  // (Electron's net.request stream wrapper) is updater plumbing — never the
+  // app's own code path.
+  if (/electron-updater|ElectronHttpExecutor|SimpleURLLoaderWrapper|app-update\.yml|latest\.yml/i.test(stack)) {
+    return true
+  }
+  // Message-based: the GitHub 404 emits a verbose blob that always contains
+  // either the releases-download URL or the "double check your auth token"
+  // canned message from createHttpError.
+  if (/releases\/download\/v[\d.]+\/latest\.yml/i.test(msg)) return true
+  if (/Please double check that your authentication token is correct/i.test(msg)) return true
+  if (/HttpError:\s*\d+/i.test(msg)) return true
+  // Stream lifecycle: the secondary error electron-updater emits when its
+  // ClientRequest is destroyed during the 404 path. No application-layer
+  // "write after end" exists in this app — every Node stream we use is one
+  // we own, and we don't write to closed sockets. Anything matching is
+  // library plumbing.
   if (/write after end/i.test(msg)) return true
   if (/Cannot call write after a stream was destroyed/i.test(msg)) return true
-  if (/releases\/download\/v[\d.]+\/latest\.yml/i.test(msg)) return true
   if (code === 'ERR_STREAM_WRITE_AFTER_END' || code === 'ERR_STREAM_DESTROYED') return true
+  // EPIPE on background HTTP from updater shouldn't kill the app either.
+  if (code === 'EPIPE' && /electron-updater|update/i.test(stack)) return true
   return false
 }
 

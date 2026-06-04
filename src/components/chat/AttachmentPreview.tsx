@@ -7,20 +7,35 @@ function formatSize(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`
 }
 
-function kindIcon(file: ProcessedFile) {
+function kindLabel(file: ProcessedFile): string {
+  if (file.kind === 'image') return 'Image'
+  if (file.kind === 'pdf') return 'PDF document'
+  if (file.kind === 'binary') return 'Binary file'
+  if (file.kind === 'text') return 'Text file'
+  return 'File'
+}
+
+function kindBadge(file: ProcessedFile) {
   if (file.kind === 'image') return 'IMG'
   if (file.kind === 'pdf') return 'PDF'
   if (file.kind === 'binary') return 'BIN'
-  return 'FILE'
+  return 'TXT'
 }
 
 function Tile({ file, index }: { file: ProcessedFile; index: number }) {
   const removeAttachment = useChatStore((s) => s.removeAttachment)
   const isImage = file.kind === 'image' && !!file.content && !file.error
 
+  // Show kind + size — never the raw previewText. PDF/text extraction
+  // routinely produces character-spaced or whitespace-noisy output
+  // ("V C O D E A N A L Y S I S R E P O R T") that's unreadable in a chip.
+  // The actual content still ships to the model on send; the chip is just
+  // a "here's what's attached" affordance.
+  const description = file.error ? file.error : `${kindLabel(file)} · ${formatSize(file.size)}`
+
   return (
     <div
-      className={`group flex items-center gap-2 rounded border bg-[var(--bg-primary)] px-2 py-1.5 text-[13px] ${
+      className={`group flex items-center gap-3 rounded-2xl border bg-[var(--bg-primary)] px-3 py-2 text-[13px] shadow-sm ${
         file.error
           ? 'border-[var(--error)] text-[var(--error)]'
           : 'border-[var(--border)] text-[var(--text-secondary)]'
@@ -30,24 +45,24 @@ function Tile({ file, index }: { file: ProcessedFile; index: number }) {
         <img
           src={file.content}
           alt={file.name}
-          className="h-8 w-8 flex-shrink-0 rounded object-cover"
+          className="h-9 w-9 flex-shrink-0 rounded-lg object-cover"
         />
       ) : (
-        <span aria-hidden className="text-base leading-none">
-          {kindIcon(file)}
+        <span
+          aria-hidden
+          className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-[var(--bg-tertiary)] font-mono text-[10px] tracking-wider text-[var(--text-secondary)]"
+        >
+          {kindBadge(file)}
         </span>
       )}
       <div className="min-w-0 flex-1">
         <div className="truncate font-mono text-xs text-[var(--text-primary)]">{file.name}</div>
-        <div className="truncate text-[12px] text-[var(--text-muted)]">
-          {formatSize(file.size)}
-          {file.previewText && ` · ${file.previewText}`}
-        </div>
+        <div className="truncate text-[12px] text-[var(--text-muted)]">{description}</div>
       </div>
       <button
         onClick={() => removeAttachment(index)}
         title="Remove attachment"
-        className="rounded p-1 text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-tertiary)] hover:text-[var(--error)]"
+        className="rounded-full p-1.5 text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-tertiary)] hover:text-[var(--error)]"
       >
         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
           <path d="M18 6L6 18M6 6l12 12" />

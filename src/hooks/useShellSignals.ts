@@ -25,9 +25,9 @@ export function useShellSignals(): void {
       }
     })
 
-    window.api.update.onError((e) => {
-      const message = (e as { message: string }).message
-      if (message) toast.error(`Updater: ${message}`)
-    })
+    // Note: update:error is no longer pushed from main on background checks
+    // (it spammed toasts whenever the GitHub repo lacked latest.yml). The
+    // channel is preserved for future use; for now we just no-op here. Manual
+    // "Check for updates" still surfaces errors via the update:check return.
   }, [])
 }

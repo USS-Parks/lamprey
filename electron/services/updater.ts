@@ -34,8 +34,14 @@ export async function initializeUpdater(opts: {
       send('update:downloaded', { version: info?.version ?? null })
     })
     autoUpdater.on('error', (err) => {
-      console.error('[updater] error:', err?.message ?? err)
-      send('update:error', { message: err?.message ?? 'Unknown updater error' })
+      // Log only. Auto-update errors are never actionable for the end user:
+      // they mean "no release manifest at the configured GitHub repo right
+      // now," "transient network failure," or "version is already current and
+      // some internal heuristic tripped." Pushing them as a renderer toast
+      // spammed users on every startup whenever the repo lacked a published
+      // latest.yml. Manual "Check for updates" still returns the error via
+      // the IPC return value of update:check, where it IS surfaced.
+      console.warn('[updater] background check error (suppressed from UI):', err?.message ?? err)
     })
 
     await autoUpdater.checkForUpdatesAndNotify()
