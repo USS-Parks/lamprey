@@ -36,6 +36,7 @@ import { registerTasksHandlers } from './tasks'
 import { registerWorkflowsHandlers } from './workflows'
 import { registerMonitorHandlers } from './monitor'
 import { registerAsyncEventHandlers } from './async-events'
+import { registerLoopsHandlers } from './loops'
 
 export function registerAllIpcHandlers(): void {
   registerChatHandlers()
@@ -71,4 +72,5 @@ export function registerAllIpcHandlers(): void {
   registerWorkflowsHandlers()
   registerMonitorHandlers()
   registerAsyncEventHandlers()
+  registerLoopsHandlers()
 }

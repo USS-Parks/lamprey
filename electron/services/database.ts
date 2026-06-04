@@ -283,6 +283,26 @@ function initSchema(db: Database.Database): void {
       ON agent_runs(status, started_at DESC);
     CREATE INDEX IF NOT EXISTS idx_agent_runs_parent_run
       ON agent_runs(parent_run_id, started_at DESC);
+
+    -- Track 3 / G2: self-paced loop wake-ups. Rows are scheduled by the
+    -- schedule_wakeup tool or loops:schedule IPC, then a 30s runner marks
+    -- due rows fired and appends a user-visible wake-up message.
+    CREATE TABLE IF NOT EXISTS loop_wakeups (
+      id              TEXT PRIMARY KEY,
+      conversation_id TEXT NOT NULL,
+      fire_at         INTEGER NOT NULL,
+      prompt          TEXT NOT NULL,
+      reason          TEXT,
+      status          TEXT NOT NULL CHECK(status IN ('pending','fired','cancelled','error')),
+      created_at      INTEGER NOT NULL,
+      fired_at        INTEGER,
+      error           TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_loop_wakeups_due
+      ON loop_wakeups(status, fire_at ASC);
+    CREATE INDEX IF NOT EXISTS idx_loop_wakeups_conversation
+      ON loop_wakeups(conversation_id, fire_at DESC);
   `)
 
   // Migrations for older DBs that predate kind/worktree_path/project_id columns.

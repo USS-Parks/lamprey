@@ -12,6 +12,7 @@ import { destroyAllBackgroundShells } from './services/shell-tool'
 import { destroyAllMonitors } from './services/monitor-service'
 import { fireHooks } from './services/hooks-runner'
 import { startAutomations, stopAutomations } from './services/automations-runner'
+import { startLoopWakeups, stopLoopWakeups } from './services/loop-runner'
 import { mcpManager } from './services/mcp-manager'
 import { ensureNodeReplDefaultServer } from './services/node-repl-default-server'
 import { initializeSkillLoader, shutdownSkillLoader } from './services/skill-loader'
@@ -26,6 +27,11 @@ import { destroyTray, handleWindowClose, initializeTray, refreshTrayMenu } from 
 import { registerGlobalShortcuts } from './services/shortcuts'
 import { initializeUpdater, quitAndInstall, checkNow } from './services/updater'
 import { readSettings, patchSettings } from './services/settings-helper'
+import {
+  formatHeadlessResult,
+  isHeadlessCliArgv,
+  runHeadlessFromArgv
+} from './services/headless-runner'
 
 let mainWindow: BrowserWindow | null = null
 let splashWindow: BrowserWindow | null = null
@@ -319,6 +325,37 @@ app.whenReady().then(() => {
     app.setAppUserModelId('com.lamprey.harness')
   }
 
+  if (isHeadlessCliArgv(process.argv)) {
+    void (async () => {
+      let exitCode = 0
+      try {
+        initializeMemoryStore()
+        const { result, json } = await runHeadlessFromArgv(process.argv)
+        const text = formatHeadlessResult(result, json)
+        if (result.success) {
+          process.stdout.write(text + '\n')
+        } else {
+          exitCode = 1
+          process.stderr.write(text + '\n')
+        }
+      } catch (err) {
+        exitCode = 1
+        const result = {
+          success: false as const,
+          error: err instanceof Error ? err.message : String(err)
+        }
+        process.stderr.write(formatHeadlessResult(result, process.argv.includes('--json')) + '\n')
+      } finally {
+        stopLoopWakeups()
+        stopAutomations()
+        shutdownMemoryStore()
+        closeDb()
+        app.exit(exitCode)
+      }
+    })()
+    return
+  }
+
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
     if (details.url.includes('lamprey-artifact')) {
       callback({
@@ -460,8 +497,9 @@ app.whenReady().then(() => {
   try {
     void fireHooks('sessionStart')
     startAutomations()
+    startLoopWakeups()
   } catch (err) {
-    console.error('[main] hooks/automations init error:', (err as Error).message)
+    console.error('[main] hooks/automations/loops init error:', (err as Error).message)
   }
 
   mcpManager.initialize()
@@ -509,6 +547,7 @@ app.on('will-quit', () => {
   destroyAllBackgroundShells()
   destroyAllMonitors()
   stopAutomations()
+  stopLoopWakeups()
   void shutdownReviewWatcher()
   closeDb()
 })

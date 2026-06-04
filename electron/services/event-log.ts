@@ -61,6 +61,10 @@ export const EVENT_TYPES = [
   'automation.completed',
   'automation.failed',
 
+  // Track 3 / G2: self-paced loop wake-up lifecycle.
+  'loop.wakeup.scheduled',
+  'loop.wakeup.fired',
+
   // Security / policy (Prompt 2 + ongoing).
   'security.decision',
   'permission.policy.created',

@@ -695,6 +695,50 @@ All 8 prompts (A1 → A2 → A3 → B1 → B2 → B3 → B4 → B5) committed on
 
 **Commit:** see git log on `feat/track-3-memory-verify`.
 
+## [Track 3 — Prompt G2] Self-paced loop primitive — 2026-06-03
+
+**Files changed:**
+- `electron/services/database.ts` — added `loop_wakeups` with pending/fired/cancelled/error lifecycle and due/conversation indexes.
+- `electron/services/loop-runner.ts` (new) — schedules, cancels, lists, and fires wake-ups; the 30s runner appends due wake-ups as user messages with a `[scheduled wake-up]` marker and broadcasts loop events.
+- `electron/ipc/loops.ts` (new), `electron/ipc/index.ts`, `electron/preload.ts`, `src/lib/ipc-client.ts` — added `loops:schedule/cancel/list` and renderer subscriptions for fired wake-ups.
+- `electron/services/loop-tool-pack.ts` and `electron/services/tool-packs.ts` — registered the model-callable `schedule_wakeup` tool.
+- `electron/main.ts` — starts/stops the loop runner with the app lifecycle.
+- `src/components/chat/WakeupPill.tsx`, `src/components/chat/MessageBubble.tsx`, `src/App.tsx` — scheduled wake-up messages render a pill and refresh the active conversation when a wake-up fires.
+- `electron/services/event-log.ts`, `src/lib/types.ts`, `src/lib/event-presentation.ts` — added typed event names and labels for loop wake-up lifecycle rows.
+- `electron/services/loop-runner.test.ts` — focused DB-backed schedule/fire/cancel coverage (skips when the local Node process cannot load the Electron-built SQLite binding, matching the existing SQLite-dependent tests).
+- `PLANNING/LAMPREY_PARITY_PLAN.md` — marked G2 complete.
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- vitest `electron/services/loop-runner.test.ts` skipped: local Node cannot load the Electron-built SQLite binding in this workspace
+- manual smoke: user-verification-needed: create a wake-up through `schedule_wakeup` or `loops:schedule`, confirm the message appears with the scheduled wake-up pill after the delay
+
+**Notes:** The Track 2 slash-command surface is not present in this checkout, so `/loop` command registration is not wired here. The IPC and model-callable tool path are complete.
+
+**Commit:** see git log on `codex-t3-final-four`.
+
+## [Track 3 — Prompt G3] Headless / remote run mode — 2026-06-03
+
+**Files changed:**
+- `electron/services/headless-runner.ts` (new) — parses `run --conv <id>` / `run --automation <id>` + `--json`, executes one persisted conversation turn via `chatOnce` or one automation via `runAutomation`, saves conversation replies, and formats JSON or human-readable output.
+- `electron/cli.ts` (new) — packaged `lamprey` bin wrapper that spawns Electron with `--lamprey-headless`.
+- `electron/main.ts` — early argv branch runs the headless service before creating splash/main windows, prints to stdout/stderr, closes stores, and exits with success/non-zero status.
+- `electron.vite.config.ts` — adds the CLI entry to the main build inputs.
+- `package.json` — adds the `lamprey` bin and `npm run lamprey -- ...` script surface.
+- `electron/services/headless-runner.test.ts` — parser/formatter coverage for conversation, automation, JSON, and headless-argv detection.
+- `PLANNING/LAMPREY_PARITY_PLAN.md` — marked G3 complete.
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- vitest `electron/services/headless-runner.test.ts` ✓ (4 tests)
+- manual smoke: user-verification-needed: run `npm run lamprey -- run --conv <conversationId> --json` against a real configured conversation/API key and confirm a persisted assistant message plus parseable JSON stdout
+
+**Notes:** The automation path reuses the existing `runAutomation()` function. Full cron isolation can call the same headless service later, but this prompt does not rewrite the cron runner to spawn a child process.
+
+**Commit:** see git log on `codex-t3-final-four`.
+
 ## [Track 3 — Prompt F4] Monitor primitive + background shell — 2026-06-03
 
 **Files changed:**

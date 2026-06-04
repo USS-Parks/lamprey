@@ -245,6 +245,23 @@ export const github = {
     (api.github as any).getPullRequestStatus({ owner, repo, number })
 }
 
+export const loops = {
+  schedule: (input: {
+    conversationId: string
+    delaySeconds: number
+    prompt: string
+    reason?: string | null
+  }): Promise<IpcResponse<unknown>> => api.loops.schedule(input),
+  cancel: (id: string): Promise<IpcResponse<{ cancelled: boolean }>> =>
+    api.loops.cancel(id),
+  list: (filter?: {
+    conversationId?: string
+    status?: 'pending' | 'fired' | 'cancelled' | 'error' | Array<'pending' | 'fired' | 'cancelled' | 'error'>
+    limit?: number
+  }): Promise<IpcResponse<unknown[]>> => api.loops.list(filter),
+  onFired: (cb: (event: unknown) => void): (() => void) => api.loops.onFired(cb)
+}
+
 export const artifact = {
   render: (type: ArtifactType, content: string): Promise<IpcResponse<void>> =>
     api.artifact.render(type, content),

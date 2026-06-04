@@ -33,6 +33,8 @@ const TYPE_LABELS: Record<EventType, string> = {
   'automation.started': 'Automation started',
   'automation.completed': 'Automation completed',
   'automation.failed': 'Automation failed',
+  'loop.wakeup.scheduled': 'Wake-up scheduled',
+  'loop.wakeup.fired': 'Wake-up fired',
   'security.decision': 'Security decision',
   'permission.policy.created': 'Policy added',
   'permission.policy.updated': 'Policy updated',
@@ -120,6 +122,13 @@ export function eventSubtitle(event: EventRecord, maxChars = 120): string | null
       const label = typeof p.label === 'string' ? p.label : undefined
       const model = typeof p.model === 'string' ? p.model : undefined
       s = label && model ? `${label} · ${model}` : label ?? model ?? null
+      break
+    }
+    case 'loop.wakeup.scheduled':
+    case 'loop.wakeup.fired': {
+      const reason = typeof p.reason === 'string' ? p.reason : undefined
+      const promptPreview = typeof p.promptPreview === 'string' ? p.promptPreview : undefined
+      s = reason ?? promptPreview ?? null
       break
     }
     case 'settings.updated': {
