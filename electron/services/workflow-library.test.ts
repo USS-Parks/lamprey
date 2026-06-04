@@ -26,10 +26,16 @@ beforeEach(() => {
 // ---------------------------------------------------------------------------
 
 describe('workflow-library — built-ins ship and parse', () => {
-  it('ships all four built-in workflow files', () => {
+  it('ships all five built-in workflow files', () => {
     const names = __workflowLibraryTest.builtinFileNames().sort()
     expect(names).toEqual(
-      ['adversarial-verify.js', 'judge-panel.js', 'loop-until-dry.js', 'multi-modal-sweep.js'].sort()
+      [
+        'adversarial-verify.js',
+        'consolidate-memory.js',
+        'judge-panel.js',
+        'loop-until-dry.js',
+        'multi-modal-sweep.js'
+      ].sort()
     )
   })
 
@@ -40,6 +46,82 @@ describe('workflow-library — built-ins ship and parse', () => {
       expect(entry.meta.description.length).toBeGreaterThan(20)
       expect(entry.source).toContain('export const meta')
     }
+  })
+})
+
+describe('consolidate-memory built-in', () => {
+  it('merges a known duplicate set through the workflow memory API', async () => {
+    const source = __workflowLibraryTest.parsePath(join(RESOURCES, 'consolidate-memory.js')).source
+    const writes: unknown[] = []
+    const deletes: string[] = []
+    const seam = makeRoutedSeam([
+      {
+        test: (p) => /consolidating Lamprey memory files/i.test(p),
+        respond: () =>
+          JSON.stringify({
+            entries: [
+              {
+                name: 'preferred_editor',
+                projectSlug: '__global__',
+                description: 'Preferred editor',
+                body: 'The preferred editor is VS Code.'
+              }
+            ],
+            deleteNames: ['preferred_editor_duplicate']
+          })
+      }
+    ])
+
+    const result = await runWorkflow(
+      {
+        script: source,
+        args: {
+          type: 'user',
+          entries: [
+            {
+              name: 'preferred_editor',
+              type: 'user',
+              projectSlug: '__global__',
+              description: 'Editor preference',
+              body: 'The preferred editor is VS Code.'
+            },
+            {
+              name: 'preferred_editor_duplicate',
+              type: 'user',
+              projectSlug: '__global__',
+              description: 'Editor preference duplicate',
+              body: 'User likes VS Code as the editor.'
+            }
+          ]
+        }
+      },
+      {
+        forkSeam: seam,
+        memory: {
+          list: () => [],
+          write: (input) => {
+            writes.push(input)
+            return input
+          },
+          delete: (name) => {
+            deletes.push(name)
+            return true
+          }
+        }
+      }
+    ).promise
+
+    expect(writes).toEqual([
+      {
+        name: 'preferred_editor',
+        projectSlug: '__global__',
+        description: 'Preferred editor',
+        type: 'user',
+        body: 'The preferred editor is VS Code.'
+      }
+    ])
+    expect(deletes).toEqual(['preferred_editor_duplicate'])
+    expect(result.output).toMatchObject({ type: 'user', scanned: 2, written: 1, deleted: 1 })
   })
 })
 

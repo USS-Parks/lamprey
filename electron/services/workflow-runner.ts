@@ -164,6 +164,11 @@ export interface WorkflowRunnerDeps {
   progress?: (event: WorkflowProgressEvent) => void
   /** Resolves a named workflow's script source. Used by `workflow()` API. */
   loadNamedWorkflow?: (name: string) => Promise<string> | string
+  memory?: {
+    list: (filter?: unknown) => Promise<unknown[]> | unknown[]
+    write: (input: unknown) => Promise<unknown> | unknown
+    delete: (name: string) => Promise<unknown> | unknown
+  }
   /** Test seam — defaults to randomUUID. */
   genId?: () => string
   /** Test seam — defaults to () => Date.now(). */
@@ -594,6 +599,25 @@ export function runWorkflow(input: WorkflowRunInput, deps: WorkflowRunnerDeps): 
         return result.output
       }
 
+      const memoryApi = Object.freeze({
+        list: async (filter?: unknown): Promise<unknown[]> => {
+          if (!deps.memory) throw new Error('memory.list(): no memory API injected')
+          const result = await deps.memory.list(filter)
+          return Array.isArray(result) ? result : []
+        },
+        write: async (input: unknown): Promise<unknown> => {
+          if (!deps.memory) throw new Error('memory.write(): no memory API injected')
+          return deps.memory.write(input)
+        },
+        delete: async (name: string): Promise<unknown> => {
+          if (!deps.memory) throw new Error('memory.delete(): no memory API injected')
+          if (typeof name !== 'string' || !name.trim()) {
+            throw new TypeError('memory.delete(name): name must be a non-empty string')
+          }
+          return deps.memory.delete(name.trim())
+        }
+      })
+
       // --- Sandbox build ------------------------------------------------
       const sandbox: Record<string, unknown> = Object.create(null)
       sandbox.agent = agent
@@ -602,6 +626,7 @@ export function runWorkflow(input: WorkflowRunInput, deps: WorkflowRunnerDeps): 
       sandbox.phase = phase
       sandbox.log = log
       sandbox.workflow = workflowApi
+      sandbox.memory = memoryApi
       sandbox.args = input.args
       sandbox.budget = budgetApi
       // Standard library subset — JS built-ins the script can use safely.

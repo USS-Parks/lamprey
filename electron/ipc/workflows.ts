@@ -13,6 +13,7 @@ import {
 import { realAgentRunStore } from '../services/agent-run-store'
 import { broadcastAgentRunEvent } from './tasks'
 import { getWorkflow, listWorkflows } from '../services/workflow-library'
+import * as memStore from '../services/memory-store'
 
 // Track 1 / B1: workflows:* IPC + workflow:progress broadcast wiring.
 //
@@ -68,8 +69,31 @@ function buildDeps(): WorkflowRunnerDeps {
       const entry = getWorkflow(name)
       if (!entry) throw new Error(`workflow "${name}" not found in library`)
       return entry.source
+    },
+    memory: {
+      list: (filter?: unknown) => memStore.listMemoryFiles(parseMemoryFilter(filter)),
+      write: (input: unknown) => {
+        if (!input || typeof input !== 'object') {
+          throw new Error('memory.write requires an object')
+        }
+        return memStore.writeMemoryFile(input as Parameters<typeof memStore.writeMemoryFile>[0])
+      },
+      delete: (name: string) => memStore.deleteMemoryFile(name)
     }
   }
+}
+
+function parseMemoryFilter(filter?: unknown): memStore.MemoryListFilter | undefined {
+  if (!filter || typeof filter !== 'object') return undefined
+  const f = filter as Record<string, unknown>
+  const parsed: memStore.MemoryListFilter = {}
+  if (typeof f.type === 'string' && ['user', 'feedback', 'project', 'reference'].includes(f.type)) {
+    parsed.type = f.type as memStore.MemoryListFilter['type']
+  }
+  if (typeof f.projectSlug === 'string' && f.projectSlug.trim()) {
+    parsed.projectSlug = f.projectSlug.trim()
+  }
+  return parsed
 }
 
 export function registerWorkflowsHandlers(): void {

@@ -87,6 +87,59 @@ describe('runWorkflow — minimal smoke', () => {
   })
 })
 
+describe('runWorkflow - memory API', () => {
+  it('exposes list, write, and delete to workflow scripts', async () => {
+    const writes: unknown[] = []
+    const deletes: string[] = []
+    const script = `${META}
+      const entries = await memory.list({ type: 'project' })
+      await memory.write({
+        name: 'merged',
+        type: 'project',
+        body: entries[0].body + '\\n' + entries[1].body,
+        description: 'merged notes'
+      })
+      const removed = await memory.delete('old_note')
+      return { count: entries.length, removed }
+    `
+    const seam = makeSeam(async () => 'never')
+    const result = await runWorkflow(
+      { script },
+      {
+        forkSeam: seam,
+        memory: {
+          list: (filter) => {
+            expect(filter).toEqual({ type: 'project' })
+            return [
+              { name: 'old_note', type: 'project', body: 'A' },
+              { name: 'duplicate_note', type: 'project', body: 'B' }
+            ]
+          },
+          write: (input) => {
+            writes.push(input)
+            return input
+          },
+          delete: (name) => {
+            deletes.push(name)
+            return true
+          }
+        }
+      }
+    ).promise
+
+    expect(result.output).toEqual({ count: 2, removed: true })
+    expect(writes).toEqual([
+      {
+        name: 'merged',
+        type: 'project',
+        body: 'A\nB',
+        description: 'merged notes'
+      }
+    ])
+    expect(deletes).toEqual(['old_note'])
+  })
+})
+
 // ---------------------------------------------------------------------------
 // pipeline + parallel semantics (VERIFY GATE bullets)
 // ---------------------------------------------------------------------------

@@ -760,6 +760,46 @@ All 8 prompts (A1 → A2 → A3 → B1 → B2 → B3 → B4 → B5) committed on
 
 **Commit:** see git log on `codex-t3-final-four`.
 
+## [Track 3 - Prompt D4] Memory consolidation primitive - 2026-06-04
+
+**Files changed:**
+- `resources/workflows/consolidate-memory.js` (new) - built-in workflow that loads typed memories, asks the model for a JSON merge/prune plan, writes consolidated entries through the workflow memory API, and deletes obsolete entries.
+- `electron/services/workflow-runner.ts` - exposes a frozen `memory` helper in workflow scripts with `list`, `write`, and `delete`.
+- `electron/ipc/workflows.ts` - wires the workflow memory helper to the existing file-backed memory store, so `memory.write` / `memory.delete` trigger normal `MEMORY.md` regeneration and renderer broadcasts.
+- `src/components/memory/MemoryPanel.tsx` - adds a type-tab "Consolidate" button that launches `consolidate-memory`; live progress flows through the existing `WorkflowsPanel` subscription.
+- `electron/services/workflow-runner.test.ts` - verifies workflow scripts can call the memory helper.
+- `electron/services/workflow-library.test.ts` - updates built-in discovery expectations and runs `consolidate-memory` against a known duplicate set with stubbed model/memory APIs.
+- `PLANNING/LAMPREY_PARITY_PLAN.md` - marked D4 complete.
+
+**Verify gate:**
+- tsc node pass
+- tsc web pass
+- vitest `electron/services/workflow-runner.test.ts electron/services/workflow-library.test.ts` pass (44 tests)
+- manual smoke: user-verification-needed: launch the Electron shell, open a typed memory tab with duplicates, click Consolidate, and confirm the Workflows panel shows the live run while the memory view refreshes after writes/deletes
+
+**Notes:** The duplicate-set unit test verifies the merge/delete behavior directly. `MEMORY.md` regeneration is covered through production wiring to `writeMemoryFile` / `deleteMemoryFile`; the full shell smoke is still needed because the renderer button and WorkflowsPanel are Electron UI surfaces.
+
+**Commit:** `af14030`.
+
+## [Track 3 completion] Memory + Verification + Scheduling - 2026-06-04
+
+All 13 Track 3 prompts are complete:
+- D1 - `5d9646e` - file-backed memory with typed frontmatter + SQLite mirror
+- D2 - `940999d` - MEMORY.md always-loaded index + broken-link graph
+- D3 - `9159a1d` - typed memory panel with tabs, editor, and link autocomplete
+- E3 - `b60160d` - cross-session FTS5 + archive/pin + Sessions sidebar
+- F1 - `bd9a74d` - dev-server lifecycle + preview verification tools
+- F2 - `a7213a3` - PR review threading + inline review post
+- F3 - `56147b6` - PR + Issues panels with inline review composer + status checks
+- F4 - `dc3f096` - background shell + line-buffered monitor primitive
+- G1 - `e02d22f` - cron UI with live validation + run-now + history
+- G2 - `272dd61` / main `b0bdf5f` - self-paced wakeups
+- G3 - `8afb649` / main `0251188` - headless remote run mode
+- G4 - `8b8630c` - push notifications + cross-session messaging
+- D4 - `af14030` - memory consolidation workflow
+
+Final verification for the final-four branch: node/web tsc passed for D4; focused workflow tests passed; full `npx vitest run` passed on retry (85 files passed, 2 skipped; 1150 tests passed, 16 skipped). G2/G3/G4 verification details are in their prompt entries above. Remaining manual user-verification-needed items are Electron-shell/runtime smoke checks for delayed wake-ups, headless real-model execution, OS notification click behavior, and the renderer Consolidate button.
+
 ## [Track 3 — Prompt F4] Monitor primitive + background shell — 2026-06-03
 
 **Files changed:**
