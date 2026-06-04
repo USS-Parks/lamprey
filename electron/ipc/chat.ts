@@ -156,7 +156,17 @@ const activeAbortControllers = new Map<string, ActiveRun>()
 // Tool definitions (memory_add + MCP tools) come from toolRegistry.
 // Approval gating is owned by permissionsService — both live in services/.
 
-const MAX_TOOL_ROUNDS = 10
+// Per-stage tool-call iteration ceiling. Each runChatRound recursive call
+// increments `round`; we hard-stop when the counter exceeds this. The cap
+// is PER-STAGE (multi-agent pipelines reset the counter at each Planner
+// / Coder / Reviewer hand-off), not per-turn — so the effective ceiling
+// across a pipeline run is ~3× this number.
+//
+// Was 10 in 0.2.x — that tripped on routine codebase exploration where
+// the planner needed 12-20 sequential reads to map a new repo. Codex
+// and Claude Code allow 100+ rounds per agent loop; 50 is a generous
+// midpoint that lets real work finish without going unbounded.
+const MAX_TOOL_ROUNDS = 50
 
 function emitPhase(conversationId: string, phase: AgentRunPhase): void {
   emitChatEvent('chat:phase', { conversationId, phase })
@@ -516,7 +526,10 @@ export async function runChatRound(
     emitPhase(conversationId, 'error')
     emitChatEvent('chat:error', {
       conversationId,
-      error: 'Maximum tool call rounds reached'
+      // Tool calls completed in rounds 0..MAX_TOOL_ROUNDS-1 ARE persisted —
+      // re-prompting with "continue" picks up where the model left off
+      // because the history reflects the partial work.
+      error: `Tool-call cap reached (${MAX_TOOL_ROUNDS} rounds this stage). Re-prompt with "continue" to keep going — the partial work is saved.`
     })
     return null
   }
