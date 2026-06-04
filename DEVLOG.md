@@ -1,5 +1,38 @@
 # Lamprey Harness Dev Log
 
+## [Audit Remediation — Prompt 4] Streaming & connection bugs — 2026-06-04
+
+Closes BUG-1 and BUG-2.
+
+- **BUG-1** (`providers/registry.ts`) — the streaming retry loop declared
+  `fullContent` + `toolCallsAccumulator` *above* the `while (retries <= max)`
+  loop. A mid-stream failure that had already appended partial content carried
+  that partial into the retry, so `onDone` persisted duplicated text. Moved both
+  accumulators to the top of each loop iteration so every attempt starts clean.
+  (The renderer's live `onChunk` replay across a retry is a separate, out-of-
+  scope concern; this fix targets the saved/`onDone` content the finding flags.)
+- **BUG-2** (`mcp-manager.ts`) — a crashed stdio server emits both `onerror` and
+  `onclose`, each of which scheduled its own reconnect. The existing
+  `status === 'connected'` guard mostly serialized them, but the invariant was
+  implicit. Added an explicit `restarting` flag on `ServerState` and a shared
+  `scheduleStdioRestart(state)` helper: it no-ops if a restart is already in
+  flight or `restartCount >= MAX_RESTARTS`, increments the count once, and
+  clears `restarting` when the reconnect settles (so a *later* independent crash
+  can still restart, bounded by MAX_RESTARTS). The `connected` outer guard is
+  kept so initial-handshake failures (handled by `connectWithRetry`) don't
+  spuriously restart. SSE handlers were already reconnect-free; untouched.
+
+Tests: new `electron/services/providers/registry.test.ts` (2 — retry produces
+clean content, clean single-pass unaffected) and
+`electron/services/mcp-manager.test.ts` (4 — back-to-back events → one
+reconnect, single event → one reconnect, flag clears for a later crash, stops
+at MAX_RESTARTS).
+
+Verify: tsc node ✓ · tsc web ✓ · lint 0 errors / 384 warnings (no new) ✓ ·
+vitest 1282 pass + 11 skip (+6) ✓ · smoke:bundle ✓ · smoke:renderer ✓.
+
+---
+
 ## [Audit Remediation — Prompt 3] CI: run smokes on PRs — 2026-06-04
 
 Closes CI-1. Added a `smoke` job to `.github/workflows/ci.yml` that runs on

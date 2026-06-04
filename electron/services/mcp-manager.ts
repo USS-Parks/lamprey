@@ -37,6 +37,11 @@ interface ServerState {
   transport: SSEClientTransport | StdioClientTransport | null
   tools: McpTool[]
   restartCount: number
+  // Guards against a single crash producing two reconnect attempts: a stdio
+  // server typically emits BOTH `onerror` and `onclose` for the same crash.
+  // Set when a restart is scheduled, cleared once that restart settles
+  // (connected or gave up). See `scheduleStdioRestart` (BUG-2).
+  restarting: boolean
 }
 
 const MAX_RESTARTS = 3
@@ -113,7 +118,8 @@ class McpManager {
         client: null,
         transport: null,
         tools: [],
-        restartCount: 0
+        restartCount: 0,
+        restarting: false
       })
     }
 
@@ -161,7 +167,8 @@ class McpManager {
       client: null,
       transport: null,
       tools: [],
-      restartCount: 0
+      restartCount: 0,
+      restarting: false
     })
 
     if (config.enabled) {
@@ -414,12 +421,7 @@ class McpManager {
         state.status = 'error'
         state.error = err.message
         this.emitStatus(state.config.id, 'error', err.message)
-
-        if (state.restartCount < MAX_RESTARTS) {
-          state.restartCount++
-          console.log(`[mcp] Restarting ${state.config.id} (attempt ${state.restartCount}/${MAX_RESTARTS})`)
-          this.cleanupServer(state).then(() => this.connectServer(state.config.id))
-        }
+        this.scheduleStdioRestart(state)
       }
     }
 
@@ -427,16 +429,30 @@ class McpManager {
       if (state.status === 'connected') {
         state.status = 'disconnected'
         this.emitStatus(state.config.id, 'disconnected')
-
-        if (state.restartCount < MAX_RESTARTS) {
-          state.restartCount++
-          console.log(`[mcp] Restarting ${state.config.id} after close (attempt ${state.restartCount}/${MAX_RESTARTS})`)
-          this.connectServer(state.config.id).catch(() => {})
-        }
+        this.scheduleStdioRestart(state)
       }
     }
 
     await this.connectWithRetry(state, client, transport)
+  }
+
+  // Schedule exactly ONE reconnect for a crashed stdio server. A crash usually
+  // fires both `onerror` and `onclose`; without the `restarting` guard each
+  // would queue its own `connectServer`, double-reconnecting (BUG-2). The flag
+  // is cleared once the reconnect settles, so a *later* independent crash can
+  // restart again (bounded by MAX_RESTARTS).
+  private scheduleStdioRestart(state: ServerState): void {
+    if (state.restarting) return
+    if (state.restartCount >= MAX_RESTARTS) return
+    state.restarting = true
+    state.restartCount++
+    console.log(`[mcp] Restarting ${state.config.id} (attempt ${state.restartCount}/${MAX_RESTARTS})`)
+    this.cleanupServer(state)
+      .then(() => this.connectServer(state.config.id))
+      .catch(() => {})
+      .finally(() => {
+        state.restarting = false
+      })
   }
 
   private async connectWithRetry(
@@ -462,6 +478,7 @@ class McpManager {
         state.status = 'connected'
         state.error = undefined
         state.restartCount = 0
+        state.restarting = false
         this.emitStatus(state.config.id, 'connected')
 
         console.log(`[mcp] Connected to ${state.config.id} — ${state.tools.length} tools available`)

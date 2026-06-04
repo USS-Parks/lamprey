@@ -593,12 +593,16 @@ export async function chatStream(
     toolCount: offeredToolCount
   })
 
-  let fullContent = ''
-  const toolCallsAccumulator: Map<number, ToolCallAccumulator> = new Map()
   let retries = 0
   const maxRetries = 3
 
   while (retries <= maxRetries) {
+    // Per-attempt accumulators. These MUST be reset at the top of each
+    // iteration: a mid-stream failure (the `continue` paths below) that had
+    // already appended partial content would otherwise carry that partial
+    // into the retry, so `onDone` would persist duplicated text (BUG-1).
+    let fullContent = ''
+    const toolCallsAccumulator: Map<number, ToolCallAccumulator> = new Map()
     try {
       const stream = await client.chat.completions.create(
         {
