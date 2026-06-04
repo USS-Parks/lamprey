@@ -9,6 +9,7 @@ import { useThemedIcon } from '@/lib/themed-icon'
 import { useMediaQuery, NARROW_VIEWPORT_QUERY } from '@/hooks/useMediaQuery'
 import type { Conversation, Project } from '@/lib/types'
 import { PopoverMenu } from '@/components/ui/PopoverMenu'
+import { ActivityDashboard } from '@/components/activity/ActivityDashboard'
 
 import newChatLight from '@assets/Lamprey New Chat Icon.png'
 import newChatDark from '@assets/Lamprey New Chat Icon Dark View.png'
@@ -1026,6 +1027,8 @@ function SidebarBody(props: SidebarBodyProps) {
           </div>
         </div>
       )}
+
+      <ActivityDashboard />
 
       <div className="mt-4 flex items-center justify-between px-3">
         <span className="text-[12px] font-medium uppercase tracking-wider text-[var(--text-muted)]">
