@@ -1,4 +1,15 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+import { join } from 'path'
+
+vi.mock('electron', () => ({
+  app: { getPath: () => join(process.cwd(), '.tmp-test-user-data') },
+  BrowserWindow: { getAllWindows: () => [] }
+}))
+
+vi.mock('@electron-toolkit/utils', () => ({
+  is: { dev: true }
+}))
+
 import {
   approximateTokenCount,
   buildSubAgentMessages,

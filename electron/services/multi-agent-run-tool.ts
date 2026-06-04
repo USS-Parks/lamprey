@@ -5,6 +5,12 @@ import {
 } from './system-prompt-builder'
 import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions'
 import type { AuditStatus } from './tool-result-status'
+import {
+  forkAgent,
+  SubagentAbortError,
+  type ForkAgentRunner,
+  type SubagentTypeResolver
+} from './subagent-runner'
 
 // Single-model multi-agent sub-task primitive. The main assistant fans the
 // active model into role-prompted sub-agents (planner / reader / verifier /
@@ -12,6 +18,11 @@ import type { AuditStatus } from './tool-result-status'
 // structured envelope. Sub-agents have NO tool access — they reason on the
 // supplied bounded context. The chat surface stays single-threaded; only the
 // MultiAgentRunCard surfaces the fan-out.
+//
+// A1 refactor: per-task execution now delegates to forkAgent in
+// subagent-runner.ts. The public API (validateMultiAgentArgs,
+// buildSubAgentMessages, executeMultiAgentRun, the result shapes, all
+// constants) is unchanged — every existing test stays green.
 
 export const MULTI_AGENT_MAX_TASKS = 5
 export const MULTI_AGENT_DEFAULT_TIMEOUT_MS = 60_000
@@ -184,10 +195,33 @@ export interface ExecuteMultiAgentRunOptions {
 }
 
 /**
+ * Synthesise an in-memory subagent type for each multi-agent role. The
+ * multi-agent roles (planner/reader/verifier/reviewer/coworker) are an
+ * internal taxonomy distinct from the user-visible BUILT_IN_SUBAGENT_TYPES
+ * (Explore/Plan/code-reviewer/general). Keeping them out of the public
+ * registry avoids cluttering the /agents listing with internal multi-agent
+ * roles, and avoids any accidental fork-by-name from external code.
+ */
+const multiAgentTypeLoader: SubagentTypeResolver = (name) => {
+  if (!SUPPORTED_ROLES.has(name)) return null
+  return {
+    name,
+    description: `multi_agent_run internal role: ${name}`,
+    allowedTools: [],
+    systemPrompt: buildAgentSystemPrompt(name as SubAgentRole),
+    source: 'builtin'
+  }
+}
+
+/**
  * Pure executor. `runner` is the seam where the chat provider is called;
  * tests pass a synchronous stub. Each task gets its own AbortController so a
  * per-task timeout (or a parent cancellation) cancels exactly one in-flight
  * request without taking down the others.
+ *
+ * Internally delegates the per-task spawn to forkAgent (subagent-runner.ts)
+ * so the multi-agent runner and the general subagent fork primitive share a
+ * single execution path.
  */
 export async function executeMultiAgentRun(
   opts: ExecuteMultiAgentRunOptions
@@ -203,30 +237,40 @@ export async function executeMultiAgentRun(
   const targetModel = opts.defaultModel
   const overallStart = clock()
 
+  // Adapt the legacy SubAgentRunner (messages, modelId, signal) shape to the
+  // ForkAgentRunner shape used by subagent-runner.ts.
+  const forkRunner: ForkAgentRunner = async (input) => {
+    return opts.runner(input.messages, input.modelId, input.signal)
+  }
+
   const promises = args.tasks.map(async (task, idx): Promise<SubAgentResult> => {
     const callId = `${opts.parentCallId ?? 'multi'}:${idx}:${randomUUID().slice(0, 8)}`
     const taskStart = clock()
-    const taskController = new AbortController()
-    const messages = buildSubAgentMessages(task)
 
-    // Tie this task's controller to the parent. When the parent fires, all
-    // in-flight sub-tasks see their own abort.
-    const onParentAbort = (): void => taskController.abort()
-    if (opts.parentSignal) {
-      if (opts.parentSignal.aborted) taskController.abort()
-      else opts.parentSignal.addEventListener('abort', onParentAbort, { once: true })
-    }
-
-    let timedOut = false
-    const timer = setTimeout(() => {
-      timedOut = true
-      taskController.abort()
-    }, timeoutMs)
+    const handle = forkAgent(
+      {
+        prompt: task.prompt,
+        agentType: task.role,
+        context: task.context,
+        outputFormat: task.outputFormat,
+        timeoutMs,
+        signal: opts.parentSignal,
+        label: task.role,
+        modelId: targetModel
+      },
+      {
+        runner: forkRunner,
+        defaultModel: targetModel,
+        loadType: multiAgentTypeLoader,
+        clock
+      }
+    )
 
     try {
-      const output = await opts.runner(messages, targetModel, taskController.signal)
+      const result = await handle.promise
       const elapsedMs = Math.max(0, clock() - taskStart)
-      if (detectSubAgentToolUseAttempt(output)) {
+      const raw = result.rawOutput
+      if (detectSubAgentToolUseAttempt(raw)) {
         return {
           role: task.role,
           output: null,
@@ -238,20 +282,25 @@ export async function executeMultiAgentRun(
       }
       return {
         role: task.role,
-        output,
+        output: raw,
         elapsedMs,
-        tokensUsedEstimate: approximateTokenCount(output),
+        tokensUsedEstimate: approximateTokenCount(raw),
         callId
       }
     } catch (err: unknown) {
       const elapsedMs = Math.max(0, clock() - taskStart)
-      const errorMessage =
-        err instanceof Error ? err.message || err.name : typeof err === 'string' ? err : String(err)
-      const friendly = timedOut
-        ? `timed out after ${timeoutMs} ms`
-        : taskController.signal.aborted
-        ? 'cancelled'
-        : errorMessage
+      let friendly: string
+      if (err instanceof SubagentAbortError) {
+        friendly = err.message.includes('timed out') ? err.message : 'cancelled'
+      } else {
+        const errorMessage =
+          err instanceof Error
+            ? err.message || err.name
+            : typeof err === 'string'
+            ? err
+            : String(err)
+        friendly = errorMessage || 'unknown error'
+      }
       return {
         role: task.role,
         output: null,
@@ -259,9 +308,6 @@ export async function executeMultiAgentRun(
         elapsedMs,
         callId
       }
-    } finally {
-      clearTimeout(timer)
-      if (opts.parentSignal) opts.parentSignal.removeEventListener('abort', onParentAbort)
     }
   })
 

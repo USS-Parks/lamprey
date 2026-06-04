@@ -208,6 +208,35 @@ function initSchema(db: Database.Database): void {
       ON events(correlation_id, created_at ASC);
     CREATE INDEX IF NOT EXISTS idx_events_type
       ON events(type, created_at DESC);
+
+    -- Track 1 / A2: background-agent lifecycle. One row per forkAgent call
+    -- that was tracked (production wires the store; tests/inline forks may
+    -- skip). The runId is the same runId the in-memory subagent-runner
+    -- registry uses, so tasks:stop can find the live handle.
+    --   status:          'running' on insert; 'done' | 'error' | 'aborted' on finish
+    --   background:      1 if the fork was launched with runInBackground:true
+    --   worktree_path:   set by A3's isolation mode; NULL otherwise
+    CREATE TABLE IF NOT EXISTS agent_runs (
+      id              TEXT PRIMARY KEY,
+      parent_conv_id  TEXT,
+      parent_run_id   TEXT,
+      agent_type      TEXT NOT NULL,
+      label           TEXT NOT NULL,
+      status          TEXT NOT NULL CHECK(status IN ('running','done','error','aborted')),
+      started_at      INTEGER NOT NULL,
+      finished_at     INTEGER,
+      result_text     TEXT,
+      error           TEXT,
+      worktree_path   TEXT,
+      background      INTEGER NOT NULL DEFAULT 0
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_agent_runs_conv
+      ON agent_runs(parent_conv_id, started_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_agent_runs_status
+      ON agent_runs(status, started_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_agent_runs_parent_run
+      ON agent_runs(parent_run_id, started_at DESC);
   `)
 
   // Migrations for older DBs that predate kind/worktree_path/project_id columns.

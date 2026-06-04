@@ -246,6 +246,26 @@ const api = {
     }
   },
 
+  tasks: {
+    list: (filter?: {
+      status?: 'running' | 'done' | 'error' | 'aborted' | Array<'running' | 'done' | 'error' | 'aborted'>
+      parentConvId?: string | null
+      parentRunId?: string | null
+      background?: boolean
+      limit?: number
+    }) => ipcRenderer.invoke('tasks:list', filter),
+    get: (id: string) => ipcRenderer.invoke('tasks:get', id),
+    output: (id: string) => ipcRenderer.invoke('tasks:output', id),
+    stop: (id: string) => ipcRenderer.invoke('tasks:stop', id),
+    update: (id: string, patch: { label?: string }) =>
+      ipcRenderer.invoke('tasks:update', id, patch),
+    onNotify: (listener: (event: unknown) => void): (() => void) => {
+      const wrapped = (_e: unknown, event: unknown): void => listener(event)
+      ipcRenderer.on('agent:run:notify', wrapped)
+      return () => ipcRenderer.removeListener('agent:run:notify', wrapped)
+    }
+  },
+
   hooks: {
     list: () => ipcRenderer.invoke('hooks:list'),
     create: (input: { event: string; label: string; command: string }) =>

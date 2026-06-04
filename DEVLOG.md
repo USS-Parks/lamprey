@@ -1,5 +1,90 @@
 # Lamprey Harness Dev Log
 
+## [Track 1 — Prompt A3] Worktree-isolated subagent runs — 2026-06-03
+
+**Files changed:**
+- `electron/services/worktree-runner.ts` (new) — `createAgentWorktreeManager({baseCwd, workspacesRoot, baseRef?, runGit?})` factory returning a `WorktreeManager` with `create(runId)` + `finalize(ctx)`. Branch grammar is conservative `lamprey-agent/<safe-runId>` so it passes every `isValidRefName` check in the codebase; path is `<workspacesRoot>/<safe-runId>`; both invariants are exported as pure helpers (`branchNameForRun`, `worktreePathForRun`, `hasUncommittedChanges`) so tests verify them without spawning git. `finalize` runs `git status --porcelain` against the worktree — empty stdout → `git worktree remove --force` + `git branch -D` and report `keep:false, removed:true`; non-empty → preserve and report `keep:true, hasChanges:true`. Failure modes are graceful: status-failure falls back to keep + warning; remove-failure keeps the wt + warns; branch-delete failure reports removed:true with a warning (worktree IS gone — just leaks the branch).
+- `electron/services/subagent-runner.ts` — extended `ForkAgentDeps` with `worktreeManager?: WorktreeManager`. When `opts.isolation === 'worktree'`: (1) creates the wt INSIDE the main try so creation failure routes through standard `finishRun(error)`/`notify(error)` and never leaves a stuck-running row; (2) passes `worktreePath` to the runner via `runnerInput.worktreePath` so shell/edit tools scope to it; (3) calls `finalize(ctx)` on BOTH the success and failure paths; (4) stamps `worktreePath` onto the `finishRun` only when `finalize.keep === true`. When `opts.isolation` is unset, the manager is never touched and `runnerInput.worktreePath` stays undefined.
+- `electron/services/worktree-runner.test.ts` (new) — 13 tests over the pure helpers and the manager: `branchNameForRun` namespacing + dangerous-char strip, `hasUncommittedChanges` whitespace tolerance, `create` argv shape + error propagation + 3-parallel disjointness, `finalize` clean-tree removal, non-empty preservation, status-failure fallback, branch-delete-failure warning, remove-failure preservation, and constructor validation (missing baseCwd, non-absolute workspacesRoot).
+- `electron/services/subagent-runner.test.ts` — added "A3 worktree isolation" describe block (8 tests): runner receives `worktreePath`; finalize is called after runner; no-op agent (`finalize.keep=false`) → finishRun's `worktreePath` is null; file-touching agent (`finalize.keep=true`) → finishRun stamps the path; 3 parallel forks produce 3 disjoint paths; finalize runs after runner failure too AND preserves changes; config error when `isolation` is set but no manager is injected (still writes status:'error' to the store); plain (non-isolation) fork doesn't touch the manager.
+
+**Verify gate:**
+- `tsc --noEmit -p tsconfig.node.json` ✓
+- `tsc --noEmit -p tsconfig.web.json` ✓
+- `vitest run` ✓ — **912 passed, 5 skipped** (was 889 after A2 → +23 net, 0 regressions)
+- Verify-gate bullets covered:
+  - 3 parallel forks with `isolation` → 3 disjoint worktrees ✓ (worktree-runner.test "three parallel create() calls produce three disjoint worktree paths" + subagent-runner.test "three parallel forks with isolation produce three disjoint worktree paths")
+  - no-op agent → auto-cleaned ✓ (subagent-runner.test "no-op agent (finalize.keep=false) → finishRun gets no worktreePath")
+  - file-touching agent → path surfaces in `agent_runs` ✓ (subagent-runner.test "file-touching agent (finalize.keep=true) → finishRun records the path"). **Plan-wording note:** the plan says "path surfaces in `agent_runs.result_text`" but the structured column is `worktree_path`; I stamp the path there because (a) it's the dedicated column, (b) corrupting `result_text` with a synthetic suffix would mangle the agent's clean output. Either interpretation is satisfied: the path is queryable from the row.
+- **user-verification-needed**: real `git worktree add` against the Lamprey repo from a running Electron build. The runGit shim is exercised in unit tests; the real spawn path is exercised at runtime. Worktrees land in `userData/worktrees/<runId>` by production wiring (which Track 2's chat dispatcher will provide when it injects deps).
+
+**Notes:**
+- The `worktreeManager` is DI'd, not module-global, so multi-agent-run-tool's internal forks never get worktrees (they pass no manager). Production chat dispatcher wires the manager once per session with `baseCwd: workspacePath, workspacesRoot: app.getPath('userData') + '/worktrees'`.
+- Worktree creation lives INSIDE the main try after I caught a real bug mid-implementation: my first cut had it outside, which meant a failed `git worktree add` would leave the `agent_runs` row stuck in `'running'` forever (no `finishRun(error)`, no `notify(error)`). Moving it inside the try made the failure route through the standard error path.
+- A1's `runnerInput.worktreePath` field — accepted but unused in A1 — is now populated.
+
+**Commit:** see `git log --grep "A3 worktree-isolated"`.
+
+## [Track 1 — Prompt A2] Background agents + async notifications — 2026-06-03
+
+**Files changed:**
+- `electron/services/database.ts` — added the `agent_runs` table (`id PK, parent_conv_id, parent_run_id, agent_type, label, status CHECK IN ('running','done','error','aborted'), started_at, finished_at, result_text, error, worktree_path, background INTEGER`) plus three indices (by `parent_conv_id, started_at DESC`, by `status, started_at DESC`, by `parent_run_id, started_at DESC`). Append-only style: the row is inserted as `running` and updated to a terminal status via COALESCE so partially-set fields persist.
+- `electron/services/agent-run-store.ts` (new) — typed CRUD over `agent_runs`. `insertRun`, `finishRun` (uses COALESCE so worktree_path set at insert survives), `updateRun`, `getRun`, `listRuns(filter)` with `status | status[] | parentConvId | parentRunId | background | limit`, `getRunOutput` (separate blob-read). Mirrors `plan-goal-persistence.ts`'s in-memory-fallback pattern: when `getDb()` throws (test env, native-binding mismatch, or boot-time DB failure), the entire surface routes through a process-scoped `Map`. `realAgentRunStore` exports the production `{insertRun, finishRun}` shim for the runner.
+- `electron/services/subagent-runner.ts` — extended `ForkAgentDeps` with `agentRunStore?: AgentRunStoreLike` and `notify?: (event: AgentRunNotifyEvent) => void`. Added `parentConvId` to `ForkAgentOptions`. Added an in-memory `liveHandles: Map<runId, handle>` registry so `tasks:stop(runId)` can find an in-flight handle. The forkAgent body now: (1) inserts `status='running'` + fires `notify('running')` BEFORE the runner is called so observers see the row immediately; (2) on success, calls `finishRun(done)` + `notify('done')` with `resultText` set to the raw output; (3) on rejection, distinguishes abort (`SubagentAbortError`) from error and calls the appropriate `finishRun`/`notify`; (4) registers + deregisters the handle via `promise.then/catch(() => liveHandles.delete(runId))`. Store/notify exceptions are caught + logged so a broken renderer or DB never breaks the run.
+- `electron/ipc/tasks.ts` (new) — `tasks:list/get/output/stop/update` IPC handlers + `broadcastAgentRunEvent` that forwards every notify into the renderer via `webContents.send('agent:run:notify', event)`. `tasks:stop` resolves the live handle via `getLiveHandle(runId)` and calls `handle.abort('user-stop')`; if no live handle exists but the row is stale-`running`, it writes `aborted` directly to the DB + broadcasts.
+- `electron/ipc/index.ts` — registers `registerTasksHandlers()` alongside the other IPC modules.
+- `electron/preload.ts` — exposes `window.api.tasks.{list, get, output, stop, update, onNotify}` so the renderer (B3 wires the panel) can call IPC + subscribe to live notify events with a returned unsubscribe fn.
+- `electron/services/agent-run-store.test.ts` (new) — 18 tests over the memory-fallback path (insert defaults, parent ids + background flag + worktree path, status finish for done/error/aborted, worktree_path preservation via COALESCE-equivalent semantics, no-op on unknown id, updateRun label, listRuns single-status / array-status / empty-array → []/parentConvId/background/limit filters, getRunOutput happy + unknown, `realAgentRunStore` round-trip).
+- `electron/services/subagent-runner.test.ts` — added "A2 background lifecycle" describe block (9 tests): handle returns synchronously while runner is still in-flight (background fork doesn't await); `insertRun` + `notify('running')` fire before the runner resolves; `notify('done')` + `finishRun(done)` with `resultText` on success; `notify('error')` + `finishRun(error)` with error message on runner throw; `notify('aborted')` + `finishRun(aborted)` on `handle.abort()` (the tasks:stop path); live-handle registry populates while running and clears on settle; store + notify exceptions never break the run (graceful degradation); A1-style fork with neither store nor notify still works (no fixtures, no side effects).
+
+**Verify gate:**
+- `tsc --noEmit -p tsconfig.node.json` ✓
+- `tsc --noEmit -p tsconfig.web.json` ✓
+- `vitest run` ✓ — **889 passed, 5 skipped** (was 862 after A1 → +27 net, 0 regressions)
+- Verify-gate bullets covered:
+  - spawn background fork returns immediately ✓ ("returns the handle synchronously — a background fork does not await")
+  - `tasks:list` shows `running` ✓ (store test: `insertRun` + `listRuns({status:'running'})` returns the row)
+  - completion fires notify event ✓ (runner test: `notify` called with `status:'done'`)
+  - `tasks:stop` aborts ✓ (runner test: `handle.abort('user-stop')` → SubagentAbortError → `notify('aborted')` + `finishRun(aborted)`; tasks IPC translates `tasks:stop` → `getLiveHandle().abort('user-stop')`)
+  - result persists ✓ (store test: `finishRun(done, resultText)` round-trips through `getRun.resultText` and `getRunOutput.resultText`)
+- **user-verification-needed**: live `tasks:list` against the real DB after Electron boots (better-sqlite3's native binding doesn't load under the host Node vitest runs on, so the SQL path is exercised at runtime, not in unit tests). The fallback is real production code — if the DB ever fails to open, the runner still tracks runs in-memory.
+
+**Notes:**
+- The agent-run-store's `AgentRunStoreLike` shape is re-exported from subagent-runner so callers can DI it without circular imports.
+- `parentConvId` is wired through `ForkAgentOptions` (per-call) rather than `ForkAgentDeps` (shared) because the same deps bag is reused across conversations in a chat session.
+- multi-agent-run-tool's internal forks do NOT pass `agentRunStore` or `notify` — keeping its sub-agents out of `tasks:list` since multi-agent runs have their own visible UI surface (MultiAgentRunCard).
+- A3 will set `worktreePath` on the insert + on completion via the existing `COALESCE` write path.
+
+**Commit:** see `git log --grep "A2 background"`.
+
+## [Track 1 — Prompt A1] Subagent fork primitive (extensible types) — 2026-06-03
+
+**Files changed:**
+- `electron/services/subagent-types.ts` (new) — built-in registry (Explore / Plan / code-reviewer / general) + filesystem-discovered user types from `userData/subagent-types/<name>.md`. Mirrors the skill-loader pattern: chokidar watcher, gray-matter frontmatter parser, dev/prod path resolution, electron broadcast on change. Frontmatter `{description, allowedTools, systemPrompt?}` + body as systemPrompt fallback. User types shadow built-ins of the same name.
+- `electron/services/subagent-runner.ts` (new) — `forkAgent({prompt, agentType, allowedTools?, schema?, modelId?, parentRunId, isolation?, signal?, timeoutMs?, ...}, deps)` returns `{runId, abort, promise}`. Pure executor: `deps.runner` is the chat-provider seam, `deps.parentTools` is the tool-view seam, `deps.loadType` is the type-resolver seam. Tool intersection via `resolveAllowedTools(parent ∩ type ∩ override)` with `'*'` sentinel meaning "no narrowing." Schema mode appends an inline schema instruction + parses + validates via minimal structural check (B5 will swap in the retry loop). Honors per-fork timeout and parent-signal coupling. `isolation` + `runInBackground` accepted on the API but no-op in A1 (A2 wires lifecycle, A3 wires worktree).
+- `electron/services/multi-agent-run-tool.ts` (refactor) — public API fully preserved (`validateMultiAgentArgs`, `buildSubAgentMessages`, `executeMultiAgentRun`, all constants and types). Internal per-task spawn now delegates to `forkAgent` with an in-module type resolver that synthesises def-shapes for the multi-agent roles (planner/reader/verifier/reviewer/coworker) without polluting the user-visible registry. Tool-use detection + synthesisNotes + recursion guard kept as-is.
+- `electron/services/subagent-types.test.ts` (new) — 14 tests covering parse, frontmatter overrides, name-from-filename fallback, missing-field rejection, built-in completeness, user-type shadowing.
+- `electron/services/subagent-runner.test.ts` (new) — 23 tests covering tool intersection, message build, schema validate, all four verify-gate happy paths (Explore + tool subset, schema → object, parent tool not visible to child, user-registered `security-auditor` honored), and every error class (TypeNotFound, ContextTooLarge, SchemaError on bad-JSON + missing-required, parent-signal abort, timeout, manual abort).
+- `electron/services/agent-pipeline.test.ts` + `chat-correlation-events.test.ts` — added `vi.mock('@electron-toolkit/utils', ...)` since both transitively load `subagent-types` now via the refactor. Existing pattern from `skill-loader.test.ts`.
+
+**Verify gate:**
+- `tsc --noEmit -p tsconfig.node.json` ✓
+- `tsc --noEmit -p tsconfig.web.json` ✓
+- `vitest run` ✓ — **862 passed, 5 skipped (was 822 baseline → +40 net, 0 regressions)**
+- Verify-gate bullets covered:
+  - fork Explore with `[read_file, grep_search, glob_search]` returns string ✓
+  - fork with schema returns conforming object ✓
+  - parent's added tool (`apply_patch`) not visible to child ✓
+  - drop `security-auditor.md` and fork by name → custom system prompt + allowed tools honored ✓ (via direct `parseSubagentTypeFile` + `forkAgent` with a custom resolver; the chokidar end-to-end path is exercised manually after Electron boot — **user-verification-needed** for the live watch + electron broadcast)
+  - existing multi-agent tests still green ✓
+
+**Notes:**
+- One real regression caught + fixed mid-verify: my first cut threw `SubagentAbortError` on a post-runner abort check, which broke `agent-pipeline.test.ts > bails out early when the signal is aborted before the Coder stage`. The old multi-agent executor accepted the runner's clean return even if the signal raced an abort right after — preserved that behavior by moving abort/timeout classification entirely into the catch path.
+- Schema validation in A1 is minimal-but-actionable (`required` + per-property `type` check). B5 will turn this into a retry-with-validation-error-appended loop and account schema retries against the budget.
+- `isolation` + `runInBackground` are wired through `ForkAgentOptions` and `ForkAgentRunnerInput` (the runner can read `worktreePath`) but are no-ops in A1 — A2 wires the lifecycle / `agent_runs` table + notify event, A3 wires the worktree spawn + auto-cleanup.
+
+**Commit:** see `git log --grep "A1 fork primitive"` (one commit per prompt; SHA elided to avoid amend loop on self-reference).
+
 ## Parity Phase planning — three-track roster authored (2026-06-03)
 
 Planning-only turn. No source changes; one new planning artifact landed.
