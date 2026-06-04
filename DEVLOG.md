@@ -1,5 +1,32 @@
 # Lamprey Harness Dev Log
 
+## [Track 1 — Prompt B3] Workflow live progress UI — 2026-06-03
+
+**Files changed:**
+- `src/stores/workflows-store.ts` (new) — Zustand store. Holds an MRU `runs[]` of `WorkflowRunState` (`{runId, name, status: 'running'|'done'|'errored'|'aborted', startedAt, finishedAt?, phases: PhaseGroup[], log: NarratorLine[], error?, finalResult?}`). `applyProgress(event)` accumulates one `workflow:progress` event into the tree: `started` creates the run, `phase` registers a phase in declaration order, `log` appends a narrator line tagged with the current phase, `agent:start` adds a `running` chip under the (possibly empty) phase, `agent:finish` flips it to `done`/`error`/`aborted` with `durationMs`/`tokensUsedEstimate`/`cached` (true when `event.message === 'cached'`). Chips are matched first by `agentRunId`, falling back to the most-recent `running` chip with matching label+agentType (covers the `agent:finish` case where the runner doesn't propagate an agent runId for cached replays). `stopRun(runId)` calls `window.api.workflows.stop` and optimistically flips the run to `aborted`; the real `workflow:progress: errored` event firms it up.
+- `src/components/workflows/AgentChip.tsx` (new) — small pill rendering label + agentType + cached badge + duration + token estimate. Tailwind tinted by status (amber/emerald/red/gray). `data-testid="agent-chip"` + `data-status` + `data-cached` for DOM-level assertions.
+- `src/components/workflows/PhaseGroup.tsx` (new) — phase title bar + flex-wrap chip row. Empty state placeholder ("no agents yet") when the phase has been declared but no agent has started.
+- `src/components/workflows/WorkflowRunCard.tsx` (new) — per-run card. Header (name + status badge + elapsed), Stop button visible only while `status === 'running'` (calls `useWorkflowsStore.stopRun`), error display row (when set), phase list, narrator log section.
+- `src/components/workflows/WorkflowsPanel.tsx` (new) — top-level panel. `useEffect` subscribes to `window.api.workflows.onProgress` and pipes events into `applyProgress`; returns the unsubscribe fn on cleanup. Renders the MRU runs as cards; empty-state message when no runs yet.
+- `src/stores/workflows-store.test.ts` (new) — 9 tests: `started` → run row with meta name + running status; phases registered in declaration order; `agent:start` → `agent:finish` happy-path with durationMs + tokens; cached `agent:finish` carries the cached flag; `log` events accumulate as narrator lines with phase tag; `finished` → `done` + finalResult; `errored` → `errored` + error text; **REQUIRED smoke:** 10-agent pipeline drives the tree to a 10-chip Phase with all chips `done`; `stopRun` calls `window.api.workflows.stop` with the runId and flips the run to `aborted`.
+
+**Verify gate:**
+- `tsc --noEmit -p tsconfig.node.json` ✓
+- `tsc --noEmit -p tsconfig.web.json` ✓
+- `vitest run` ✓ — **974 passed, 5 skipped** (was 965 after B2 → +9 net, 0 regressions)
+- Verify-gate bullets covered:
+  - 10-agent pipeline → tree renders correctly ✓ (REQUIRED smoke, exercised via the store under the same event sequence the runner emits)
+  - `log()` appears as narrator line ✓
+  - cancel calls `workflows:stop` → "aborted" ✓
+- **user-verification-needed**: live DOM render via the preview tools / Electron build. The unit tests exercise the store under the same event sequence the runner emits, but the actual `useEffect` IPC subscription + DOM render path is exercised at runtime. The components compile clean against the web tsconfig.
+
+**Notes:**
+- Sidebar entry wiring deferred — the existing `Sidebar.tsx` is a 1000+ line component with a nav-history protocol. Adding a "Workflows" entry there is a Sidebar-internal coordination job that belongs in the Integration Phase (H1: Activity Dashboard mounts WorkflowsPanel inside the unified activity tray). The standalone `WorkflowsPanel` is importable and routable today; the route registration is mechanical and will happen with H1.
+- The chip-matching fallback (find the most recent running chip with the same label + agentType when `agentRunId` isn't supplied) covers the cached-replay path — replayed agent calls don't have a real fork runId. This is important for B2's resume scenarios.
+- Tailwind classes use `var(--token)` for theme alignment with the rest of the app; no custom CSS.
+
+**Commit:** see `git log --grep "B3 workflow live progress"`.
+
 ## [Track 1 — Prompt B2] Workflow journaling + resume — 2026-06-03
 
 **Files changed:**
