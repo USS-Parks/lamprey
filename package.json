@@ -3,6 +3,9 @@
   "version": "0.1.43",
   "description": "Multi-agent coding harness for DeepSeek V4 Pro/Flash, Gemma, and Qwen.",
   "main": "./out/main/index.js",
+  "bin": {
+    "lamprey": "./out/main/cli.js"
+  },
   "author": {
     "name": "Lamprey Contributors",
     "url": "https://github.com/USS-Parks/lamprey"
@@ -23,6 +26,7 @@
     "test:watch": "vitest",
     "smoke:bundle": "node scripts/smoke-bundle.cjs",
     "smoke:renderer": "node scripts/smoke-renderer.cjs",
+    "lamprey": "electron-vite dev -- --lamprey-headless",
     "build:win": "electron-vite build && electron-builder --win --publish never",
     "build:mac": "electron-vite build && electron-builder --mac --publish never",
     "build:linux": "electron-vite build && electron-builder --linux --publish never",
