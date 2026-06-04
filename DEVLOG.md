@@ -2538,6 +2538,21 @@ Implemented the full Google OAuth flow in `electron/ipc/mcp.ts`. The `mcp:setupG
 
 **Commit:** pending
 
+## [Integration - Prompt H5] Plan-mode UX + spawn-task tray + design pass - 2026-06-04
+
+**Files changed:** `electron/ipc/plan.ts`, `electron/preload.ts`, `src/stores/plan-store.ts`, `src/components/chat/PlanModeBanner.tsx`, `src/components/chat/PlanGoalsPanel.tsx`, `src/components/chat/SpawnTaskTray.tsx`, `src/components/chat/SpawnTaskChip.tsx`, `src/components/chat/ChatView.tsx`, `PLANNING/LAMPREY_PARITY_PLAN.md`
+
+**Verify gate:**
+- tsc node OK
+- tsc web OK
+- smoke-renderer OK against existing `out/` bundle
+- smoke-bundle OK against existing `out/` bundle
+- user-verification-needed: launch Electron, enter plan mode, confirm the sticky warning banner shows `Exit & Execute`, edit a plan step inline and confirm it persists, use Approve all / Reject, spawn three tasks and confirm the right-side tray supports open-all, dismiss-all, per-task open, and source-session link-back.
+
+**Notes:** Added `plan:update` IPC so inline plan edits are persisted through the same plan-goal store as the model-facing `update_plan` tool. Replaced the compact checklist with an editable PlanGoalsPanel, upgraded the banner CTA, and changed spawned-task notifications into a persistent tray with batch controls and source-session navigation. H6 is being handled in a parallel session and was not touched here.
+
+**Commit:** pending
+
 ## [Integration — Prompt H2] Workflow command palette + author UX — 2026-06-04
 
 **Files changed:** `electron/ipc/workflows.ts`, `electron/preload.ts`, `electron/services/workflow-library.ts`, `electron/services/workflow-library.test.ts`, `src/App.tsx`, `src/components/workflows/WorkflowPalette.tsx`, `src/components/workflows/WorkflowEditor.tsx`, `src/components/workflows/MetaScaffolder.tsx`, `src/components/workflows/DryRunPanel.tsx`, `src/stores/workflows-store.ts`, `src/stores/ui-store.ts`, `src/hooks/useKeyboardShortcuts.ts`, `PLANNING/LAMPREY_PARITY_PLAN.md`

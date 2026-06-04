@@ -266,6 +266,13 @@ const api = {
 
   plan: {
     get: (conversationId: string) => ipcRenderer.invoke('plan:get', conversationId),
+    update: (
+      conversationId: string,
+      input: {
+        replace?: boolean
+        steps?: Array<{ id?: string; text?: string; status?: 'pending' | 'in_progress' | 'done' }>
+      }
+    ) => ipcRenderer.invoke('plan:update', conversationId, input),
     listAllState: () => ipcRenderer.invoke('plan:listAllState'),
     clearConversationState: (conversationId: string) =>
       ipcRenderer.invoke('plan:clearConversationState', conversationId),

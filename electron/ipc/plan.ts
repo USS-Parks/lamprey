@@ -1,15 +1,14 @@
 import { ipcMain } from 'electron'
 import {
+  applyUpdatePlan,
   clearAllState,
   clearConversationState,
   getAllPlanGoalState,
-  getPlanSnapshot
+  getPlanSnapshot,
+  type PlanStepStatus
 } from '../services/plan-goal-store'
 import { emitChatEvent } from '../services/chat-events'
-import {
-  isPlanModeActive,
-  setPlanModeActive
-} from '../services/conversation-store'
+import { isPlanModeActive, setPlanModeActive } from '../services/conversation-store'
 
 // Read-side IPC for the per-conversation plan checklist, plus the inspect/clear
 // surface used by the Plan & Goals settings panel. The model writes through the
@@ -71,6 +70,32 @@ export function registerPlanHandlers(): void {
       return { success: false, error: err?.message ?? 'plan:clearAllState failed' }
     }
   })
+
+  ipcMain.handle(
+    'plan:update',
+    async (
+      _event,
+      conversationId: string,
+      input: {
+        replace?: boolean
+        steps?: Array<{ id?: string; text?: string; status?: PlanStepStatus }>
+      }
+    ) => {
+      try {
+        if (typeof conversationId !== 'string' || !conversationId) {
+          return { success: false, error: 'conversationId is required' }
+        }
+        const snapshot = applyUpdatePlan(conversationId, {
+          replace: Boolean(input?.replace),
+          steps: Array.isArray(input?.steps) ? input.steps : []
+        })
+        emitChatEvent('plan:updated', { conversationId, snapshot })
+        return { success: true, data: snapshot }
+      } catch (err: any) {
+        return { success: false, error: err?.message ?? 'plan:update failed' }
+      }
+    }
+  )
 
   // Track 2 / C3 — plan-mode gate. The model toggles this via the
   // `enter_plan_mode` / `exit_plan_mode` tool descriptors during a chat

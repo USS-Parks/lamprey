@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { PlanSnapshot } from '@/lib/types'
+import type { PlanSnapshot, PlanStep, PlanStepStatus } from '@/lib/types'
 
 // Plan checklist + plan-mode store. One snapshot per active conversation;
 // chat-store's selectConversation triggers a load, and useChat wires the
@@ -26,6 +26,12 @@ interface PlanState {
   loadForConversation: (conversationId: string) => Promise<void>
   applyUpdate: (snapshot: PlanSnapshot) => void
   applyModeChange: (event: { conversationId: string; active: boolean }) => void
+  updatePlan: (
+    conversationId: string,
+    steps: Array<Partial<Pick<PlanStep, 'id' | 'text' | 'status'>>>,
+    replace?: boolean
+  ) => Promise<boolean>
+  setAllStatuses: (conversationId: string, status: PlanStepStatus) => Promise<boolean>
   enterPlanMode: (conversationId: string) => Promise<boolean>
   exitPlanMode: (conversationId: string) => Promise<boolean>
   clear: () => void
@@ -68,6 +74,26 @@ export const usePlanStore = create<PlanState>((set, get) => ({
     const current = get().conversationId
     if (current && current !== conversationId) return
     set({ planModeActive: active })
+  },
+
+  updatePlan: async (conversationId, steps, replace = false) => {
+    if (!window.api?.plan?.update) return false
+    const result = await window.api.plan.update(conversationId, { replace, steps })
+    if (!result.success) return false
+    if (get().conversationId === conversationId) {
+      set({ snapshot: result.data as PlanSnapshot })
+    }
+    return true
+  },
+
+  setAllStatuses: async (conversationId, status) => {
+    const snapshot = get().snapshot
+    if (!snapshot || snapshot.conversationId !== conversationId) return false
+    return get().updatePlan(
+      conversationId,
+      snapshot.steps.map((step) => ({ ...step, status })),
+      true
+    )
   },
 
   enterPlanMode: async (conversationId: string) => {
