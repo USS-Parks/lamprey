@@ -1,5 +1,18 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
 
+// BUG-6: register exactly one listener and return an unsubscriber that removes
+// only THAT listener. The previous `on*` methods returned `ipcRenderer.on(...)`
+// (no way to unsubscribe) and teardown went through `chat.offAll()` →
+// `removeAllListeners(channel)`, which nuked EVERY listener on a shared channel
+// — so when useChat unmounted it also killed App.tsx's `chat:error` /
+// `app:error` listeners. Per-listener unsubscribe keeps independent
+// subscribers isolated.
+function onChannel<T>(channel: string, cb: (e: T) => void): () => void {
+  const handler = (_: unknown, e: T): void => cb(e)
+  ipcRenderer.on(channel, handler)
+  return () => ipcRenderer.removeListener(channel, handler)
+}
+
 const api = {
   chat: {
     send: (request: {
@@ -12,33 +25,17 @@ const api = {
     cancel: (conversationId: string) => ipcRenderer.invoke('chat:cancel', conversationId),
     generateTitle: (content: string) => ipcRenderer.invoke('chat:generateTitle', content),
     onChunk: (cb: (e: { conversationId: string; content: string }) => void) =>
-      ipcRenderer.on('chat:chunk', (_, e) => cb(e)),
+      onChannel('chat:chunk', cb),
     onDone: (cb: (e: { conversationId: string; message: unknown }) => void) =>
-      ipcRenderer.on('chat:done', (_, e) => cb(e)),
+      onChannel('chat:done', cb),
     onError: (cb: (e: { conversationId: string; error: string }) => void) =>
-      ipcRenderer.on('chat:error', (_, e) => cb(e)),
-    onToolCall: (cb: (e: unknown) => void) => ipcRenderer.on('chat:tool-call', (_, e) => cb(e)),
-    onToolCallResult: (cb: (e: unknown) => void) =>
-      ipcRenderer.on('chat:tool-call-result', (_, e) => cb(e)),
+      onChannel('chat:error', cb),
+    onToolCall: (cb: (e: unknown) => void) => onChannel('chat:tool-call', cb),
+    onToolCallResult: (cb: (e: unknown) => void) => onChannel('chat:tool-call-result', cb),
     onPhase: (cb: (e: { conversationId: string; phase: string }) => void) =>
-      ipcRenderer.on('chat:phase', (_, e) => cb(e)),
-    onAgentStatus: (cb: (e: unknown) => void) => ipcRenderer.on('agent:status', (_, e) => cb(e)),
-    onAsyncEvent: (cb: (e: unknown) => void): (() => void) => {
-      const handler = (_: unknown, e: unknown): void => cb(e)
-      ipcRenderer.on('async-event:received', handler)
-      return () => ipcRenderer.removeListener('async-event:received', handler)
-    },
-    offAll: () => {
-      ;[
-        'chat:chunk',
-        'chat:done',
-        'chat:error',
-        'chat:tool-call',
-        'chat:tool-call-result',
-        'chat:phase',
-        'agent:status'
-      ].forEach((ch) => ipcRenderer.removeAllListeners(ch))
-    },
+      onChannel('chat:phase', cb),
+    onAgentStatus: (cb: (e: unknown) => void) => onChannel('agent:status', cb),
+    onAsyncEvent: (cb: (e: unknown) => void): (() => void) => onChannel('async-event:received', cb),
     // Per-conversation subscription that returns an unsubscribe function.
     // Use for side-chat panels so they don't fight the global useChat listener.
     subscribe: (
@@ -1009,9 +1006,8 @@ const api = {
   },
 
   app: {
-    onError: (cb: (e: { message: string }) => void) => ipcRenderer.on('app:error', (_, e) => cb(e)),
-    onWarning: (cb: (e: { message: string }) => void) =>
-      ipcRenderer.on('app:warning', (_, e) => cb(e)),
+    onError: (cb: (e: { message: string }) => void) => onChannel('app:error', cb),
+    onWarning: (cb: (e: { message: string }) => void) => onChannel('app:warning', cb),
     getWorkingFolder: () => ipcRenderer.invoke('app:getWorkingFolder'),
     getDataDir: () => ipcRenderer.invoke('app:getDataDir'),
     openPath: (p: string) => ipcRenderer.invoke('app:openPath', p),

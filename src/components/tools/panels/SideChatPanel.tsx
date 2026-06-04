@@ -14,9 +14,17 @@ export function SideChatPanel() {
   const [draft, setDraft] = useState('')
   const [streaming, setStreaming] = useState(false)
   const [streamBuf, setStreamBuf] = useState('')
+  // BUG-4: onDone needs the latest buffer, but listing `streamBuf` in the
+  // subscribe effect's deps re-creates the subscription on every chunk. Mirror
+  // it into a ref so the effect depends only on `convId`.
+  const streamBufRef = useRef('')
   const [error, setError] = useState<string | null>(null)
   const activeModel = useModelStore((s) => s.activeModel)
   const scrollRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    streamBufRef.current = streamBuf
+  }, [streamBuf])
 
   // Initialize: load or create the side conversation. We persist its ID in
   // localStorage so reopening the panel keeps history.
@@ -64,7 +72,7 @@ export function SideChatPanel() {
       },
       onDone: (e) => {
         const msg = e.message as any
-        const content = typeof msg?.content === 'string' ? msg.content : streamBuf
+        const content = typeof msg?.content === 'string' ? msg.content : streamBufRef.current
         setMessages((cur) => [...cur, { role: 'assistant', content }])
         setStreamBuf('')
         setStreaming(false)
@@ -76,7 +84,7 @@ export function SideChatPanel() {
       }
     })
     return unsub
-  }, [convId, streamBuf])
+  }, [convId])
 
   // Auto-scroll on new content.
   useEffect(() => {

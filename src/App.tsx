@@ -243,15 +243,24 @@ function App(): React.ReactElement {
 
   useEffect(() => {
     if (!window.api) return
-    window.api.chat.onError((e: { conversationId: string; error: string }) => {
-      toast.error(e.error || 'Chat error')
-    })
-    window.api.app.onError((e: { message: string }) => {
-      toast.error(e.message)
-    })
-    window.api.app.onWarning((e: { message: string }) => {
-      toast.warning(e.message)
-    })
+    // BUG-6: keep each unsubscriber and tear down on unmount. These share the
+    // chat:error / app:error / app:warning channels with other subscribers
+    // (e.g. useChat), so per-listener removal is required — a blanket
+    // removeAllListeners would take the others down too.
+    const unsubs = [
+      window.api.chat.onError((e: { conversationId: string; error: string }) => {
+        toast.error(e.error || 'Chat error')
+      }),
+      window.api.app.onError((e: { message: string }) => {
+        toast.error(e.message)
+      }),
+      window.api.app.onWarning((e: { message: string }) => {
+        toast.warning(e.message)
+      })
+    ]
+    return () => {
+      for (const unsub of unsubs) unsub()
+    }
   }, [])
 
   // RAG ingest progress → forwarded to chat-store so rag-pending attachment

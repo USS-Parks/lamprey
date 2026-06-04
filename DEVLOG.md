@@ -1,5 +1,38 @@
 # Lamprey Harness Dev Log
 
+## [Audit Remediation — Prompt 8] Renderer + IPC-contract correctness — 2026-06-04
+
+Closes BUG-4, BUG-6.
+
+- **BUG-4** (`SideChatPanel.tsx`) — the per-conversation subscribe effect listed
+  `streamBuf` in its deps because `onDone` read it; since every chunk updates
+  `streamBuf`, the subscription was torn down and rebuilt on *every chunk*.
+  Mirror the buffer into `streamBufRef` (synced by a tiny effect), read the ref
+  in `onDone`, and reduce the subscribe effect's deps to `[convId]`.
+- **BUG-6** (`preload.ts` + callers) — `chat.on*` and `app.onError/onWarning`
+  returned `ipcRenderer.on(...)` (no unsubscribe), and teardown ran through
+  `chat.offAll()` → `removeAllListeners(channel)`. On shared channels that
+  nuked *other* subscribers: when `useChat` unmounted it also killed App.tsx's
+  `chat:error` / `app:error` listeners. New `onChannel(channel, cb)` preload
+  helper registers one listener and returns a scoped unsubscriber; every
+  `chat.on*` + `app.onError/onWarning` now returns it. `chat.offAll` is removed
+  entirely (the `removeAllListeners` footgun is gone). Callers updated:
+  `useChat` collects each unsubscriber into an array and tears them down
+  individually; `App.tsx` returns a cleanup that calls its three unsubscribers;
+  the dead `ipc-client` `offAll` wrapper is dropped. (`browser.offAll` is a
+  different namespace and untouched.)
+
+Tests: `electron/preload.test.ts` (3 — onError unsubscriber isolation on a
+shared channel, app.onError/onWarning unsubscribe, offAll gone) via a mocked
+ipcRenderer listener registry; `SideChatPanel.test.tsx` (1, jsdom) — renders
+the panel, fires three chunks, asserts the subscription was created once and
+never torn down.
+
+Verify: tsc node ✓ · tsc web ✓ · lint 0 errors / 381 warnings (no new) ✓ ·
+vitest 1313 pass + 11 skip (+4) ✓ · smoke:bundle ✓ · smoke:renderer ✓.
+
+---
+
 ## [Audit Remediation — Prompt 7] Main-process correctness — 2026-06-04
 
 Closes BUG-3, BUG-5, QUAL-2; QUAL-3 closed with a documented deviation.

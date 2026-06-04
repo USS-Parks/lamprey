@@ -49,12 +49,18 @@ export function useChat(): void {
     const matchesActive = (e: { conversationId?: string }) =>
       e?.conversationId === useChatStore.getState().activeConversationId
 
-    window.api.chat.onChunk((e) => {
+    // BUG-6: collect every listener's unsubscriber and tear them down
+    // individually on cleanup. The old path called `chat.offAll()`
+    // (removeAllListeners on shared channels), which also removed App.tsx's
+    // chat:error / app:error listeners.
+    const unsubs: Array<() => void> = []
+
+    unsubs.push(window.api.chat.onChunk((e) => {
       if (!matchesActive(e)) return
       queueChunk(e.content)
-    })
+    }))
 
-    window.api.chat.onDone((e) => {
+    unsubs.push(window.api.chat.onDone((e) => {
       if (!matchesActive(e as { conversationId?: string })) return
       flushNow()
       useChatStore.getState().finishStream(e.message as any)
@@ -66,30 +72,30 @@ export function useChat(): void {
         .getState()
         .activeRun.some((r) => r.state === 'running')
       if (!stillRunning) useAgentStore.getState().clearRun()
-    })
+    }))
 
-    window.api.chat.onError((e) => {
+    unsubs.push(window.api.chat.onError((e) => {
       if (!matchesActive(e)) return
       flushNow()
       useChatStore.getState().streamError(e.error)
       // Errors always retire the pipeline — there's no recovery path that
       // keeps a stale "running" pill on screen.
       useAgentStore.getState().clearRun()
-    })
+    }))
 
-    window.api.chat.onToolCall((e) => {
+    unsubs.push(window.api.chat.onToolCall((e) => {
       if (!matchesActive(e as { conversationId?: string })) return
       useChatStore.getState().addToolCall(e as any)
-    })
+    }))
 
-    window.api.chat.onToolCallResult((e) => {
+    unsubs.push(window.api.chat.onToolCallResult((e) => {
       if (!matchesActive(e as { conversationId?: string })) return
       useChatStore.getState().updateToolCall(e as any)
-    })
+    }))
 
-    const onPhase = (window.api.chat as { onPhase?: (cb: (e: { conversationId: string; phase: string }) => void) => void }).onPhase
+    const onPhase = (window.api.chat as { onPhase?: (cb: (e: { conversationId: string; phase: string }) => void) => () => void }).onPhase
     if (onPhase) {
-      onPhase((e) => {
+      unsubs.push(onPhase((e) => {
         if (!matchesActive(e)) return
         const phase = e.phase as AgentRunPhase
         // Terminal phases retire the pill; transient phases drive it.
@@ -98,12 +104,12 @@ export function useChat(): void {
         } else {
           useChatStore.getState().setRunPhase(phase)
         }
-      })
+      }))
     }
 
     const onAgentStatus = window.api.chat.onAgentStatus
     if (onAgentStatus) {
-      onAgentStatus((e: unknown) => {
+      unsubs.push(onAgentStatus((e: unknown) => {
         const event = e as AgentStatusEvent
         // P11 review-P2: filter by active conversation, same as every
         // other chat event. agent-store keeps a single global `activeRun`
@@ -111,7 +117,7 @@ export function useChat(): void {
         // status events would otherwise pollute the visible AgentRunBanner.
         if (!matchesActive(event)) return
         useAgentStore.getState().recordStatus(event)
-      })
+      }))
     }
 
     // Plan checklist live updates. The `plan:updated` event is broadcast
@@ -126,10 +132,11 @@ export function useChat(): void {
         })
       : undefined
 
+    if (planUnsub) unsubs.push(planUnsub)
+
     return () => {
       if (rafHandle !== null) cancelAnimationFrame(rafHandle)
-      window.api?.chat.offAll()
-      planUnsub?.()
+      for (const unsub of unsubs) unsub()
     }
   }, [])
 }

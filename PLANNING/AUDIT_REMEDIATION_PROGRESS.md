@@ -46,7 +46,7 @@ Closes the highest-severity REPO_AUDIT findings (model-input security, secrets/O
 | 5 | Test foundation (jsdom + stores/services) | TEST-1, TEST-2 | **Done** |
 | 6 | Renderer privilege hardening | SEC-1, SEC-7 | **Done** |
 | 7 | Main-process correctness | BUG-3, BUG-5, QUAL-2, QUAL-3 | **Done** |
-| 8 | Renderer + IPC-contract correctness | BUG-4, BUG-6 | Pending |
+| 8 | Renderer + IPC-contract correctness | BUG-4, BUG-6 | **Done** |
 | 9 | Model-input security | SEC-2, SEC-5, SEC-6, SEC-8 | **Done** |
 | 10 | Secrets & OAuth hardening | SEC-3, SEC-9, SEC-10 | **Done** |
 | 11 | `agentMode` rewire (Planner→Coder→Reviewer) | QUAL-1 (QUAL-4 deferred) | **Done** |
@@ -109,7 +109,7 @@ SEC-2, SEC-5, SEC-6, SEC-8 all closed in one PR. New `electron/services/url-safe
 | 5 | Test foundation (jsdom + stores/services) | TEST-1, TEST-2 | **Done** |
 | 6 | Renderer privilege hardening | SEC-1, SEC-7 | **Done** |
 | 7 | Main-process correctness | BUG-3, BUG-5, QUAL-2, QUAL-3 | **Done** |
-| 8 | Renderer + IPC-contract correctness | BUG-4, BUG-6 | Pending |
+| 8 | Renderer + IPC-contract correctness | BUG-4, BUG-6 | **Done** |
 | 9 | Model-input security | SEC-2, SEC-5, SEC-6, SEC-8 | Done |
 | 10 | Secrets & OAuth hardening | SEC-3, SEC-9, SEC-10 | Done |
 | 11 | `agentMode` rewire (Planner→Coder→Reviewer) | QUAL-1 (QUAL-4 deferred) | Done |

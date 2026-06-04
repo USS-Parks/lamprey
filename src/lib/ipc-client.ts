@@ -31,8 +31,7 @@ export const chat = {
   onError: (cb: (e: ChatErrorEvent) => void) => api.chat.onError(cb),
   onToolCall: (cb: (e: ToolCallEvent) => void) => api.chat.onToolCall(cb as any),
   onToolCallResult: (cb: (e: ToolCallResultEvent) => void) =>
-    api.chat.onToolCallResult(cb as any),
-  offAll: () => api.chat.offAll()
+    api.chat.onToolCallResult(cb as any)
 }
 
 export const conversation = {
