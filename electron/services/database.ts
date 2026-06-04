@@ -334,6 +334,12 @@ function initSchema(db: Database.Database): void {
   // inspection while the visible message body stores the composed response.
   safeAddColumn(db, 'messages', 'draft TEXT')
 
+  // DeepSeek reasoners + V4-Flash thinking-mode emit chain-of-thought on the
+  // separate `delta.reasoning_content` stream channel. Persist it alongside
+  // the visible body so the ReasoningBlock can re-render past turns the same
+  // way it renders the live stream.
+  safeAddColumn(db, 'messages', 'reasoning TEXT')
+
   // Audit provenance for tool_calls. 'modal' = user answered the approval
   // dialog; 'policy:<id>' = a persisted policy matched; 'none' = the call
   // was not gated (no requiresApproval, no gating risks).

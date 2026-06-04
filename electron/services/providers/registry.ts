@@ -280,7 +280,15 @@ export interface ModelRequestAudit {
 
 export interface ChatStreamCallbacks {
   onChunk: (content: string) => void
-  onDone: (fullContent: string, toolCalls?: ToolCallAccumulator[]) => void
+  /** Reasoning-channel deltas. DeepSeek's reasoner / V4-Flash thinking mode
+   *  streams chain-of-thought on `delta.reasoning_content` (some providers
+   *  alias it to `delta.reasoning`). When omitted, reasoning is dropped. */
+  onReasoning?: (content: string) => void
+  onDone: (
+    fullContent: string,
+    toolCalls?: ToolCallAccumulator[],
+    fullReasoning?: string
+  ) => void
   onError: (error: string) => void
 }
 
@@ -594,6 +602,7 @@ export async function chatStream(
   })
 
   let fullContent = ''
+  let fullReasoning = ''
   const toolCallsAccumulator: Map<number, ToolCallAccumulator> = new Map()
   let retries = 0
   const maxRetries = 3
@@ -615,7 +624,11 @@ export async function chatStream(
 
       for await (const chunk of stream) {
         if (signal?.aborted) {
-          callbacks.onDone(fullContent + ' [cancelled]')
+          callbacks.onDone(
+            fullContent + ' [cancelled]',
+            undefined,
+            fullReasoning || undefined
+          )
           emitModelRequestCompleted(desc, audit, {
             streaming: true,
             toolCount: offeredToolCount,
@@ -627,11 +640,29 @@ export async function chatStream(
           return
         }
 
-        const delta = chunk.choices[0]?.delta
+        const delta = chunk.choices[0]?.delta as
+          | (typeof chunk.choices[0]['delta'] & {
+              reasoning_content?: string | null
+              reasoning?: string | null
+            })
+          | undefined
 
         if (delta?.content) {
           fullContent += delta.content
           callbacks.onChunk(delta.content)
+        }
+
+        // DeepSeek reasoners + V4-Flash thinking-mode emit chain-of-thought
+        // on `delta.reasoning_content`. OpenRouter normalizes the same channel
+        // to `delta.reasoning`. Forward whichever the provider sends so the
+        // renderer can show a live "thinking…" block.
+        const reasoningDelta =
+          (typeof delta?.reasoning_content === 'string' && delta.reasoning_content) ||
+          (typeof delta?.reasoning === 'string' && delta.reasoning) ||
+          ''
+        if (reasoningDelta) {
+          fullReasoning += reasoningDelta
+          callbacks.onReasoning?.(reasoningDelta)
         }
 
         if (delta?.tool_calls) {
@@ -656,7 +687,7 @@ export async function chatStream(
         ? Array.from(toolCallsAccumulator.values())
         : undefined
 
-      callbacks.onDone(fullContent, toolCalls)
+      callbacks.onDone(fullContent, toolCalls, fullReasoning || undefined)
       emitModelRequestCompleted(desc, audit, {
         streaming: true,
         toolCount: offeredToolCount,
@@ -668,7 +699,11 @@ export async function chatStream(
       return
     } catch (err: any) {
       if (signal?.aborted) {
-        callbacks.onDone(fullContent + ' [cancelled]')
+        callbacks.onDone(
+          fullContent + ' [cancelled]',
+          undefined,
+          fullReasoning || undefined
+        )
         emitModelRequestCompleted(desc, audit, {
           streaming: true,
           toolCount: offeredToolCount,

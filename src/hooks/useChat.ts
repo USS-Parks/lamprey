@@ -14,21 +14,37 @@ export function useChat(): void {
     // unresponsive). Coalesce all chunks that land within a single animation
     // frame into one store update so we re-render at most ~60×/sec.
     let pendingChunk = ''
+    let pendingReasoning = ''
     let rafHandle: number | null = null
 
     const flushPending = () => {
       rafHandle = null
-      if (!pendingChunk) return
-      const buf = pendingChunk
-      pendingChunk = ''
-      useChatStore.getState().appendStreamChunk(buf)
+      if (pendingChunk) {
+        const buf = pendingChunk
+        pendingChunk = ''
+        useChatStore.getState().appendStreamChunk(buf)
+      }
+      if (pendingReasoning) {
+        const rbuf = pendingReasoning
+        pendingReasoning = ''
+        useChatStore.getState().appendReasoningChunk(rbuf)
+      }
+    }
+
+    const scheduleFlush = () => {
+      if (rafHandle === null) {
+        rafHandle = requestAnimationFrame(flushPending)
+      }
     }
 
     const queueChunk = (content: string) => {
       pendingChunk += content
-      if (rafHandle === null) {
-        rafHandle = requestAnimationFrame(flushPending)
-      }
+      scheduleFlush()
+    }
+
+    const queueReasoning = (content: string) => {
+      pendingReasoning += content
+      scheduleFlush()
     }
 
     const flushNow = () => {
@@ -41,6 +57,11 @@ export function useChat(): void {
         pendingChunk = ''
         useChatStore.getState().appendStreamChunk(buf)
       }
+      if (pendingReasoning) {
+        const rbuf = pendingReasoning
+        pendingReasoning = ''
+        useChatStore.getState().appendReasoningChunk(rbuf)
+      }
     }
 
     // Filter all incoming chat events by the active conversation so that
@@ -52,6 +73,11 @@ export function useChat(): void {
     window.api.chat.onChunk((e) => {
       if (!matchesActive(e)) return
       queueChunk(e.content)
+    })
+
+    window.api.chat.onReasoning((e) => {
+      if (!matchesActive(e)) return
+      queueReasoning(e.content)
     })
 
     window.api.chat.onDone((e) => {

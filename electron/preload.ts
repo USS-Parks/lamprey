@@ -13,6 +13,8 @@ const api = {
     generateTitle: (content: string) => ipcRenderer.invoke('chat:generateTitle', content),
     onChunk: (cb: (e: { conversationId: string; content: string }) => void) =>
       ipcRenderer.on('chat:chunk', (_, e) => cb(e)),
+    onReasoning: (cb: (e: { conversationId: string; content: string }) => void) =>
+      ipcRenderer.on('chat:reasoning', (_, e) => cb(e)),
     onDone: (cb: (e: { conversationId: string; message: unknown }) => void) =>
       ipcRenderer.on('chat:done', (_, e) => cb(e)),
     onError: (cb: (e: { conversationId: string; error: string }) => void) =>
@@ -31,6 +33,7 @@ const api = {
     offAll: () => {
       ;[
         'chat:chunk',
+        'chat:reasoning',
         'chat:done',
         'chat:error',
         'chat:tool-call',
@@ -45,6 +48,7 @@ const api = {
       conversationId: string,
       cbs: {
         onChunk?: (e: { conversationId: string; content: string }) => void
+        onReasoning?: (e: { conversationId: string; content: string }) => void
         onDone?: (e: { conversationId: string; message: unknown }) => void
         onError?: (e: { conversationId: string; error: string }) => void
       }
@@ -59,6 +63,7 @@ const api = {
         handlers.push([channel, h])
       }
       wire('chat:chunk', cbs.onChunk)
+      wire('chat:reasoning', cbs.onReasoning)
       wire('chat:done', cbs.onDone)
       wire('chat:error', cbs.onError)
       return () => {

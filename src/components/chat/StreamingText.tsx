@@ -7,20 +7,41 @@ import codingDark from '@assets/Lamprey Coding Icon Dark View.png'
 
 interface StreamingTextProps {
   content: string
+  /** Live chain-of-thought streamed off the provider's reasoning channel
+   *  (DeepSeek/OpenRouter). When supplied, drives the ReasoningBlock —
+   *  takes precedence over the legacy inline-<think> parse path. */
+  reasoning?: string
+  /** True while the model is still emitting reasoning deltas. Keeps the
+   *  ReasoningBlock auto-expanded with a pulsing "thinking…" badge. */
+  isThinking?: boolean
   model?: string
 }
 
-export function StreamingText({ content, model }: StreamingTextProps) {
+export function StreamingText({ content, reasoning, isThinking, model }: StreamingTextProps) {
   const codingIconUrl = useThemedIcon(codingLight, codingDark)
-  const isReasoner = model === 'deepseek-reasoner'
-  const { reasoning, body, isThinking } = isReasoner
-    ? parseReasoning(content)
-    : { reasoning: null as string | null, body: content, isThinking: false }
+
+  // Prefer the provider-side reasoning channel when the caller supplied it.
+  // Fall back to the legacy inline-<think> parse for any model that still
+  // smuggles reasoning into the visible content stream.
+  let displayReasoning: string | null = null
+  let displayBody = content
+  let stillThinking = !!isThinking
+
+  if (reasoning && reasoning.length > 0) {
+    displayReasoning = reasoning
+  } else if (model === 'deepseek-reasoner') {
+    const parsed = parseReasoning(content)
+    displayReasoning = parsed.reasoning
+    displayBody = parsed.body
+    stillThinking = parsed.isThinking
+  }
 
   return (
     <div>
-      {reasoning && <ReasoningBlock content={reasoning} isThinking={isThinking} />}
-      <MarkdownRenderer content={body} />
+      {displayReasoning && (
+        <ReasoningBlock content={displayReasoning} isThinking={stillThinking} />
+      )}
+      <MarkdownRenderer content={displayBody} />
       <img
         src={codingIconUrl}
         alt=""

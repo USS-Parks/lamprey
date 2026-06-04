@@ -550,7 +550,10 @@ export async function runChatRound(
         onChunk: (chunk) => {
           emitChatEvent('chat:chunk', { conversationId, content: chunk })
         },
-        onDone: async (fullContent, toolCalls) => {
+        onReasoning: (chunk) => {
+          emitChatEvent('chat:reasoning', { conversationId, content: chunk })
+        },
+        onDone: async (fullContent, toolCalls, fullReasoning) => {
           if (!toolCalls || toolCalls.length === 0) {
             let finalContent = fullContent
             let draft: string | undefined
@@ -609,7 +612,8 @@ export async function runChatRound(
               role: 'assistant',
               content: finalContent,
               model,
-              draft
+              draft,
+              reasoning: fullReasoning
             })
             if (!suppressDoneEvent) {
               emitPhase(conversationId, 'done')
@@ -632,7 +636,8 @@ export async function runChatRound(
             role: 'assistant',
             content: fullContent || '',
             model,
-            toolCalls: persistedToolCalls
+            toolCalls: persistedToolCalls,
+            reasoning: fullReasoning
           })
 
           messages.push({

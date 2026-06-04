@@ -756,7 +756,7 @@ export function ChatInput({ onSend, onCancel, isStreaming, disabled }: ChatInput
         // Track 2 / C4 — renderer-side clear: drop visible messages but
         // keep the conversation row. The `clear.md` template is hidden in
         // the palette and only resolves through IPC for harness use.
-        useChatStore.setState({ messages: [], streamingContent: '' })
+        useChatStore.setState({ messages: [], streamingContent: '', streamingReasoning: '' })
         toast.info('Cleared visible messages.')
         return true
       }

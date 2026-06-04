@@ -16,6 +16,10 @@ export interface Message {
    *  shows a CompressedRegionPill at the boundary instead of the
    *  original message body. */
   compressedInto?: string
+  /** DeepSeek reasoner / V4-Flash thinking-mode chain-of-thought captured
+   *  off the streaming `delta.reasoning_content` channel and persisted
+   *  alongside the visible body. Rendered by ReasoningBlock. */
+  reasoning?: string
 }
 
 export type ConversationKind = 'local' | 'cloud' | 'worktree'
