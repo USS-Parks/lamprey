@@ -11,6 +11,10 @@ vi.mock('electron', () => ({
   BrowserWindow: { getAllWindows: () => [] }
 }))
 
+vi.mock('@electron-toolkit/utils', () => ({
+  is: { dev: true }
+}))
+
 vi.mock('./conversation-store', () => ({
   saveMessage: (msg: { id: string; conversationId: string; role: string; content: string; model?: string }) => ({
     id: msg.id,

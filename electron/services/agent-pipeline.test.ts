@@ -10,7 +10,12 @@ const recorded = vi.hoisted(() => ({
 }))
 
 vi.mock('electron', () => ({
+  app: { getPath: () => process.cwd() },
   BrowserWindow: { getAllWindows: () => [] }
+}))
+
+vi.mock('@electron-toolkit/utils', () => ({
+  is: { dev: true }
 }))
 
 vi.mock('./conversation-store', () => ({

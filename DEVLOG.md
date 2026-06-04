@@ -1,5 +1,33 @@
 # Lamprey Harness Dev Log
 
+## [Track 1 — Prompt A1] Subagent fork primitive (extensible types) — 2026-06-03
+
+**Files changed:**
+- `electron/services/subagent-types.ts` (new) — built-in registry (Explore / Plan / code-reviewer / general) + filesystem-discovered user types from `userData/subagent-types/<name>.md`. Mirrors the skill-loader pattern: chokidar watcher, gray-matter frontmatter parser, dev/prod path resolution, electron broadcast on change. Frontmatter `{description, allowedTools, systemPrompt?}` + body as systemPrompt fallback. User types shadow built-ins of the same name.
+- `electron/services/subagent-runner.ts` (new) — `forkAgent({prompt, agentType, allowedTools?, schema?, modelId?, parentRunId, isolation?, signal?, timeoutMs?, ...}, deps)` returns `{runId, abort, promise}`. Pure executor: `deps.runner` is the chat-provider seam, `deps.parentTools` is the tool-view seam, `deps.loadType` is the type-resolver seam. Tool intersection via `resolveAllowedTools(parent ∩ type ∩ override)` with `'*'` sentinel meaning "no narrowing." Schema mode appends an inline schema instruction + parses + validates via minimal structural check (B5 will swap in the retry loop). Honors per-fork timeout and parent-signal coupling. `isolation` + `runInBackground` accepted on the API but no-op in A1 (A2 wires lifecycle, A3 wires worktree).
+- `electron/services/multi-agent-run-tool.ts` (refactor) — public API fully preserved (`validateMultiAgentArgs`, `buildSubAgentMessages`, `executeMultiAgentRun`, all constants and types). Internal per-task spawn now delegates to `forkAgent` with an in-module type resolver that synthesises def-shapes for the multi-agent roles (planner/reader/verifier/reviewer/coworker) without polluting the user-visible registry. Tool-use detection + synthesisNotes + recursion guard kept as-is.
+- `electron/services/subagent-types.test.ts` (new) — 14 tests covering parse, frontmatter overrides, name-from-filename fallback, missing-field rejection, built-in completeness, user-type shadowing.
+- `electron/services/subagent-runner.test.ts` (new) — 23 tests covering tool intersection, message build, schema validate, all four verify-gate happy paths (Explore + tool subset, schema → object, parent tool not visible to child, user-registered `security-auditor` honored), and every error class (TypeNotFound, ContextTooLarge, SchemaError on bad-JSON + missing-required, parent-signal abort, timeout, manual abort).
+- `electron/services/agent-pipeline.test.ts` + `chat-correlation-events.test.ts` — added `vi.mock('@electron-toolkit/utils', ...)` since both transitively load `subagent-types` now via the refactor. Existing pattern from `skill-loader.test.ts`.
+
+**Verify gate:**
+- `tsc --noEmit -p tsconfig.node.json` ✓
+- `tsc --noEmit -p tsconfig.web.json` ✓
+- `vitest run` ✓ — **862 passed, 5 skipped (was 822 baseline → +40 net, 0 regressions)**
+- Verify-gate bullets covered:
+  - fork Explore with `[read_file, grep_search, glob_search]` returns string ✓
+  - fork with schema returns conforming object ✓
+  - parent's added tool (`apply_patch`) not visible to child ✓
+  - drop `security-auditor.md` and fork by name → custom system prompt + allowed tools honored ✓ (via direct `parseSubagentTypeFile` + `forkAgent` with a custom resolver; the chokidar end-to-end path is exercised manually after Electron boot — **user-verification-needed** for the live watch + electron broadcast)
+  - existing multi-agent tests still green ✓
+
+**Notes:**
+- One real regression caught + fixed mid-verify: my first cut threw `SubagentAbortError` on a post-runner abort check, which broke `agent-pipeline.test.ts > bails out early when the signal is aborted before the Coder stage`. The old multi-agent executor accepted the runner's clean return even if the signal raced an abort right after — preserved that behavior by moving abort/timeout classification entirely into the catch path.
+- Schema validation in A1 is minimal-but-actionable (`required` + per-property `type` check). B5 will turn this into a retry-with-validation-error-appended loop and account schema retries against the budget.
+- `isolation` + `runInBackground` are wired through `ForkAgentOptions` and `ForkAgentRunnerInput` (the runner can read `worktreePath`) but are no-ops in A1 — A2 wires the lifecycle / `agent_runs` table + notify event, A3 wires the worktree spawn + auto-cleanup.
+
+**Commit:** see `git log --grep "A1 fork primitive"` (one commit per prompt; SHA elided to avoid amend loop on self-reference).
+
 ## Parity Phase planning — three-track roster authored (2026-06-03)
 
 Planning-only turn. No source changes; one new planning artifact landed.
