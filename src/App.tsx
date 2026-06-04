@@ -11,6 +11,8 @@ import { WorktreeManagerModal } from '@/components/worktree/WorktreeManagerModal
 import { ApiKeyModal } from '@/components/settings/ApiKeyModal'
 import { SettingsDialog } from '@/components/settings/SettingsDialog'
 import { ToolApprovalModal } from '@/components/tools/ToolApprovalModal'
+import { approvalKey, routeApproval } from '@/lib/approval-routing'
+import { useInlineApprovalsStore } from '@/stores/inline-approvals-store'
 import { MemoryModal } from '@/components/memory/MemoryModal'
 import { ToastContainer } from '@/components/ui/Toast'
 import { FloatingEnvironmentCard } from '@/components/workspace/FloatingEnvironmentCard'
@@ -43,6 +45,12 @@ function App(): React.ReactElement {
   const [artifactType, setArtifactType] = useState<string | null>(null)
   const [artifactSource, setArtifactSource] = useState<string | null>(null)
   const [approvalRequest, setApprovalRequest] = useState<ToolApprovalRequest | null>(null)
+  // Fluidity J5: inline approval chips for previously-approved,
+  // non-destructive tool calls. The set tracks (server, tool) pairs we've
+  // seen approved at least once this session — first sighting still gets
+  // the heavyweight modal so the user reads the descriptor + args once.
+  const approvedSeenRef = useRef<Set<string>>(new Set())
+  const pushInlineApproval = useInlineApprovalsStore((s) => s.push)
   const loadConversations = useChatStore((s) => s.loadConversations)
   const loadModels = useModelStore((s) => s.loadModels)
   const loadSettings = useSettingsStore((s) => s.loadSettings)
@@ -145,11 +153,25 @@ function App(): React.ReactElement {
   useKeyboardShortcuts()
   useShellSignals()
 
-  const handleArtifactOpen = useCallback((type: string, source: string) => {
-    setArtifactType(type)
-    setArtifactSource(source)
-    setArtifactOpen(true)
-  }, [])
+  const autoOpenRightPanel = useUiStore((s) => s.autoOpenRightPanel)
+  const hydrateRightPanelForConv = useUiStore((s) => s.hydrateRightPanelForConv)
+  const activeConversationId = useChatStore((s) => s.activeConversationId)
+
+  const handleArtifactOpen = useCallback(
+    (type: string, source: string) => {
+      setArtifactType(type)
+      setArtifactSource(source)
+      setArtifactOpen(true)
+      // Fluidity J11: artifact emit is a trigger that should auto-open
+      // the right panel. The trigger key combines type + source so two
+      // different artifacts each get one auto-open attempt.
+      const convId = useChatStore.getState().activeConversationId
+      if (convId) {
+        autoOpenRightPanel(convId, `artifact:${type}:${source}`)
+      }
+    },
+    [autoOpenRightPanel]
+  )
 
   useEffect(() => {
     ;(window as unknown as Record<string, unknown>).__openArtifact = handleArtifactOpen
@@ -166,6 +188,22 @@ function App(): React.ReactElement {
       void window.api.artifact?.hide?.()
     }
   }, [activeTool])
+
+  // Fluidity J11: a tool launch is a trigger that should auto-open the
+  // right panel — same one-pop-per-trigger rule the artifact emit uses.
+  useEffect(() => {
+    if (!activeTool) return
+    const convId = useChatStore.getState().activeConversationId
+    if (!convId) return
+    autoOpenRightPanel(convId, `tool:${activeTool}`)
+  }, [activeTool, autoOpenRightPanel])
+
+  // Fluidity J11: hydrate the global collapsed flag from the per-conv map
+  // every time the active conversation changes. New conversations seed
+  // to collapsed; existing ones restore their last manual / auto state.
+  useEffect(() => {
+    hydrateRightPanelForConv(activeConversationId)
+  }, [activeConversationId, hydrateRightPanelForConv])
 
   // Narrow-viewport drawer: Esc closes (collapses the right panel) so the
   // chat takes the full width back. Only active while the drawer is open.
@@ -189,10 +227,19 @@ function App(): React.ReactElement {
   useEffect(() => {
     if (!window.api) return
     const unsubscribe = window.api.tools.onApprovalRequired((e: unknown) => {
-      setApprovalRequest(e as ToolApprovalRequest)
+      const req = e as ToolApprovalRequest
+      const surface = routeApproval(
+        { serverId: req.serverId, name: req.name, risks: req.risks ?? [] },
+        { approvedSeen: approvedSeenRef.current }
+      )
+      if (surface === 'chip') {
+        pushInlineApproval(req)
+      } else {
+        setApprovalRequest(req)
+      }
     })
     return unsubscribe
-  }, [])
+  }, [pushInlineApproval])
 
   useEffect(() => {
     if (!window.api) return
@@ -323,6 +370,9 @@ function App(): React.ReactElement {
         <ToolApprovalModal
           request={approvalRequest}
           onResolved={() => setApprovalRequest(null)}
+          onAllowed={(req) => {
+            approvedSeenRef.current.add(approvalKey(req.serverId, req.name))
+          }}
         />
       )}
 

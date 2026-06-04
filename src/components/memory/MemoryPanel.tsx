@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMemoryStore } from '@/stores/memory-store'
+import { useUiStore } from '@/stores/ui-store'
 import { toast } from '@/stores/toast-store'
 import type { MemoryFile, MemoryType } from '@/lib/types'
 import { MemoryLinkGraph } from './MemoryLinkGraph'
@@ -14,7 +15,7 @@ const TAB_LABEL: Record<TabKey, string> = { all: 'All', ...MEMORY_TYPE_LABELS }
 interface EditorState {
   open: boolean
   initial?: MemoryFile | null
-  draft?: { name?: string; type?: MemoryType; body?: string }
+  draft?: { name?: string; type?: MemoryType; body?: string; description?: string }
 }
 
 export function MemoryPanel() {
@@ -30,6 +31,18 @@ export function MemoryPanel() {
   const [consolidating, setConsolidating] = useState(false)
   const [editor, setEditor] = useState<EditorState>({ open: false })
   const fileInputRef = useRef<HTMLInputElement>(null)
+  // Fluidity J4 — when ChatInput's `#…` shortcut bumps memorySeedToken,
+  // auto-open the editor with the description prefilled. The seed is
+  // consumed atomically so a re-render won't reopen the editor.
+  const memorySeedToken = useUiStore((s) => s.memorySeedToken)
+  useEffect(() => {
+    if (memorySeedToken === 0) return
+    const description = useUiStore.getState().consumeMemorySeedDescription()
+    setEditor({
+      open: true,
+      draft: { type: 'feedback', description }
+    })
+  }, [memorySeedToken])
 
   // Live `memory:changed` subscription so external edits and other
   // panel writes refresh the view without forcing a parent reload.

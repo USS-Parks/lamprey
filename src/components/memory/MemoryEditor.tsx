@@ -6,7 +6,14 @@ import { MemoryLinkPicker } from './MemoryLinkPicker'
 
 interface Props {
   initial?: MemoryFile | null
-  initialDraft?: { name?: string; type?: MemoryType; body?: string }
+  initialDraft?: {
+    name?: string
+    type?: MemoryType
+    body?: string
+    /** Fluidity J4: pre-fills the one-line description slot when the
+     *  editor is opened via the `#…` ChatInput shortcut. */
+    description?: string
+  }
   onClose: () => void
   onDeleted?: () => void
 }
@@ -26,7 +33,9 @@ export function MemoryEditor({ initial, initialDraft, onClose, onDeleted }: Prop
   const editing = Boolean(initial)
   const [name, setName] = useState(initial?.name ?? initialDraft?.name ?? '')
   const [type, setType] = useState<MemoryType>(initial?.type ?? initialDraft?.type ?? 'feedback')
-  const [description, setDescription] = useState(initial?.description ?? '')
+  const [description, setDescription] = useState(
+    initial?.description ?? initialDraft?.description ?? ''
+  )
   const [body, setBody] = useState(initial?.body ?? initialDraft?.body ?? '')
   const [saving, setSaving] = useState(false)
   const bodyRef = useRef<HTMLTextAreaElement | null>(null)

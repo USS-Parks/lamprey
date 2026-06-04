@@ -3,6 +3,7 @@ import { useModelStore } from '@/stores/model-store'
 import { useWorkflowsStore } from '@/stores/workflows-store'
 import { useRagStore } from '@/stores/rag-store'
 import { useChatStore } from '@/stores/chat-store'
+import { contextPercent, contextTone, type ContextTone } from '@/lib/context-meter'
 
 // H6 — Persistent status line at the bottom of the main window.
 //
@@ -12,7 +13,14 @@ import { useChatStore } from '@/stores/chat-store'
 // loaded from `userData/statusline.md`. Unknown slot ids in the user's file
 // are dropped silently in `electron/services/statusline-config.ts`.
 
-type SlotId = 'model' | 'workflow' | 'wakeups' | 'tokens' | 'rag'
+type SlotId =
+  | 'model'
+  | 'context'
+  | 'workflow'
+  | 'branch'
+  | 'wakeups'
+  | 'tokens'
+  | 'rag'
 
 interface StatusLineConfig {
   slots: SlotId[]
@@ -21,10 +29,12 @@ interface StatusLineConfig {
 }
 
 const DEFAULT_CONFIG: StatusLineConfig = {
-  slots: ['model', 'workflow', 'wakeups', 'tokens', 'rag'],
+  slots: ['model', 'context', 'workflow', 'branch', 'wakeups'],
   formats: {
     model: '{name}',
+    context: '{percent}% ctx',
     workflow: '{label}',
+    branch: '{name}',
     wakeups: '{count} wake-up{plural}',
     tokens: '{kilo}k tokens',
     rag: '{count} corpus'
@@ -47,6 +57,10 @@ function pluralize(count: number): string {
 export function StatusLine() {
   const [config, setConfig] = useState<StatusLineConfig>(DEFAULT_CONFIG)
   const [pendingWakeups, setPendingWakeups] = useState<number>(0)
+  // Fluidity J8: current git branch for the `branch` slot. Polled on mount
+  // and whenever the working folder changes; cheap enough at 30s intervals
+  // to not need a dedicated IPC channel.
+  const [currentBranch, setCurrentBranch] = useState<string | null>(null)
 
   const activeModelId = useModelStore((s) => s.activeModel)
   const models = useModelStore((s) => s.models)
@@ -70,6 +84,35 @@ export function StatusLine() {
     })
     return () => {
       cancelled = true
+    }
+  }, [])
+
+  // Fluidity J8: load current branch from review:branches IPC. Polled at
+  // 30s so a branch switch outside Lamprey shows up reasonably soon.
+  useEffect(() => {
+    let cancelled = false
+    function refresh(): void {
+      const reviewApi = (window.api as { review?: { branches?: (a?: { cwd?: string }) => Promise<unknown> } })?.review
+      if (!reviewApi?.branches) return
+      void reviewApi.branches().then((res: unknown) => {
+        if (cancelled) return
+        const r = res as {
+          success?: boolean
+          data?: { branches?: Array<{ name: string; current: boolean }> }
+        }
+        if (!r?.success || !r?.data?.branches) {
+          setCurrentBranch(null)
+          return
+        }
+        const cur = r.data.branches.find((b) => b.current)
+        setCurrentBranch(cur ? cur.name : null)
+      })
+    }
+    refresh()
+    const interval = setInterval(refresh, 30_000)
+    return () => {
+      cancelled = true
+      clearInterval(interval)
     }
   }, [])
 
@@ -173,6 +216,35 @@ export function StatusLine() {
         const text = applyFormat(fmt, { spent: tokenSpend, kilo, k: kilo })
         return <Slot key={slot} tone="tokens" label={text} title={`~${tokenSpend} tokens this session`} />
       }
+      case 'context': {
+        // Hide the slot when the active model's context window is unknown,
+        // rather than showing 0% or NaN%.
+        const percent = contextPercent(tokenSpend, modelInfo?.contextWindow)
+        if (percent === null) return null
+        const tone = contextTone(percent)
+        const text = applyFormat(fmt, { percent, spent: tokenSpend, window: modelInfo?.contextWindow ?? '' })
+        const title = `${tokenSpend.toLocaleString()} tokens of ~${(modelInfo?.contextWindow ?? 0).toLocaleString()} window (${percent}%)`
+        return (
+          <ContextSlot
+            key={slot}
+            label={text || `${percent}% ctx`}
+            title={title}
+            tone={tone}
+          />
+        )
+      }
+      case 'branch': {
+        if (!currentBranch) return null
+        const text = applyFormat(fmt, { name: currentBranch })
+        return (
+          <Slot
+            key={slot}
+            tone="branch"
+            label={text || currentBranch}
+            title={`Current git branch: ${currentBranch}`}
+          />
+        )
+      }
       case 'rag': {
         if (ragAttached === 0) return null
         const text = applyFormat(fmt, {
@@ -220,7 +292,7 @@ export function StatusLine() {
 }
 
 interface SlotProps {
-  tone: 'model' | 'workflow' | 'wakeups' | 'tokens' | 'rag'
+  tone: 'model' | 'workflow' | 'wakeups' | 'tokens' | 'rag' | 'branch'
   label: string
   title: string
   onClick?: () => void
@@ -231,7 +303,8 @@ const TONE_BG: Record<SlotProps['tone'], string> = {
   workflow: 'bg-[var(--accent)]/15 text-[var(--accent)]',
   wakeups: 'bg-amber-500/15 text-amber-600',
   tokens: 'bg-[var(--bg-tertiary)]',
-  rag: 'bg-blue-500/15 text-blue-500'
+  rag: 'bg-blue-500/15 text-blue-500',
+  branch: 'bg-[var(--bg-tertiary)]'
 }
 
 function Slot({ tone, label, title, onClick }: SlotProps) {
@@ -248,5 +321,36 @@ function Slot({ tone, label, title, onClick }: SlotProps) {
     >
       {label}
     </Tag>
+  )
+}
+
+// Fluidity J8: dedicated slot variant for the context% indicator — the
+// background + text tone change at the 70/90% thresholds. Kept separate
+// from `Slot` so the existing TONE_BG map stays a flat lookup.
+function ContextSlot({
+  label,
+  title,
+  tone
+}: {
+  label: string
+  title: string
+  tone: ContextTone
+}) {
+  const cls =
+    tone === 'red'
+      ? 'bg-[var(--error)]/15 text-[var(--error)]'
+      : tone === 'amber'
+      ? 'bg-amber-500/15 text-amber-600'
+      : 'bg-[var(--bg-tertiary)]'
+  return (
+    <span
+      title={title}
+      data-tone={tone}
+      className={
+        'inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium ' + cls
+      }
+    >
+      {label}
+    </span>
   )
 }

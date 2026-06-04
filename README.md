@@ -68,6 +68,22 @@ Lamprey now includes the UI Mastery parity surfaces:
 - **Hooks and skills management**: hook templates, sandbox test payloads, inline errors, skill hot-reload status, frontmatter validation, dry-run preview, and URL import.
 - **Status line and AskUserQuestion UI**: configurable bottom status line plus chip-style user-choice modal for agents and workflows.
 
+### Fluidity layer
+
+Eleven micro-interactions that close the "feel" gap with Claude Code:
+
+- **ESC cancels mid-stream** and **↑ / ↓ recalls past user prompts** in the input bar (caret-on-line-1 + no-selection guard so multi-line drafts still navigate natively).
+- **Shift+Tab cycles** permission / plan modes — `default → auto-review → full → plan → default` — with a slim animated mode label under the bar. Only claimed when the textarea is empty so native focus navigation still works mid-draft.
+- **`@file` inline mention** opens a workspace-file popover ranked by name overlap (extension matches dominate); Tab/Enter inserts a collapsed `@basename` token and queues the file as a regular attachment.
+- **`#…` memory shortcut** flips the Send pill to "Remember" and routes the typed line into a pre-filled MemoryEditor (confirm-before-save — no silent writes).
+- **Inline approval chips**: previously-approved, non-destructive (server, tool) pairs render as an in-transcript chip with `1`/`2`/`3` keystrokes (Approve / Deny / Always); the modal still owns first-touch and every destructive path.
+- **Auto-collapse tool cards**: successful read/write/network tool cards mount collapsed; failures and destructive successes stay expanded. User toggles override the auto-rule for the life of the card.
+- **Inline subagent group**: `multi_agent_run` tool calls render as nested chevron rows under one "Multi-agent run" header instead of a banner.
+- **Status line context%**: replaces the tokens slot with `N% ctx` driven by `tokenSpend / activeModel.contextWindow`, tinting amber ≥ 70%, red ≥ 90%. New `branch` slot reads the current git branch.
+- **Notification consolidation**: async background events for the active conversation surface as inline `TranscriptNotice` rows; toasts are reserved for off-conversation events and errors.
+- **`path:line` autolinking**: bare `src/foo.ts:42` references in assistant prose render as clickable, dotted-underline spans that open the file panel at the right line.
+- **Right panel default-collapsed**: new conversations start with the chat full-width; the panel auto-opens on artifact emit or tool launch, per-trigger and per-conversation, so a single dismiss sticks for that trigger until a different one fires.
+
 ### Chat surface
 
 - **Streaming markdown** with syntax-highlighted code (Shiki), reasoning blocks (DeepSeek R1), token ticker, and inline thinking/coding animations (the lamprey icon swap).

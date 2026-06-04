@@ -13,8 +13,7 @@ vi.mock('electron', () => ({
 import {
   DEFAULT_STATUSLINE_CONFIG,
   loadStatusLineConfig,
-  saveStatusLineConfig,
-  STATUSLINE_ALL_SLOTS
+  saveStatusLineConfig
 } from './statusline-config'
 
 let dir: string
@@ -71,11 +70,18 @@ slots: [model, model, rag, evil]
     expect(cfg.slots).toEqual(['model', 'rag'])
   })
 
-  it('falls back to defaults when slots is empty', () => {
+  it('falls back to the default-visible set when slots is empty', () => {
     const path = join(dir, 'statusline.md')
     writeFileSync(path, `---\nslots: []\n---\n`, 'utf8')
     const cfg = loadStatusLineConfig(path)
-    expect(cfg.slots).toEqual(STATUSLINE_ALL_SLOTS)
+    // Empty user override behaves the same as no-file: default-visible set,
+    // not every registered slot. Fluidity J8 added `context` + `branch` and
+    // dropped `tokens` + `rag` from the default render order.
+    expect(cfg.slots).toEqual(DEFAULT_STATUSLINE_CONFIG.slots)
+    expect(cfg.slots).toContain('context')
+    expect(cfg.slots).toContain('branch')
+    expect(cfg.slots).not.toContain('tokens')
+    expect(cfg.slots).not.toContain('rag')
   })
 })
 

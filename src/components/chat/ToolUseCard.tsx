@@ -4,9 +4,9 @@ import type { ToolRisk } from '@/lib/types'
 import {
   RISK_LABEL,
   RISK_TONE,
+  collapsedSummary,
   formatElapsed,
-  previewResult,
-  summarizeArgs
+  previewResult
 } from '@/lib/tool-card-helpers'
 
 // Provider letter for the leading badge. Three explicit entries match the
@@ -99,7 +99,12 @@ function useLiveElapsed(startedAt: number | undefined, active: boolean): string 
 }
 
 export function ToolUseCard({ toolCall }: ToolUseCardProps) {
-  const [expanded, setExpanded] = useState(false)
+  // Fluidity J6: auto-collapse on success unless the tool is destructive
+  // (or the result is an error). Failures + destructive successes mount
+  // expanded — those are the cases a reviewer needs to see without a
+  // click. User toggles override the auto-rule for the life of the card,
+  // ephemerally — collapse intent isn't pushed to a store.
+  const [userToggled, setUserToggled] = useState<boolean | null>(null)
   const {
     serverId,
     toolName,
@@ -115,6 +120,12 @@ export function ToolUseCard({ toolCall }: ToolUseCardProps) {
   const isError = status === 'error'
   const isDenied = status === 'denied'
   const isRunning = status === 'pending' || status === 'running'
+  const isDestructive = (risks ?? []).includes('destructive')
+  // Auto-expand failures + destructive-success terminal states. Running /
+  // pending / denied stay collapsed (denied result is short; running has
+  // its live elapsed in the header).
+  const autoExpanded = isError || (status === 'success' && isDestructive)
+  const expanded = userToggled !== null ? userToggled : autoExpanded
 
   // Plain-English label first. Fall back to the bare tool name if the
   // descriptor didn't ship a title (unknown / stale entry).
@@ -132,7 +143,7 @@ export function ToolUseCard({ toolCall }: ToolUseCardProps) {
       ? formatElapsed(duration)
       : null
 
-  const argsSummary = summarizeArgs(args)
+  const argsSummary = collapsedSummary(args)
 
   const preview = previewResult(result, { lineCap: 4, charCap: 240 })
 
@@ -153,7 +164,7 @@ export function ToolUseCard({ toolCall }: ToolUseCardProps) {
   return (
     <div className="my-2 mx-auto w-full max-w-[80%]">
       <button
-        onClick={() => setExpanded((v) => !v)}
+        onClick={() => setUserToggled(!expanded)}
         aria-expanded={expanded}
         className={
           'flex w-full items-start gap-2 rounded-lg border bg-[var(--bg-tertiary)] px-3 py-2 text-left transition-colors hover:bg-[var(--bg-secondary)] ' +

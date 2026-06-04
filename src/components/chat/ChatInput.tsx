@@ -8,8 +8,25 @@ import { toast } from '@/stores/toast-store'
 import { useThemedIcon } from '@/lib/themed-icon'
 import { ApiKeyModal } from '@/components/settings/ApiKeyModal'
 import { SlashCommandPalette } from './SlashCommandPalette'
+import { AtFileMention } from './AtFileMention'
 import { useSlashCommandsStore } from '@/stores/slash-commands-store'
 import { usePlanStore } from '@/stores/plan-store'
+import { detectAtMention } from '@/lib/file-rank'
+import { detectMemoryShortcut } from '@/lib/memory-shortcut'
+import {
+  emptyHistoryState,
+  historyDown,
+  historyReset,
+  historyUp,
+  type PromptHistoryState
+} from '@/lib/prompt-history'
+import {
+  currentSlot,
+  nextMode,
+  slotLabel,
+  type ModeSlot
+} from '@/lib/mode-cycle'
+import { usePlanMode } from '@/hooks/usePlanMode'
 import type { ModelInfo, ProcessedFile } from '@/lib/types'
 
 import defaultAccessLight from '@assets/Lamprey Default Access Icon.png'
@@ -627,10 +644,14 @@ export function ChatInput({ onSend, onCancel, isStreaming, disabled }: ChatInput
   const [pasteOffer, setPasteOffer] = useState<string | null>(null)
   const [keyPromptProvider, setKeyPromptProvider] = useState<string | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  // Fluidity J1: ↑/↓ walks past user prompts. Index tracking lives in a ref
+  // so re-renders triggered by setContent() don't reset our position.
+  const historyRef = useRef<PromptHistoryState>(emptyHistoryState)
   const addAttachments = useChatStore((s) => s.addAttachments)
   const setProcessing = useChatStore((s) => s.setAttachmentsProcessing)
   const composeSeedToken = useUiStore((s) => s.composeSeedToken)
   const consumeComposeDraft = useUiStore((s) => s.consumeComposeDraft)
+  const seedMemoryDescription = useUiStore((s) => s.seedMemoryDescription)
   const openSettings = useUiStore((s) => s.openSettings)
   const refreshProviders = useProvidersStore((s) => s.refresh)
   const hasKey = useProvidersStore((s) => s.hasKey)
@@ -751,6 +772,18 @@ export function ChatInput({ onSend, onCancel, isStreaming, disabled }: ChatInput
     }
   }
 
+  // Fluidity J3: @file mention popover state. The popover is independent
+  // of the slash palette and triggers when detectAtMention finds an
+  // `@<token>` immediately preceding the caret (not inside a code fence).
+  // workspaceFiles caches walkProject() output for the popover to rank
+  // against — same shape QuickOpenPalette uses, kept local here so the
+  // input bar doesn't depend on the docked file panel's lifecycle.
+  const [workspaceFiles, setWorkspaceFiles] = useState<string[] | null>(null)
+  const [workspaceRoot, setWorkspaceRoot] = useState<string | null>(null)
+  const [workspaceLoading, setWorkspaceLoading] = useState(false)
+  const [atMentionDismissed, setAtMentionDismissed] = useState(false)
+  const [caretPos, setCaretPos] = useState<number>(0)
+
   // Track 2 / C4 — slash palette state. The palette appears whenever the
   // input begins with '/' AND has no newline (so a code block beginning
   // with '/' does not trip it). The user can dismiss with Esc; we close
@@ -775,6 +808,78 @@ export function ChatInput({ onSend, onCancel, isStreaming, disabled }: ChatInput
     requestAnimationFrame(() => textareaRef.current?.focus())
   }
 
+  // Fluidity J3 — derive the active @-mention token from (content, caret).
+  // Recomputed on every render; cheap, and avoids missing a token when the
+  // user clicks elsewhere in the textarea.
+  const mention = detectAtMention(content, caretPos)
+  const showAtMention = mention !== null && !atMentionDismissed && !isStreaming && !disabled
+
+  // Lazy-load the workspace file index the first time the popover opens.
+  useEffect(() => {
+    if (!showAtMention) return
+    if (workspaceFiles !== null || workspaceLoading) return
+    if (!window.api?.files) return
+    let cancelled = false
+    setWorkspaceLoading(true)
+    void (async () => {
+      try {
+        const wd = await window.api.files.getWorkdir()
+        if (cancelled || !wd.success || !wd.data) {
+          if (!cancelled) setWorkspaceLoading(false)
+          return
+        }
+        const root = wd.data.path
+        const w = await window.api.files.walkProject(root)
+        if (cancelled) return
+        if (w.success) {
+          const data = w.data as { files: string[] }
+          setWorkspaceFiles(data.files)
+          setWorkspaceRoot(root)
+        }
+      } finally {
+        if (!cancelled) setWorkspaceLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [showAtMention, workspaceFiles, workspaceLoading])
+
+  const applyAtMention = (relPath: string) => {
+    if (!mention) return
+    const sep = workspaceRoot && workspaceRoot.includes('\\') ? '\\' : '/'
+    const fullPath = workspaceRoot ? `${workspaceRoot}${sep}${relPath}` : relPath
+    const basename = relPath.split(/[\\/]/).pop() ?? relPath
+    // Replace the @<token> run with a collapsed @<basename> in the textarea.
+    const next = `${content.slice(0, mention.start)}@${basename} ${content.slice(mention.end)}`
+    setContent(next)
+    setAtMentionDismissed(false)
+    // Process + attach the picked file via the existing pipeline so the
+    // next send carries its content as a ProcessedFile attachment.
+    if (window.api?.files?.process) {
+      setProcessing(true)
+      void window.api.files
+        .process([fullPath])
+        .then((res) => {
+          if (res.success) addAttachments(res.data as ProcessedFile[])
+          else if (res.error) toast.error(`Attach failed: ${res.error}`)
+        })
+        .finally(() => setProcessing(false))
+    }
+    requestAnimationFrame(() => {
+      const ta = textareaRef.current
+      if (!ta) return
+      const newCaret = mention.start + basename.length + 2 // "@" + name + " "
+      ta.focus()
+      ta.setSelectionRange(newCaret, newCaret)
+      setCaretPos(newCaret)
+    })
+  }
+
+  // Fluidity J4 — derive memory-write mode from the current content.
+  // Pure detector lives in @/lib/memory-shortcut; this is just the wiring.
+  const memoryShortcut = detectMemoryShortcut(content)
+
   const handleSubmit = () => {
     const trimmed = content.trim()
     if (!trimmed || isStreaming || disabled) return
@@ -782,11 +887,22 @@ export function ChatInput({ onSend, onCancel, isStreaming, disabled }: ChatInput
       setKeyPromptProvider(activeProvider)
       return
     }
+    // Fluidity J4 — `#…` opens MemoryEditor with the description prefilled
+    // instead of dispatching as a normal chat turn. The editor is the
+    // confirm-before-save step required by the feedback_no_fake_polish
+    // invariant: we never write memory silently.
+    if (memoryShortcut) {
+      seedMemoryDescription(memoryShortcut.description)
+      setContent('')
+      historyRef.current = emptyHistoryState
+      return
+    }
     if (trimmed.startsWith('/')) {
       void handleSlashCommand(trimmed).then((handled) => {
         if (handled) {
           setContent('')
           setSlashPaletteOpen(true)
+          historyRef.current = emptyHistoryState
         }
       })
       return
@@ -797,15 +913,112 @@ export function ChatInput({ onSend, onCancel, isStreaming, disabled }: ChatInput
       : trimmed
     onSend(final)
     setContent('')
+    historyRef.current = emptyHistoryState
   }
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
+  // Fluidity J2: Shift+Tab walks default → auto-review → full → plan → default.
+  // permissionsMode + the legacy planMode flag both update unconditionally so
+  // the existing PermissionsDropdown + plan banner stay in sync; if an active
+  // conversation exists, plan transitions also drive the real IPC gate via
+  // usePlanMode so persistence (conversations.plan_mode_active) is honored.
+  const permissionsMode = useUiStore((s) => s.permissionsMode)
+  const planModeLocal = useUiStore((s) => s.planMode)
+  const planModeActive = usePlanStore((s) => s.planModeActive ?? false)
+  const setPermissionsMode = useUiStore((s) => s.setPermissionsMode)
+  const setPlanModeFlag = useUiStore((s) => s.setPlanMode)
+  const planControl = usePlanMode()
+
+  // "Live" slot blends ui-store's local flags with plan-store's IPC truth so
+  // the indicator reflects whichever transitioned most recently.
+  const liveSlot: ModeSlot = currentSlot({
+    permissions: permissionsMode,
+    plan: planModeLocal || planModeActive
+  })
+
+  const cycleMode = () => {
+    const next = nextMode({
+      permissions: permissionsMode,
+      plan: planModeLocal || planModeActive
+    })
+    setPermissionsMode(next.permissions)
+    setPlanModeFlag(next.plan)
+    if (next.plan && !(planModeLocal || planModeActive)) {
+      void planControl.enter()
+    } else if (!next.plan && (planModeLocal || planModeActive)) {
+      void planControl.exit()
+    }
+    toast.info(`Mode: ${slotLabel(currentSlot(next))}`)
+  }
+
+  const moveCaretToEnd = () => {
+    requestAnimationFrame(() => {
+      const ta = textareaRef.current
+      if (!ta) return
+      const len = ta.value.length
+      ta.setSelectionRange(len, len)
+    })
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (pasteOffer) return
-    if (e.key === 'Tab' && e.shiftKey) {
+    // IME composition (e.g. typing kana / pinyin) sends interim keystrokes;
+    // never intercept while a candidate is being assembled.
+    if (e.nativeEvent.isComposing) return
+
+    // Fluidity J1 — ↑ / ↓ walks prompt history when the caret is on line 1
+    // and nothing is selected. Otherwise it falls through to native arrow
+    // navigation so the user can still move inside a multi-line draft.
+    if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+      const ta = e.currentTarget
+      const selStart = ta.selectionStart ?? 0
+      const selEnd = ta.selectionEnd ?? 0
+      const onFirstLine = ta.value.slice(0, selStart).indexOf('\n') === -1
+      const hasSelection = selStart !== selEnd
+      const browsing = historyRef.current.index !== null
+      // While browsing, both arrows are owned by the walker regardless of
+      // caret position — the textarea holds a recalled prompt and the user
+      // is paging through history, not editing.
+      if (browsing || (onFirstLine && !hasSelection)) {
+        const history = useChatStore.getState().getRecentUserPrompts()
+        if (e.key === 'ArrowUp') {
+          if (history.length === 0) return
+          e.preventDefault()
+          const step = historyUp(history, historyRef.current, content)
+          historyRef.current = step.state
+          setContent(step.text)
+          moveCaretToEnd()
+          return
+        }
+        if (e.key === 'ArrowDown' && browsing) {
+          e.preventDefault()
+          const step = historyDown(history, historyRef.current)
+          historyRef.current = step.state
+          setContent(step.text)
+          moveCaretToEnd()
+          return
+        }
+      }
+    }
+
+    // Esc while browsing restores the saved draft. Streaming-cancel and
+    // search-clear are handled globally in useKeyboardShortcuts — we only
+    // claim Esc here when we have local history state to unwind.
+    if (e.key === 'Escape' && historyRef.current.index !== null) {
       e.preventDefault()
-      useUiStore.getState().togglePlanMode()
-      const next = useUiStore.getState().planMode
-      toast.info(`Plan mode ${next ? 'ON' : 'OFF'}`)
+      e.stopPropagation()
+      const step = historyReset(historyRef.current)
+      historyRef.current = step.state
+      setContent(step.text)
+      moveCaretToEnd()
+      return
+    }
+
+    if (e.key === 'Tab' && e.shiftKey) {
+      // Only claim Shift+Tab when the textarea has no content — mid-draft
+      // we leave it for native focus navigation per the J2 spec.
+      if (content.length > 0) return
+      e.preventDefault()
+      cycleMode()
       return
     }
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -951,15 +1164,42 @@ export function ChatInput({ onSend, onCancel, isStreaming, disabled }: ChatInput
             onClose={() => setSlashPaletteOpen(false)}
           />
         )}
+        {/* Fluidity J3 — @file mention popover. Mounted only when the
+            caret sits inside an @<token> run that's NOT inside a code
+            fence. Slash palette and this one are mutually exclusive in
+            practice because a single character can't be both `/` AND
+            `@`-prefixed. */}
+        {showAtMention && mention && (
+          <AtFileMention
+            query={mention.token}
+            files={workspaceFiles ?? []}
+            loading={workspaceLoading}
+            onApply={applyAtMention}
+            onClose={() => setAtMentionDismissed(true)}
+          />
+        )}
         <div className="flex items-start gap-2">
           <textarea
             ref={textareaRef}
             data-chat-input
             value={content}
-            onChange={(e) => setContent(e.target.value)}
+            onChange={(e) => {
+              setContent(e.target.value)
+              setCaretPos(e.target.selectionStart ?? e.target.value.length)
+              // Any keystroke that mutates text is "I'm done browsing":
+              // drop the history index so the next ↑ starts fresh.
+              if (historyRef.current.index !== null) {
+                historyRef.current = emptyHistoryState
+              }
+              // Typing extends/changes the @-token — re-arm the popover
+              // even if the user just dismissed it with Esc.
+              if (atMentionDismissed) setAtMentionDismissed(false)
+            }}
+            onClick={(e) => setCaretPos(e.currentTarget.selectionStart ?? 0)}
+            onSelect={(e) => setCaretPos(e.currentTarget.selectionStart ?? 0)}
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
-            placeholder=""
+            placeholder="Ask anything — ↑ for history"
             rows={1}
             disabled={disabled}
             style={{ paddingLeft: '20px', paddingTop: '8px' }}
@@ -976,6 +1216,22 @@ export function ChatInput({ onSend, onCancel, isStreaming, disabled }: ChatInput
               <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
                 <rect x="4" y="4" width="16" height="16" rx="2" />
               </svg>
+            </button>
+          ) : memoryShortcut ? (
+            // Fluidity J4 — in memory-write mode the Send pill becomes a
+            // "Remember" pill that opens the editor instead of dispatching.
+            <button
+              onClick={handleSubmit}
+              disabled={!canSend}
+              title="Open memory editor (Enter)"
+              aria-label="Remember"
+              data-mode="memory"
+              className="flex h-[60px] shrink-0 items-center justify-center gap-1.5 rounded-full bg-[var(--accent)] px-4 text-sm font-medium text-[var(--bg-primary)] transition-all hover:scale-105 hover:opacity-90 disabled:opacity-50 disabled:hover:scale-100"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+              </svg>
+              Remember
             </button>
           ) : (
             <button
@@ -1025,6 +1281,21 @@ export function ChatInput({ onSend, onCancel, isStreaming, disabled }: ChatInput
 
         <ContextChipRow onAddFile={handlePickerClick} />
       </div>
+
+      {/* Fluidity J2 — slim mode indicator below the input bar. The `key` swap
+          on slot change gives React a fresh element each cycle so the CSS
+          opacity transition replays without needing a keyframe definition. */}
+      <div className="mt-1 flex justify-center">
+        <span
+          key={liveSlot}
+          data-mode-slot={liveSlot}
+          style={{ opacity: 0, animation: 'lamprey-mode-fade 200ms ease-out forwards' }}
+          className="font-mono text-[10px] uppercase tracking-wider text-[var(--text-muted)]"
+        >
+          {slotLabel(liveSlot)} · ⇧⇥ to cycle
+        </span>
+      </div>
+      <style>{`@keyframes lamprey-mode-fade { from { opacity: 0; transform: translateY(-1px) } to { opacity: 1; transform: translateY(0) } }`}</style>
 
       {keyPromptProvider && (
         <ApiKeyModal

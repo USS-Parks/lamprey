@@ -97,6 +97,19 @@ export function previewResult(
 }
 
 /**
+ * Fluidity J6: compact one-line "args" summary capped at 60 characters
+ * with a trailing ellipsis. Used by ToolUseCard's collapsed header shape.
+ * Delegates to summarizeArgs for the "key=value, key=value" format then
+ * caps the overall string so a triple-key argv doesn't push the elapsed
+ * + status icons off-screen on narrow widths.
+ */
+export function collapsedSummary(args: Record<string, unknown> | undefined): string {
+  const compact = summarizeArgs(args)
+  if (compact.length <= 60) return compact
+  return compact.slice(0, 59) + '…'
+}
+
+/**
  * Format an elapsed-time label suitable for the card header. Short form
  * matches StreamStatusLine — "12s" / "1m 4s" — so the two surfaces read the
  * same way next to each other.

@@ -9,6 +9,9 @@ import type {
 interface ToolApprovalModalProps {
   request: ToolApprovalRequest
   onResolved: () => void
+  /** Fluidity J5: fired only on allow so App.tsx can mark the (server, tool)
+   *  pair as approved-once → subsequent requests route to the inline chip. */
+  onAllowed?: (request: ToolApprovalRequest) => void
 }
 
 const TIMEOUT_SECONDS = 30
@@ -29,7 +32,7 @@ const RISK_COLOR: Record<ToolRisk, string> = {
   secret: 'text-fuchsia-300 border-fuchsia-500/40'
 }
 
-export function ToolApprovalModal({ request, onResolved }: ToolApprovalModalProps) {
+export function ToolApprovalModal({ request, onResolved, onAllowed }: ToolApprovalModalProps) {
   const [countdown, setCountdown] = useState(TIMEOUT_SECONDS)
   const [scope, setScope] = useState<ApprovalScope>('once')
 
@@ -51,6 +54,7 @@ export function ToolApprovalModal({ request, onResolved }: ToolApprovalModalProp
       decision,
       scope: chosenScope
     })
+    if (decision === 'allow') onAllowed?.(request)
     onResolved()
   }
 

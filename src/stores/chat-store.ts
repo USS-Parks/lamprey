@@ -15,6 +15,7 @@ import { useAgentStore } from '@/stores/agent-store'
 import { usePlanStore } from '@/stores/plan-store'
 import { toast } from '@/stores/toast-store'
 import { useNavHistoryStore } from '@/stores/nav-history-store'
+import { getRecentUserPromptsFrom } from '@/lib/recent-prompts'
 
 export interface ToolCallState {
   callId: string
@@ -67,6 +68,13 @@ interface ChatState {
   removeAttachment: (index: number) => void
   clearAttachments: () => void
   setAttachmentsProcessing: (v: boolean) => void
+  /**
+   * Fluidity J1: most-recent-first list of the user's prior prompts in the
+   * active conversation. Used by ChatInput's ↑/↓ history walker. Strips the
+   * attachment-block suffix that buildAttachmentBlock appends at send time
+   * so the recalled text is what the user originally typed.
+   */
+  getRecentUserPrompts: (limit?: number) => string[]
   /** Dispatcher for RAG ingest progress events. Wired in App.tsx from
    *  window.api.rag.document.onProgress so the store doesn't own the IPC
    *  subscription lifecycle. */
@@ -500,5 +508,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   setAttachmentsProcessing: (v: boolean) => {
     set({ attachmentsProcessing: v })
+  },
+
+  getRecentUserPrompts: (limit = 50) => {
+    return getRecentUserPromptsFrom(get().messages, limit)
   }
 }))

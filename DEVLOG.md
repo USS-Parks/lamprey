@@ -1,5 +1,433 @@
 # Lamprey Harness Dev Log
 
+## [Fluidity Phase Complete] — 2026-06-04
+
+**Prompts completed:** J1 ESC + ↑ history, J2 Shift+Tab mode cycle, J3 @file
+mention, J4 # memory shortcut, J5 inline approval chips, J6 tool-card
+collapse, J7 inline subagents, J8 status-line context%, J9 notification
+consolidation, J10 path:line autolinking, J11 right-panel default-collapsed.
+
+**Phase verify:**
+- tsc node ✓
+- tsc web ✓
+- vitest ✓ (98 files / 1271 tests passed, 16 skipped — +103 tests added across the phase)
+- user-verification-needed: full end-to-end smoke per §3 of `PLANNING/LAMPREY_FLUIDITY_PLAN.md` completion criteria: launch Electron, open a fresh conversation, exercise: ESC cancels a stream; ↑ recalls a prior prompt; Shift+Tab cycles permission + plan mode; @chat autocompletes to a file; # opens MemoryEditor with seed; an approval renders inline as a chip; a completed tool collapses; a multi-agent run renders inline-nested; status line shows context% turning amber past 70%; a wake-up fires as an inline transcript row; a `src/foo.ts:42` reference in assistant output is clickable; right panel is collapsed by default and auto-opens on artifact emission.
+
+**Notes:** Lamprey now matches Claude Code on conversational fluidity —
+single moving surface, keyboard-first reflexes, transcript-as-source-of-truth.
+Functional parity (Tracks 1–3 + H1–H6) was already in place; this phase
+closes the remaining "feel" gap. Eleven commits on `feat/fluidity-phase`.
+
+**Commit range:** 525d5f8..2b2d02d on `feat/fluidity-phase` (J1 → J11, plus
+`24429b9` for the phase seed + 0.2.0 version bump).
+
+---
+
+## [Fluidity — Prompt J11] Right panel default collapsed + auto-open triggers — 2026-06-04
+
+The right panel now defaults to collapsed for new conversations and
+remembers each existing conversation's last expand/collapse state across
+reloads (per-conv map in ui-store, persisted to localStorage). Two
+events fire an auto-open: an artifact emit (`__openArtifact`) and an
+activeTool change. Each trigger key gets one auto-open per conversation;
+if the user collapses while a trigger is active, that key is marked
+dismissed and the same trigger won't re-open until a different one fires.
+
+**Files changed:**
+- `src/lib/right-panel-state.ts` (new) — pure `tryAutoOpen` / `applyUserToggle` state machine
+- `src/lib/right-panel-state.test.ts` (new) — 11 cases (defaults, re-open guard, manual toggle)
+- `src/stores/ui-store.ts` — per-conv state map + `hydrateRightPanelForConv` + `autoOpenRightPanel`
+- `src/App.tsx` — fire auto-open on artifact/activeTool, hydrate on conv switch
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- vitest ✓ (1271 passed / 16 skipped — +11 J11 tests)
+- user-verification-needed: in Electron, create a new conversation → right panel collapsed (chat takes full width); fire `__openArtifact` → panel opens; collapse it → stays collapsed even on a subsequent same-artifact emit; emit a DIFFERENT artifact → panel re-opens; switch to a previously-expanded conv → panel restores expanded.
+
+**Notes:** Per-conv state is JSON-serialized into a single localStorage
+key so the map shape can evolve without migration headaches. The legacy
+global `RIGHT_COLLAPSED_KEY` is mirrored for components that read the
+flag directly, but the per-conv map is the source of truth from this
+prompt onward.
+
+**Commit:** see git log on `feat/fluidity-phase`
+
+---
+
+## [Fluidity — Prompt J10] path:line autolinking — 2026-06-04
+
+Bare `path/file.ext` and `path/file.ext:42` references in assistant
+prose now render as clickable spans that fire a `file:open` CustomEvent
+(host wires this to `requestOpenFile` so the file panel jumps to the
+right location). Falls back to `files.openInVSCode` if no host listener
+claims it.
+
+Detector lives in a pure helper (`path-autolink.ts`) — exhaustive
+positive/negative cases ensure URLs, version triples, `.md.bak`-style
+extended dots, and `lamprey.io`-style domain names are excluded.
+MarkdownRenderer wires the helper into the `p`, `li`, `td`, `th`,
+`strong`, `em`, and `blockquote` overrides; inline `<code>` and fenced
+`<pre>` paths bypass it so file refs inside code blocks stay verbatim.
+
+**Files changed:**
+- `src/lib/path-autolink.ts` (new) — regex + segment splitter
+- `src/lib/path-autolink.test.ts` (new) — 13 cases (positive, negative, segmentation)
+- `src/components/artifacts/MarkdownRenderer.tsx` — autolink transformer + FileRefSpan + prose component overrides
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- vitest ✓ (1260 passed / 16 skipped — +13 J10 tests)
+- user-verification-needed: in Electron, render a message containing `look at src/App.tsx:42 for the fix` → `src/App.tsx:42` appears underlined-dotted; click → file panel opens at line 42; references inside ```ts ... ``` stay verbatim; URLs in prose don't autolink as files.
+
+**Notes:** Extension set: ts/tsx/js/jsx/mjs/cjs/md/mdx/json/yaml/yml/toml/
+css/scss/html/sh/py/rs/go/java/rb/sql. `.io` / `.com` / `.exe` etc.
+are intentionally excluded. Style is a dotted underline rather than the
+loud link colour, per the J10 spec's "avoid full link colour" note.
+
+**Commit:** see git log on `feat/fluidity-phase`
+
+---
+
+## [Fluidity — Prompt J9] Notification consolidation — 2026-06-04
+
+Async background events (chat:onAsyncEvent — turn-completed, wake-up
+landed, side-chat reply, etc.) now route as inline transcript notice
+rows when the affected conversation is active, rather than firing a
+toast that steals focus. A new `TranscriptNotice` component renders
+the notice as a slim row interleaved with messages by timestamp.
+
+When the conversation is NOT active (or no active conv exists), the
+event still fires a toast so the user knows something happened in
+another window — the toast surface stays useful for "switch focus to
+see this" events. Errors continue to use `toast.error()` as before.
+
+**Files changed:**
+- `src/stores/inline-notices-store.ts` (new) — per-conversation notice queue (ring of 50)
+- `src/lib/interleave-notices.ts` (new) — pure ts-ordered merge helper (unused inline, kept for tests + reuse)
+- `src/lib/interleave-notices.test.ts` (new) — 5 cases
+- `src/components/chat/TranscriptNotice.tsx` (new) — inline notice row
+- `src/components/chat/AsyncEventToast.tsx` — routes active-conv events to inline notices
+- `src/components/chat/MessageList.tsx` — bucket-interleaves notices with messages
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- vitest ✓ (1247 passed / 16 skipped — +5 J9 tests)
+- user-verification-needed: in Electron, while viewing a conversation, fire a `chat:onAsyncEvent` for that conv → inline notice row appears between messages, sorted by ts; same event for a DIFFERENT conv → toast fires instead; an error path still produces a toast (toast.error unchanged).
+
+**Notes:** WakeupPill stays as a decorator on system messages (already
+in-transcript). The plan's "WakeupPill routes through TranscriptNotice"
+phrasing is satisfied de-facto because the wake-up event arrives as a
+system message via the chat stream — it's already a transcript row, the
+pill is just its header glyph. The interleave helper is exported as a
+reusable utility even though MessageList ended up using the same bucket
+pattern chapters use (which was already there).
+
+**Commit:** see git log on `feat/fluidity-phase`
+
+---
+
+## [Fluidity — Prompt J8] Status line: context% slot + amber-warn at 70% — 2026-06-04
+
+Status line slot order is now `model · context · workflow · branch ·
+wakeups` (was `model · workflow · wakeups · tokens · rag`). New slots:
+
+- `context`: shows `N% ctx` where N = tokens-spent / active-model
+  contextWindow. Neutral below 70, amber 70–89, red ≥ 90. Hidden when
+  the model's window is unknown.
+- `branch`: shows the current git branch from `review:branches` IPC.
+  Polled every 30s so out-of-band branch switches surface within a
+  half-minute.
+
+`tokens` and `rag` slots are still valid for user-authored
+`userData/statusline.md` overrides — they're just out of the default
+list. The empty-slots fallback in `normalizeSlots` also dropped from
+ALL_SLOTS down to DEFAULT_VISIBLE_SLOTS so an empty `slots: []` block
+behaves identically to no file (both show the new 5-slot defaults).
+
+**Files changed:**
+- `src/lib/context-meter.ts` (new) — `contextPercent` + `contextTone` (70/90 thresholds)
+- `src/lib/context-meter.test.ts` (new) — 7 cases for percent + tone
+- `electron/services/statusline-config.ts` — added `context`/`branch` slots + new default order
+- `electron/services/statusline-config.test.ts` — updated empty-slots fallback test
+- `src/components/layout/StatusLine.tsx` — branch loader effect, context% renderer with tone
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- vitest ✓ (1242 passed / 16 skipped — +7 J8 tests)
+- user-verification-needed: in Electron, watch the status line as a conversation grows — context% climbs; pass 70% → slot turns amber; pass 90% → red; branch slot reflects current git branch and updates within 30s of a `git checkout`; existing userData/statusline.md with custom `slots` still honored.
+
+**Notes:** Context window is read from `modelInfo.contextWindow`
+(supplied by the provider catalog). Models without a published window
+size hide the slot — better silence than 0% / NaN%. Branch lookup uses
+the existing `review:branches` IPC; no new channel.
+
+**Commit:** see git log on `feat/fluidity-phase`
+
+---
+
+## [Fluidity — Prompt J7] Inline subagent rendering — 2026-06-04
+
+`multi_agent_run` tool calls now render in the transcript as a nested
+chevron group — one "Multi-agent run" header row with N indented
+per-agent rows below it. Each agent row expands to show its emitted text
+or error. Failures auto-expand; successes mount collapsed; user toggle
+wins.
+
+MultiAgentRunCard is now a thin adapter that parses the run result
+envelope into InlineAgentRow shape and delegates to AgentRunInlineGroup.
+AgentRunBanner stays put for the single-agent run-phase pill — its
+multi-agent branch will be reused for backgrounded `tasks:spawn` runs
+when the renderer can tell them apart from in-turn runs (currently the
+chat surface only sees the `multi_agent_run` tool path, which is always
+in-turn).
+
+**Files changed:**
+- `src/lib/agent-run-routing.ts` (new) — pure `routeAgentRun({runInBackground})`
+- `src/lib/agent-run-routing.test.ts` (new) — 2 cases
+- `src/components/chat/AgentRunInlineGroup.tsx` (new) — header + nested rows + per-row expand
+- `src/components/chat/MultiAgentRunCard.tsx` — gutted to a parse-and-delegate adapter
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- vitest ✓ (1235 passed / 16 skipped — +2 J7 tests)
+- user-verification-needed: invoke `multi_agent_run` with a 3-role pipeline → header row shows 3 agents + total elapsed; click expand → 3 indented chevron rows; expand row 2 → its output panel opens; collapse header → all rows hide; an errored agent's row auto-expands with the error tone.
+
+**Notes:** The runInBackground routing helper is in place for J7's
+"banner-only for background" half; the actual `tasks:spawn` background
+visualisation is unchanged in this prompt because no signal currently
+reaches the chat surface for those — they're tracked in `agent_runs`
+and surfaced via the activity dashboard. AgentRunBanner's existing
+single-agent pill is untouched.
+
+**Commit:** see git log on `feat/fluidity-phase`
+
+---
+
+## [Fluidity — Prompt J6] Auto-collapse successful tool cards — 2026-06-04
+
+ToolUseCard now derives an auto-expand state from `status` + `risks`:
+failures (`status === 'error'`) and destructive successes mount expanded;
+everything else (successful read/write/network, running, denied) mounts
+collapsed. User toggles still win over the auto-rule via an internal
+`userToggled` override so a deliberate expand sticks for the lifetime of
+the card.
+
+The header now uses a new `collapsedSummary()` helper that caps the
+"key=value, key=value" args one-liner at 60 chars with an ellipsis, so a
+deep path doesn't push the risk badges / elapsed / status icons
+off-screen on narrow widths.
+
+**Files changed:**
+- `src/lib/tool-card-helpers.ts` — added `collapsedSummary`
+- `src/lib/tool-card-helpers.test.ts` — +3 cases for the 60-char cap
+- `src/components/chat/ToolUseCard.tsx` — `userToggled` override + `autoExpanded` derivation
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- vitest ✓ (1233 passed / 16 skipped — +3 J6 tests)
+- user-verification-needed: trigger a successful `read_file` → card mounts collapsed; trigger one that errors → card mounts expanded; trigger a destructive `shell_command` that succeeds → mounts expanded; collapse a destructive card manually → stays collapsed on re-render until you reload.
+
+**Notes:** Denied results stay collapsed too — the denial reason is a
+single short line that fits the collapsed header. Running/pending stay
+collapsed because the live elapsed already ticks in the header.
+
+**Commit:** see git log on `feat/fluidity-phase`
+
+---
+
+## [Fluidity — Prompt J5] Inline tool approval chips — 2026-06-04
+
+When a tool approval is requested AND the (server, tool) pair has been
+approved at least once this session AND no descriptor risk is destructive,
+the request now renders as a transcript-level chip with 1/2/3 keystroke
+bindings (Approve / Deny / Always) instead of opening the full modal. The
+modal still owns the heavyweight first-touch confirmation and every
+destructive-risk path.
+
+Routing decision is a pure helper (`approval-routing.routeApproval`).
+A renderer-only Zustand store (`inline-approvals-store`) is the queue;
+App.tsx pushes chip-routed requests, MessageList renders them after the
+toolCalls section, the chip itself dismisses on resolve. The modal grew
+an `onAllowed` callback so an allow click also adds the pair to the
+session-level `approvedSeen` set — the very next request from that pair
+will be a chip.
+
+**Files changed:**
+- `src/lib/approval-routing.ts` (new) — pure routing helper + `approvalKey`
+- `src/lib/approval-routing.test.ts` (new) — 6 cases (destructive lock, per-(server, tool) granularity)
+- `src/stores/inline-approvals-store.ts` (new) — zustand queue with de-dupe
+- `src/components/chat/InlineApprovalChip.tsx` (new) — chip + 1/2/3/Esc bindings
+- `src/components/tools/ToolApprovalModal.tsx` — added `onAllowed(request)` prop
+- `src/components/chat/MessageList.tsx` — renders the queue
+- `src/App.tsx` — `approvedSeenRef` + routing dispatch + modal-allow → seen-set
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- vitest ✓ (1230 passed / 16 skipped — +6 J5 tests)
+- user-verification-needed: in Electron, trigger a read-file approval → first time renders the modal; click Allow; trigger the same read-file again → second time renders the inline chip in the transcript; press `1` → resolves with allow; trigger a destructive tool → still modal even if previously allowed.
+
+**Notes:** Per-(server, tool) granularity is more conservative than the
+plan's "server is already approved at least once" wording — a brand new
+write-tier tool from a previously-trusted server still gets the modal so
+its descriptor is read once. Destructive is the safety floor. The
+`approvedSeen` set lives in a `useRef` on App.tsx; not persisted across
+reload by design (every session starts cold).
+
+**Commit:** see git log on `feat/fluidity-phase`
+
+---
+
+## [Fluidity — Prompt J4] # memory-write inline shortcut — 2026-06-04
+
+Typing `#` (alone) or `# <text>` at col 0 of line 1 in ChatInput flips
+the bar into memory-write mode: the Send pill becomes a "Remember"
+button, and submit opens the MemoryEditor pre-filled with the typed
+description. No silent writes — the editor's Save button is the
+confirm-before-persist step per the feedback_no_fake_polish invariant.
+
+Seeding goes through a new ui-store token pair (`memorySeedDescription`
++ `memorySeedToken`) mirroring the existing `composeDraft` pattern.
+MemoryPanel watches the token and auto-opens its editor when bumped.
+
+**Files changed:**
+- `src/lib/memory-shortcut.ts` (new) — pure detector; line-1 col-0, separator-required
+- `src/lib/memory-shortcut.test.ts` (new) — 8 cases for accept/reject conditions
+- `src/stores/ui-store.ts` — adds `memorySeedDescription` + `memorySeedToken` + accessors
+- `src/components/memory/MemoryEditor.tsx` — accepts `description` in `initialDraft`
+- `src/components/memory/MemoryPanel.tsx` — consumes seed on token bump, opens editor
+- `src/components/chat/ChatInput.tsx` — memory-mode detection, Send→Remember pill swap, submit routes to memory
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- vitest ✓ (1224 passed / 16 skipped — +8 J4 tests)
+- user-verification-needed: in Electron, type `# remember the RAG audit` → Send becomes a "Remember" pill; click → MemoryEditor opens with description prefilled; Save persists, Cancel closes without writing; typing `#hashtag` (no space) does NOT flip mode.
+
+**Notes:** Body of the memory is intentionally NOT prefilled — the
+description goes into the one-liner slot per the plan, leaving the body
+for the user to write properly inside the editor (memory bodies want
+`Why:` / `How to apply:` structure). Type defaults to `feedback` since
+that's the most common type for the "# remember to …" voice.
+
+**Commit:** see git log on `feat/fluidity-phase`
+
+---
+
+## [Fluidity — Prompt J3] @file inline mention autocomplete — 2026-06-04
+
+`@<token>` in ChatInput surfaces a popover ranking workspace files by name
+overlap. Selection inserts a collapsed `@<basename>` token and queues the
+picked file through the existing `files.process` → `addAttachments`
+pipeline so the next send carries it as a regular attachment.
+
+The popover skips:
+- carets inside ``` fenced blocks
+- carets inside an inline single-backtick span
+- `@` in mid-word context (e.g. `email@host`) — only fires at a word
+  boundary (start-of-line or after whitespace/bracket)
+
+**Files changed:**
+- `src/lib/file-rank.ts` (new) — `scoreFile`, `rankFiles`, `detectAtMention`, `isInsideCodeContext`
+- `src/lib/file-rank.test.ts` (new) — 21 cases covering ranking, extension dominance, code-fence guard, word-boundary
+- `src/components/chat/AtFileMention.tsx` (new) — popover styled to match SlashCommandPalette
+- `src/components/chat/ChatInput.tsx` — workspace file index cache, caret tracking, popover mount + apply
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- vitest ✓ (1216 passed / 16 skipped — +21 J3 tests)
+- user-verification-needed: in Electron, type `@chat` in ChatInput → popover lists ChatInput/Chat* matches; ↑/↓ walks; Tab/Enter inserts; Esc dismisses; `@` inside ```ts ... ``` does NOT trigger; selected file appears as a pending attachment with the existing chip UI.
+
+**Notes:** Workspace index reuses `files:walkProject` (same IPC the
+QuickOpenPalette uses). Index is cached per ChatInput mount; the docked
+file panel keeps its own cache so the two don't share lifecycle. The
+popover renders absolutely above the input bar (`bottom-full`) so it
+doesn't shift the layout when it opens/closes.
+
+**Commit:** see git log on `feat/fluidity-phase`
+
+---
+
+## [Fluidity — Prompt J2] Shift+Tab cycles permission/plan mode — 2026-06-04
+
+Replaces the old binary planMode toggle on Shift+Tab with a four-state
+cycle: `default → auto-review → full → plan → default`. A pure helper
+(`src/lib/mode-cycle.ts`) projects the `(permissionsMode, planMode)` pair
+to a virtual slot; the keydown handler advances it.
+
+When transitioning into / out of plan, the cycle also calls the real
+`plan:enterMode` / `plan:exitMode` IPC via the new `usePlanMode` hook so
+persistence (`conversations.plan_mode_active`) is honored alongside the
+legacy ui-store flag. A slim mode-name indicator now sits under the input
+bar; its `key={liveSlot}` swap replays a 200ms opacity/translate keyframe
+on every cycle.
+
+Shift+Tab is only claimed when the textarea is empty — mid-draft, native
+focus navigation still works.
+
+**Files changed:**
+- `src/lib/mode-cycle.ts` (new) — `MODE_CYCLE`, `currentSlot`, `nextMode`, `slotLabel`
+- `src/lib/mode-cycle.test.ts` (new) — 7 cases covering cycle wrap + plan-permission preservation
+- `src/hooks/usePlanMode.ts` (new) — IPC wrapper bound to the active conversation
+- `src/components/chat/ChatInput.tsx` — cycle wiring + indicator markup, content-empty guard
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- vitest ✓ (1195 passed / 16 skipped — +7 J2 tests)
+- user-verification-needed: in Electron, with the textarea empty, press Shift+Tab → mode advances through all four slots; toast + indicator both reflect the new slot; in a conversation, entering Plan persists across reload (DB row in `conversations.plan_mode_active`); mid-draft Shift+Tab does NOT cycle.
+
+**Notes:** The legacy `ui-store.planMode` boolean stays so the existing
+`PlanModeBanner` (when no active conv exists) still renders. The hook
+returns `false` for `enter` when there's no active conv — the local flag
+covers that path. Indicator animation uses an inline `<style>` block to
+avoid touching the Tailwind config for a one-prompt keyframe.
+
+**Commit:** see git log on `feat/fluidity-phase`
+
+---
+
+## [Fluidity — Prompt J1] ESC cancels stream + ↑ recalls prompt history — 2026-06-04
+
+ESC was already wired in `useKeyboardShortcuts` to cancel an active stream;
+J1 adds the second half — ↑/↓ walks past user prompts from the active
+conversation, with a saved-draft restore on the way back. The history
+walker is a pure helper module so it's directly testable without DOM
+infrastructure (vitest runs node-only here).
+
+**Files changed:**
+- `src/lib/prompt-history.ts` (new) — pure up/down/reset state machine
+- `src/lib/prompt-history.test.ts` (new) — 10 cases covering walk, bounds, draft restore
+- `src/lib/recent-prompts.ts` (new) — `stripAttachmentBlocks` + `getRecentUserPromptsFrom`
+- `src/lib/recent-prompts.test.ts` (new) — 10 cases for the strip + 50-cap selector
+- `src/stores/chat-store.ts` — added `getRecentUserPrompts(limit?)` delegating to the helper
+- `src/components/chat/ChatInput.tsx` — ArrowUp/ArrowDown/Escape wiring, placeholder hint
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- vitest ✓ (1188 passed / 16 skipped — +20 J1 tests, all suites green)
+- user-verification-needed: in a running Electron build, send 2+ prompts, hit ↑ in an empty input → most-recent prompt loads; ↑ again → next older; ↓ → walks back; Esc with history loaded → draft restored; ESC mid-stream → cancel button result (already covered by useKeyboardShortcuts).
+
+**Notes:** Pure helper split was needed because chat-store's transitive `@/`
+value imports (`@/stores/settings-store` and friends) don't resolve under
+vitest without an alias plugin; the store wrapper now just delegates.
+`stripAttachmentBlocks` is the inverse of `buildAttachmentBlock` so the
+recalled prompt is what the user typed, not the stored content with the
+inlined ``` attachment block. Caret-on-first-line + no-selection guard
+means ↑/↓ still scroll within a multi-line draft when the user is editing.
+
+**Commit:** see git log on `feat/fluidity-phase`
+
+---
+
 ## [Integration Phase Complete] UI Mastery wrap-up - 2026-06-04
 
 **Prompts completed:** H1 Activity dashboard, H2 Workflow command palette + author UX, H3 Session sidebar + resume polish, H4 Hook editor + skill manager polish, H5 Plan-mode UX + spawn-task tray, H6 Status line + AskUserQuestion UI.
@@ -17,7 +445,7 @@
 
 **Notes:** All Integration Phase rows are marked complete in `PLANNING/LAMPREY_PARITY_PLAN.md`. README now documents the completed parity layer and removes the stale hook-wiring roadmap item. `.tmp-test-user-data/` is ignored because the integration tests generate it under the workspace. Package version is bumped to `0.1.44`.
 
-**Commit:** pending
+**Commit:** see git log on `feat/fluidity-phase`
 
 ---
 
@@ -2616,7 +3044,7 @@ Implemented the full Google OAuth flow in `electron/ipc/mcp.ts`. The `mcp:setupG
 
 **Notes:** Made the E3 SessionsSidebar embeddable and reachable from the main sidebar. Sessions are grouped by project, carry last-active/message metadata, support context-menu duplicate/archive/delete, clear unread badges on resume, and persist pinned drag order in localStorage. Added a compact SessionDetailPane footer with Resume/Duplicate/Archive plus workflow-resume affordance for workflow sessions.
 
-**Commit:** pending
+**Commit:** see git log on `feat/fluidity-phase`
 
 ## [Integration - Prompt H4] Hook editor + skill manager polish - 2026-06-04
 
@@ -2633,7 +3061,7 @@ Implemented the full Google OAuth flow in `electron/ipc/mcp.ts`. The `mcp:setupG
 
 **Notes:** H4 implementation is in place but the prompt remains unchecked until the full vitest/build gate can be run. Hooks now have one-click templates, a timeout slider, and a sample-payload test runner with inline sandbox errors. Settings now has a Skills tab with hot-reload status, URL import, frontmatter validation, prompt dry-run preview, enable/disable, save, and delete.
 
-**Commit:** pending
+**Commit:** see git log on `feat/fluidity-phase`
 
 ## [Integration - Prompt H5] Plan-mode UX + spawn-task tray + design pass - 2026-06-04
 
@@ -2648,7 +3076,7 @@ Implemented the full Google OAuth flow in `electron/ipc/mcp.ts`. The `mcp:setupG
 
 **Notes:** Added `plan:update` IPC so inline plan edits are persisted through the same plan-goal store as the model-facing `update_plan` tool. Replaced the compact checklist with an editable PlanGoalsPanel, upgraded the banner CTA, and changed spawned-task notifications into a persistent tray with batch controls and source-session navigation. H6 is being handled in a parallel session and was not touched here.
 
-**Commit:** pending
+**Commit:** see git log on `feat/fluidity-phase`
 
 ## [Integration — Prompt H2] Workflow command palette + author UX — 2026-06-04
 
@@ -2666,7 +3094,7 @@ Implemented the full Google OAuth flow in `electron/ipc/mcp.ts`. The `mcp:setupG
 
 **Notes:** Added `workflows:validate` and `workflows:save` IPC so the authoring UI persists user workflows to `userData/workflows/scripts/` using the existing literal-meta parser. Ctrl+K now opens the workflow palette; file quick-open remains on Ctrl+P and the sidebar Search row still focuses conversation filtering. The editor uses a textarea-backed code surface rather than adding the heavy Monaco dependency in this prompt; validation, scaffolding, registry suggestions, save-as-meta-name, and static dry-run are wired.
 
-**Commit:** pending
+**Commit:** see git log on `feat/fluidity-phase`
 
 ## [Integration — Prompt H1] Activity dashboard live agent tree — 2026-06-04
 
@@ -2683,4 +3111,4 @@ Implemented the full Google OAuth flow in `electron/ipc/mcp.ts`. The `mcp:setupG
 
 **Notes:** Added a sidebar-mounted operational activity dashboard with normalized chat, workflow, subagent, cron, loop, and hook nodes. The store polls persisted task/loop/automation/hook surfaces and listens to workflow, task, and loop events for live refresh. Workflow child agents are folded under their workflow run while standalone background agents stay top-level. Pin state and collapse state persist in localStorage.
 
-**Commit:** pending
+**Commit:** see git log on `feat/fluidity-phase`

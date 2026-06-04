@@ -8,6 +8,11 @@ import { StreamingText } from './StreamingText'
 import { ToolUseCard } from './ToolUseCard'
 import { MultiAgentRunCard } from './MultiAgentRunCard'
 import { StreamStatusLine } from './StreamStatusLine'
+import { InlineApprovalChip } from './InlineApprovalChip'
+import { useInlineApprovalsStore } from '@/stores/inline-approvals-store'
+import { TranscriptNotice } from './TranscriptNotice'
+import { useInlineNoticesStore } from '@/stores/inline-notices-store'
+import { useChatStore } from '@/stores/chat-store'
 import { CHAT_COLUMN_CLASS } from './ChatView'
 import { ChapterDivider } from './ChapterDivider'
 import { useChaptersStore, type Chapter } from '@/stores/chapters-store'
@@ -31,6 +36,27 @@ interface MessageListProps {
 // the bottom". If the user is within this, auto-scroll follows new content;
 // if they've scrolled further up, we leave them alone.
 const STICK_THRESHOLD_PX = 120
+
+function InlineApprovalQueue() {
+  const queue = useInlineApprovalsStore((s) => s.queue)
+  const dismiss = useInlineApprovalsStore((s) => s.dismiss)
+  if (queue.length === 0) return null
+  return (
+    <>
+      {queue.map((req, i) => (
+        <InlineApprovalChip
+          key={req.callId}
+          request={req}
+          // Only the first chip claims global keystrokes — successive chips
+          // wait their turn. Once the leader resolves, the next becomes
+          // active via this index check on next render.
+          autoFocus={i === 0}
+          onResolved={() => dismiss(req.callId)}
+        />
+      ))}
+    </>
+  )
+}
 
 function SystemMarker({ content }: { content: string }) {
   return (
@@ -111,6 +137,27 @@ export function MessageList({
     return { byBefore, afterAll }
   }, [chapters, messages])
 
+  // Fluidity J9: interleave inline notices (async events) with messages
+  // by timestamp. Same bucket pattern chapters use, so the render loop
+  // only needs to know about per-index buckets.
+  const activeConvId = useChatStore((s) => s.activeConversationId)
+  const allNotices = useInlineNoticesStore((s) => s.byConv)
+  const dismissNotice = useInlineNoticesStore((s) => s.dismiss)
+  const { noticesByBefore, noticesAfterAll } = useMemo(() => {
+    const byBefore: Record<number, ReturnType<typeof useInlineNoticesStore.getState>['byConv'][string]> = {}
+    const afterAll: typeof byBefore[number] = []
+    if (!activeConvId) return { noticesByBefore: byBefore, noticesAfterAll: afterAll }
+    const notices = allNotices[activeConvId] ?? []
+    if (notices.length === 0) return { noticesByBefore: byBefore, noticesAfterAll: afterAll }
+    const sorted = [...notices].sort((a, b) => a.ts - b.ts)
+    for (const n of sorted) {
+      const idx = messages.findIndex((m) => m.timestamp > n.ts)
+      if (idx === -1) afterAll.push(n)
+      else (byBefore[idx] ??= []).push(n)
+    }
+    return { noticesByBefore: byBefore, noticesAfterAll: afterAll }
+  }, [allNotices, activeConvId, messages])
+
   return (
     <div ref={scrollRef} className="flex-1 overflow-y-auto py-4">
       {/* Belt-and-suspenders centering: flex wrapper guarantees horizontal
@@ -132,6 +179,13 @@ export function MessageList({
                 {byBefore[i]?.map((c) => (
                   <ChapterDivider key={c.id} chapter={c} />
                 ))}
+                {noticesByBefore[i]?.map((n) => (
+                  <TranscriptNotice
+                    key={n.id}
+                    notice={n}
+                    onDismiss={() => dismissNotice(n.conversationId, n.id)}
+                  />
+                ))}
                 {compressed ? (
                   <CompressedRegionPill message={msg} />
                 ) : msg.role === 'system' ? (
@@ -145,6 +199,13 @@ export function MessageList({
           {afterAll.map((c) => (
             <ChapterDivider key={c.id} chapter={c} />
           ))}
+          {noticesAfterAll.map((n) => (
+            <TranscriptNotice
+              key={n.id}
+              notice={n}
+              onDismiss={() => dismissNotice(n.conversationId, n.id)}
+            />
+          ))}
           {toolCalls.map((tc) =>
             tc.toolName === 'multi_agent_run' ? (
               <MultiAgentRunCard key={tc.callId} toolCall={tc} />
@@ -152,6 +213,11 @@ export function MessageList({
               <ToolUseCard key={tc.callId} toolCall={tc} />
             )
           )}
+          {/* Fluidity J5 — inline approval chips for previously-approved,
+              non-destructive (server, tool) pairs. The first chip in the
+              queue auto-focuses so 1/2/3 keystrokes land without a click. */}
+          <InlineApprovalQueue />
+
           {isStreaming && (streamingContent || streamStartedAt) && (
             <div className="mb-3 flex justify-start">
               <div className="max-w-[80%] rounded-lg bg-[var(--bg-secondary)] px-4 py-3">

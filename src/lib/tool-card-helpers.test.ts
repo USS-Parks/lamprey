@@ -1,5 +1,29 @@
 import { describe, it, expect } from 'vitest'
-import { formatElapsed, previewResult, summarizeArgs } from './tool-card-helpers'
+import {
+  collapsedSummary,
+  formatElapsed,
+  previewResult,
+  summarizeArgs
+} from './tool-card-helpers'
+
+describe('collapsedSummary', () => {
+  it('returns the same as summarizeArgs when short enough', () => {
+    const args = { a: 1, b: 2 }
+    expect(collapsedSummary(args)).toBe(summarizeArgs(args))
+  })
+
+  it('caps at 60 chars with an ellipsis', () => {
+    const longArgs = { path: 'a/very/long/path/that/goes/on/and/on/and/keeps/on/going.ts' }
+    const out = collapsedSummary(longArgs)
+    expect(out.length).toBe(60)
+    expect(out.endsWith('…')).toBe(true)
+  })
+
+  it('returns "{empty}" for missing args', () => {
+    expect(collapsedSummary(undefined)).toBe('{empty}')
+    expect(collapsedSummary({})).toBe('{empty}')
+  })
+})
 
 describe('summarizeArgs', () => {
   it('returns {empty} for missing/empty args', () => {
