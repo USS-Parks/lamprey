@@ -1,5 +1,69 @@
 # Lamprey Harness Dev Log
 
+## [Release v0.2.2 Published] — 2026-06-04
+
+Maintenance build on the 0.2.x line — no behavioral changes versus v0.2.1.
+Cuts the v0.2.2 tag at the version-bump commit, freshly builds Windows
+artifacts locally, and lets the `Build Lamprey` CI workflow tack on a
+Linux AppImage on the tag-push trigger. README download table now lists
+all three distributables and removes the "Linux buildable from source
+but not distributed" caveat.
+
+**Artifacts on the release:**
+- `Lamprey-0.2.2-x64.exe` — 233 MB (244,282,472 B), NSIS installer (CI build replaced the local upload)
+- `Lamprey-0.2.2-x64.zip` — 302 MB (316,462,170 B), portable bundle (local upload)
+- `Lamprey-0.2.2-x64.exe.blockmap` — 248 KB, electron-updater delta map
+- `Lamprey-0.2.2-x86_64.AppImage` — 299 MB (313,337,381 B), Linux distributable from CI
+
+**Release ops:**
+- Local `npm run build:win` produced the NSIS + ZIP + blockmap.
+- `gh release create v0.2.2 --latest --notes-file dist/release-notes-v0.2.2.md` published the release with the three Windows assets and marked it Latest at commit `6e1611f`.
+- CI `Build Lamprey` (workflow run `26960849731`) fired on the tag push, built and attached the Linux AppImage via `softprops/action-gh-release@v3` (the `draft: true` flag in the step is a no-op when the release is already published — assets attach without flipping state).
+- CI also re-attached its own Windows `.exe` build, overwriting the local upload by 2,171 bytes (timestamp/build-id drift between the two signed binaries — functionally identical).
+- README updated: download table gained a Linux AppImage row; the "Mac and Linux buildable from source" caveat narrowed to macOS only.
+
+**Commits / refs:**
+- `6e1611f` — `chore(release): bump to v0.2.2` (release tag points here)
+- README AppImage row + DEVLOG entry on the follow-up commit
+
+**Verify:**
+- electron-builder build ✓ locally (NSIS + ZIP + blockmap)
+- CI `Build Lamprey` workflow ✓ all three jobs (`build-windows`, `build-linux`, `build-macos`-smoke) green
+- Release URL returns `draft=false`, `prerelease=false`, `name="Lamprey v0.2.2 — Maintenance build"`, `tag_name=v0.2.2`
+- `gh release list` shows `v0.2.2` as Latest; `v0.2.1` retained as historical
+
+---
+
+## [Release v0.2.1 Published] — 2026-06-04
+
+First publish on the 0.2.x line. Cuts the v0.2.1 tag at `main` HEAD
+(`2c26682` — the Fluidity Phase merge + CI lint-silence commits), uploads
+fresh Windows artifacts, marks it the Latest release, and bumps every
+download reference in `README.md` so the public-facing project page no
+longer advertises the now-deleted v0.1.38 draft.
+
+**Artifacts (built via `npm run build:win`):**
+- `Lamprey-0.2.1-x64.exe` — 233 MB (244,284,649 B), NSIS installer
+- `Lamprey-0.2.1-x64.zip` — 302 MB (316,462,166 B), portable bundle
+- `Lamprey-0.2.1-x64.exe.blockmap` — 248 KB, electron-updater delta map
+
+**Release ops:**
+- Published the existing v0.2.1 draft (`gh release edit v0.2.1 --draft=false --latest`); GitHub created the `v0.2.1` tag at `2c26682`.
+- Deleted three stale draft releases + their tags (`v0.1.23`, `v0.1.24`, `v0.1.38`) and pruned locally.
+- README updated: download section header (v0.1.38 → v0.2.1), both artifact rows in the download table (sizes corrected 178→233 MB, 226→302 MB), quick-start step 1 link, and the roadmap "Built and shipped" header. Historical "(v0.1.26)" subheading inside the roadmap stays — it records when that sprint shipped.
+
+**Commits / refs:**
+- `2c26682` — `fix(ci): silence lint warnings` (release tag points here)
+- `89250f8` — `docs(readme): bump download + roadmap references to v0.2.1` (current `main` HEAD)
+
+**Verify:**
+- electron-builder build ✓ (NSIS + ZIP both produced)
+- Release public URL returns `draft=false`, `prerelease=false`, `name="Lamprey v0.2.1 — Parity + Fluidity Complete"`, `tag_name=v0.2.1`
+- Raw `README.md` fetched from `origin/main` via API shows v0.2.1 in all five updated spots
+- 5 releases remain on origin (`v0.2.1` Latest + `v0.1.22`, `v0.1.14`, `v0.1.12`, `v0.1.9`); local tags pruned to match
+
+---
+
 ## [Fluidity Phase Complete] — 2026-06-04
 
 **Prompts completed:** J1 ESC + ↑ history, J2 Shift+Tab mode cycle, J3 @file

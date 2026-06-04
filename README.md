@@ -15,18 +15,19 @@
 
 ---
 
-## ⬇ Download v0.1.38
+## ⬇ Download v0.2.2
 
 Pick one — the `.exe` is the standard installer, the `.zip` is the portable bundle (unzip and run `Lamprey.exe` directly, no install required).
 
 | Format | File | Size | Direct link |
 |---|---|---:|---|
-| **NSIS installer** | `Lamprey-0.1.38-x64.exe` | 178 MB | [Download .exe](https://github.com/USS-Parks/lamprey/releases/download/v0.1.38/Lamprey-0.1.38-x64.exe) |
-| **Portable ZIP** | `Lamprey-0.1.38-x64.zip` | 226 MB | [Download .zip](https://github.com/USS-Parks/lamprey/releases/download/v0.1.38/Lamprey-0.1.38-x64.zip) |
+| **NSIS installer** | `Lamprey-0.2.2-x64.exe` | 233 MB | [Download .exe](https://github.com/USS-Parks/lamprey/releases/download/v0.2.2/Lamprey-0.2.2-x64.exe) |
+| **Portable ZIP** | `Lamprey-0.2.2-x64.zip` | 302 MB | [Download .zip](https://github.com/USS-Parks/lamprey/releases/download/v0.2.2/Lamprey-0.2.2-x64.zip) |
+| **Linux AppImage** | `Lamprey-0.2.2-x86_64.AppImage` | 299 MB | [Download .AppImage](https://github.com/USS-Parks/lamprey/releases/download/v0.2.2/Lamprey-0.2.2-x86_64.AppImage) |
 
 Or browse all releases → <https://github.com/USS-Parks/lamprey/releases>
 
-**Windows 10/11, x64.** Mac and Linux builds are buildable from source (`npm run build:mac` / `:linux`) but not currently distributed.
+**Windows 10/11 x64** and **Linux x86_64**. macOS builds are buildable from source (`npm run build:mac`) but not currently distributed — they require an Apple Developer signing identity to notarize.
 
 ---
 
@@ -150,7 +151,7 @@ User-defined JavaScript sandbox hooks that fire on lifecycle events:
 
 ## Quick start
 
-1. **Download** the [v0.1.38 installer](https://github.com/USS-Parks/lamprey/releases/download/v0.1.38/Lamprey-0.1.38-x64.exe) and run it.
+1. **Download** the [v0.2.2 installer](https://github.com/USS-Parks/lamprey/releases/download/v0.2.2/Lamprey-0.2.2-x64.exe) and run it.
 2. **Get a key.** Easiest: <https://platform.deepseek.com> → sign up → create key → load $5. Lamprey also accepts Google AI Studio (Gemma), Alibaba DashScope (Qwen), and OpenRouter keys.
 3. **Paste your key** in the first-run modal. It's stored with `safeStorage` (OS keychain) under `userData/keys.json`.
 4. **Type something.** That's it.
@@ -226,7 +227,7 @@ Build history: [DEVLOG.md](DEVLOG.md).
 
 ## Roadmap
 
-Built and shipped (v0.1.38):
+Built and shipped (v0.2.2):
 
 - ✅ Multi-provider routing (DeepSeek / Gemma / Qwen / OpenRouter)
 - ✅ Planner → Coder → Reviewer agent pipeline
