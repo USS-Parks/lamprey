@@ -32,7 +32,9 @@ const candidates = await parallel(
       {
         label: 'candidate-' + (i + 1) + ':' + angle,
         phase: 'Generate',
-        agentType: 'Plan'
+        agentType: 'Plan',
+        // B5: candidates on cheap tier — generating N variants is volume work.
+        model: 'cheap'
       }
     )
   )
@@ -52,6 +54,8 @@ const judged = await parallel(
         label: 'judge-' + (i + 1),
         phase: 'Judge',
         agentType: 'code-reviewer',
+        // B5: judges on cheap tier — rubric scoring is well-bounded.
+        model: 'cheap',
         schema: SCORE_SCHEMA
       }
     )
@@ -75,7 +79,13 @@ const synthesis = await agent(
         '- (score ' + r.score + ') ' + (typeof r.candidate === 'string' ? r.candidate : JSON.stringify(r.candidate))
     )
     .join('\n')}`,
-  { label: 'synthesise', phase: 'Synthesise', agentType: 'Plan' }
+  {
+    label: 'synthesise',
+    phase: 'Synthesise',
+    agentType: 'Plan',
+    // B5: synthesis on the top tier — grafting + judgment benefit from depth.
+    model: 'pro'
+  }
 )
 
 return {

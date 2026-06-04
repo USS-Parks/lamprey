@@ -20,6 +20,12 @@ import {
   type FinishJournalRecord,
   type MetaJournalRecord
 } from './workflow-journal'
+import {
+  makeBudgetTracker,
+  resolveModelId,
+  tierOfModel,
+  type Tier
+} from './workflow-budget'
 
 // Workflow JS evaluator core (B1). Loads a workflow script into Node's
 // built-in vm with a frozen sandbox exposing the documented API surface:
@@ -56,6 +62,7 @@ export interface WorkflowProgressEvent {
     | 'agent:finish'
     | 'finished'
     | 'errored'
+    | 'tokens'
   phase?: string
   label?: string
   agentRunId?: string
@@ -64,14 +71,19 @@ export interface WorkflowProgressEvent {
   status?: 'done' | 'error' | 'aborted'
   durationMs?: number
   tokensUsedEstimate?: number
+  /** B5: which tier the agent ran on; populated on agent:finish + tokens events. */
+  tier?: Tier
   finalResult?: unknown
   error?: string
+  /** B5: snapshot of per-tier spend after this agent. Populated on `tokens` event. */
+  budgetByTier?: Record<Tier, number>
 }
 
 export interface WorkflowBudgetSnapshot {
   total: number | null
   spent: number
   remaining: number
+  byTier: Record<Tier, number>
 }
 
 export interface WorkflowRunHandle {
@@ -267,16 +279,17 @@ export function runWorkflow(input: WorkflowRunInput, deps: WorkflowRunnerDeps): 
       }
 
       // Budget tracker. budget.spent() / remaining() are recomputed live.
+      // B5: tier-aware tracker — tracks per-tier token spend so workflows
+      // expose cheap-vs-expensive cost breakdown via budget.byTier().
       const budgetTotal = input.budgetTotal ?? null
-      let budgetSpent = 0
+      const budgetTracker = makeBudgetTracker(budgetTotal)
       const budgetApi = {
         get total(): number | null {
-          return budgetTotal
+          return budgetTracker.total
         },
-        spent: (): number => budgetSpent,
-        remaining: (): number =>
-          budgetTotal === null ? Infinity : Math.max(0, budgetTotal - budgetSpent),
-        byTier: (): Record<string, number> => ({}) // B5 populates
+        spent: (): number => budgetTracker.spent(),
+        remaining: (): number => budgetTracker.remaining(),
+        byTier: (): Record<Tier, number> => budgetTracker.byTier()
       }
 
       let currentPhase: string | undefined
@@ -315,13 +328,19 @@ export function runWorkflow(input: WorkflowRunInput, deps: WorkflowRunnerDeps): 
         if (runAgentCount >= WORKFLOW_TOTAL_AGENT_CAP) {
           throw new WorkflowAgentCapError(WORKFLOW_TOTAL_AGENT_CAP)
         }
-        if (budgetTotal !== null && budgetSpent >= budgetTotal) {
-          throw new WorkflowBudgetError(budgetTotal, budgetSpent)
+        if (budgetTotal !== null && budgetTracker.spent() >= budgetTotal) {
+          throw new WorkflowBudgetError(budgetTotal, budgetTracker.spent())
         }
         runAgentCount++
         const agentType = opts.agentType ?? 'general'
         const phaseTag = opts.phase ?? currentPhase
         const label = opts.label ?? agentType
+
+        // B5: resolve the symbolic 'cheap'/'pro' tier name to a concrete
+        // model ID (production wiring registers per-provider mappings). The
+        // tier is captured for budget tracking + progress events.
+        const resolvedModelId = resolveModelId(opts.model, deps.forkSeam.forkDeps.defaultModel)
+        const tier = tierOfModel(resolvedModelId)
 
         // B2: cache lookup before doing any real work. As soon as cache misses
         // for ANY seq, it stays inactive for the rest of the run — calls
@@ -342,7 +361,7 @@ export function runWorkflow(input: WorkflowRunInput, deps: WorkflowRunnerDeps): 
                 return prior.resultJson as unknown as string
               }
             })()
-            budgetSpent += prior.tokensUsedEstimate ?? 0
+            budgetTracker.record(resolvedModelId, prior.tokensUsedEstimate ?? 0)
             // Write the replay-from-cache record to THIS run's journal so a
             // chained resume sees the same sequence.
             if (journalPath) {
@@ -362,7 +381,15 @@ export function runWorkflow(input: WorkflowRunInput, deps: WorkflowRunnerDeps): 
               status: 'done',
               durationMs: 0,
               tokensUsedEstimate: prior.tokensUsedEstimate,
+              tier,
               message: 'cached'
+            })
+            emit({
+              runId,
+              kind: 'tokens',
+              tier,
+              tokensUsedEstimate: prior.tokensUsedEstimate ?? 0,
+              budgetByTier: budgetTracker.byTier()
             })
             return parsedResult
           }
@@ -389,7 +416,7 @@ export function runWorkflow(input: WorkflowRunInput, deps: WorkflowRunnerDeps): 
             prompt,
             agentType,
             schema: opts.schema,
-            modelId: opts.model,
+            modelId: resolvedModelId,
             isolation: opts.isolation,
             timeoutMs: opts.timeoutMs,
             signal: controller.signal,
@@ -397,7 +424,7 @@ export function runWorkflow(input: WorkflowRunInput, deps: WorkflowRunnerDeps): 
           }
           const handle = deps.forkSeam.forkAgent(forkOpts, deps.forkSeam.forkDeps)
           result = (await handle.promise) as ForkAgentResult
-          budgetSpent += result.tokensUsedEstimate ?? 0
+          budgetTracker.record(resolvedModelId, result.tokensUsedEstimate ?? 0)
           const finishedAgentAt = clock()
           emit({
             runId,
@@ -408,7 +435,15 @@ export function runWorkflow(input: WorkflowRunInput, deps: WorkflowRunnerDeps): 
             phase: phaseTag,
             status: 'done',
             durationMs: finishedAgentAt - startedAgentAt,
-            tokensUsedEstimate: result.tokensUsedEstimate
+            tokensUsedEstimate: result.tokensUsedEstimate,
+            tier
+          })
+          emit({
+            runId,
+            kind: 'tokens',
+            tier,
+            tokensUsedEstimate: result.tokensUsedEstimate ?? 0,
+            budgetByTier: budgetTracker.byTier()
           })
           // B2: append the live record to the journal.
           if (journalPath) {
@@ -538,14 +573,23 @@ export function runWorkflow(input: WorkflowRunInput, deps: WorkflowRunnerDeps): 
             signal: controller.signal,
             concurrencyCap,
             budgetTotal:
-              budgetTotal === null ? null : Math.max(0, budgetTotal - budgetSpent),
+              budgetTotal === null ? null : Math.max(0, budgetTotal - budgetTracker.spent()),
             nestingDepth: currentDepth + 1
           },
           deps
         )
         const result = await child.promise
-        // Roll the child's budget into the parent.
-        budgetSpent += result.budget.spent
+        // Roll the child's per-tier spend into the parent so byTier sees
+        // both. The child's tracker reports cheap/pro/unknown buckets.
+        for (const [tierName, tokens] of Object.entries(result.budget.byTier ?? {})) {
+          if (tokens > 0) {
+            // Record without re-running tierOfModel — we already have the bucket.
+            budgetTracker.record(
+              tierName === 'cheap' ? 'cheap' : tierName === 'pro' ? 'pro' : 'unknown',
+              tokens
+            )
+          }
+        }
         runAgentCount += result.agentCount
         return result.output
       }
@@ -637,8 +681,9 @@ export function runWorkflow(input: WorkflowRunInput, deps: WorkflowRunnerDeps): 
       const durationMs = clock() - startedAt
       const finalBudget: WorkflowBudgetSnapshot = {
         total: budgetTotal,
-        spent: budgetSpent,
-        remaining: budgetTotal === null ? Infinity : Math.max(0, budgetTotal - budgetSpent)
+        spent: budgetTracker.spent(),
+        remaining: budgetTracker.remaining(),
+        byTier: budgetTracker.byTier()
       }
       emit({
         runId,

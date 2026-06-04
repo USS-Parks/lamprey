@@ -711,3 +711,113 @@ describe('forkAgent — A3 worktree isolation', () => {
     expect(finalizeCalls).toEqual([])
   })
 })
+
+// -- forkAgent — B5 schema-retry hardening -------------------------------
+
+describe('forkAgent — B5 schema retry loop', () => {
+  it('succeeds on the first attempt when the runner returns valid JSON', async () => {
+    let attempts = 0
+    const runner: ForkAgentRunner = async () => {
+      attempts++
+      return JSON.stringify({ found: ['a.ts'] })
+    }
+    const handle = forkAgent(
+      {
+        prompt: 'x',
+        agentType: 'Explore',
+        schema: { type: 'object', required: ['found'] }
+      },
+      makeDeps({ runner, loadType: builtinResolver() })
+    )
+    const result = await handle.promise
+    expect(attempts).toBe(1)
+    expect(result.output).toEqual({ found: ['a.ts'] })
+  })
+
+  it('retries up to 3 times when JSON is malformed, appending the validation error each turn (REQUIRED bullet)', async () => {
+    const captured: number[] = []
+    const runner: ForkAgentRunner = async (input) => {
+      captured.push(input.messages.length)
+      return 'not-json-at-all'
+    }
+    const handle = forkAgent(
+      {
+        prompt: 'x',
+        agentType: 'Explore',
+        schema: { type: 'object', required: ['x'] }
+      },
+      makeDeps({ runner, loadType: builtinResolver() })
+    )
+    await expect(handle.promise).rejects.toBeInstanceOf(SubagentSchemaError)
+    // Three attempts total.
+    expect(captured).toHaveLength(3)
+    // First attempt has the base 2 messages (system + user); each retry adds
+    // an assistant + user pair so attempt 2 has 4 messages, attempt 3 has 6.
+    expect(captured).toEqual([2, 4, 6])
+  })
+
+  it('the retry user message includes the validation error verbatim', async () => {
+    let secondAttemptInput: { role: string; content: string }[] | null = null
+    let calls = 0
+    const runner: ForkAgentRunner = async (input) => {
+      calls++
+      if (calls === 2) {
+        secondAttemptInput = input.messages as Array<{ role: string; content: string }>
+      }
+      // First attempt → malformed; second attempt → valid.
+      if (calls === 1) return 'not-json'
+      return JSON.stringify({ x: 1 })
+    }
+    await forkAgent(
+      {
+        prompt: 'x',
+        agentType: 'Explore',
+        schema: { type: 'object', required: ['x'] }
+      },
+      makeDeps({ runner, loadType: builtinResolver() })
+    ).promise
+    expect(secondAttemptInput).not.toBeNull()
+    const lastMsg = secondAttemptInput!.at(-1)!
+    expect(lastMsg.role).toBe('user')
+    expect(lastMsg.content).toMatch(/previous response failed schema validation/i)
+  })
+
+  it('succeeds on the 2nd attempt when the first is malformed and the second is valid', async () => {
+    let calls = 0
+    const runner: ForkAgentRunner = async () => {
+      calls++
+      if (calls === 1) return 'not-json'
+      return JSON.stringify({ x: 1 })
+    }
+    const result = await forkAgent(
+      {
+        prompt: 'x',
+        agentType: 'Explore',
+        schema: { type: 'object', required: ['x'] }
+      },
+      makeDeps({ runner, loadType: builtinResolver() })
+    ).promise
+    expect(calls).toBe(2)
+    expect(result.output).toEqual({ x: 1 })
+  })
+
+  it('schema-validation failure (wrong shape, not parse error) also triggers retries', async () => {
+    let calls = 0
+    const runner: ForkAgentRunner = async () => {
+      calls++
+      // Returns valid JSON but missing the required key.
+      if (calls < 3) return JSON.stringify({ other: 1 })
+      return JSON.stringify({ found: ['ok'] })
+    }
+    const result = await forkAgent(
+      {
+        prompt: 'x',
+        agentType: 'Explore',
+        schema: { type: 'object', required: ['found'] }
+      },
+      makeDeps({ runner, loadType: builtinResolver() })
+    ).promise
+    expect(calls).toBe(3)
+    expect(result.output).toEqual({ found: ['ok'] })
+  })
+})

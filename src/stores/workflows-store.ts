@@ -9,6 +9,8 @@ import { create } from 'zustand'
 export type WorkflowStatus = 'running' | 'done' | 'errored' | 'aborted'
 export type AgentChipStatus = 'running' | 'done' | 'error' | 'aborted'
 
+export type AgentTier = 'cheap' | 'pro' | 'unknown'
+
 export interface AgentChip {
   /** Synthetic id stable across start/finish for the same agent. */
   id: string
@@ -22,6 +24,8 @@ export interface AgentChip {
   tokensUsedEstimate?: number
   cached?: boolean
   error?: string
+  /** B5: model tier the agent ran on. Populated on agent:finish. */
+  tier?: AgentTier
 }
 
 export interface PhaseGroup {
@@ -72,6 +76,7 @@ export interface WorkflowProgressEvent {
     | 'agent:finish'
     | 'finished'
     | 'errored'
+    | 'tokens'
   label?: string
   phase?: string
   agentRunId?: string
@@ -80,8 +85,10 @@ export interface WorkflowProgressEvent {
   status?: 'done' | 'error' | 'aborted'
   durationMs?: number
   tokensUsedEstimate?: number
+  tier?: AgentTier
   finalResult?: unknown
   error?: string
+  budgetByTier?: Record<AgentTier, number>
 }
 
 function findOrCreateRun(runs: WorkflowRunState[], runId: string): WorkflowRunState[] {
@@ -226,6 +233,7 @@ export const useWorkflowsStore = create<WorkflowsStoreState>((set, get) => ({
                 durationMs: event.durationMs,
                 tokensUsedEstimate: event.tokensUsedEstimate,
                 cached: event.message === 'cached',
+                tier: event.tier,
                 error: event.error
               }
               phase.agents = agents
@@ -252,6 +260,11 @@ export const useWorkflowsStore = create<WorkflowsStoreState>((set, get) => ({
               error: event.error
             }))
           }
+        case 'tokens':
+          // B5: per-tier token accumulation is held inside the runner's
+          // budget tracker; the store doesn't need to mirror it. The event
+          // exists so the panel can render live cost chips if desired.
+          return { runs }
         default:
           return { runs }
       }

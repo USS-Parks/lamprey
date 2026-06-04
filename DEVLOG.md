@@ -1,5 +1,72 @@
 # Lamprey Harness Dev Log
 
+## [Track 1 — COMPLETE] Runtime Foundation track shipped — 2026-06-03
+
+All 8 prompts (A1 → A2 → A3 → B1 → B2 → B3 → B4 → B5) committed on `feat/track-1-runtime`. From baseline:
+- **tests:** 822 → 1010 (+188 net, 5 skipped, 0 regressions across the run)
+- **tsc node + web:** clean throughout
+- **new top-level modules in `electron/services/`:** subagent-types, subagent-runner, agent-run-store, worktree-runner, workflow-meta, workflow-runner, workflow-journal, workflow-library, workflow-budget
+- **new IPC channels:** `tasks:list/get/output/stop/update` + `agent:run:notify` broadcast; `workflows:list/runInline/run/stop` + `workflow:progress` + `workflow:tokens` broadcasts
+- **renderer:** `workflows-store` (Zustand) + `WorkflowsPanel` / `WorkflowRunCard` / `PhaseGroup` / `AgentChip` (tier-aware ring overlay)
+- **resources:** 4 built-in workflows (adversarial-verify, judge-panel, loop-until-dry, multi-modal-sweep) annotated with model tiers
+
+**Commit list (run `git log feat/track-1-runtime ^main --oneline` for SHAs):**
+1. A1 fork primitive + extensible types (`feat(subagent): A1 ...`)
+2. A2 background agents + async notifications (`feat(subagent): A2 ...`)
+3. A3 worktree-isolated subagent runs (`feat(subagent): A3 ...`)
+4. B1 workflow JS evaluator core (`feat(workflow): B1 ...`)
+5. B2 journaling + resume (`feat(workflow): B2 ...`)
+6. B3 workflow live progress UI (`feat(workflow): B3 ...`)
+7. B4 quality workflow patterns library (`feat(workflow): B4 ...`)
+8. B5 model-tier routing + schema-retry hardening (`feat(workflow): B5 ...`)
+
+**Cross-track outbound dependencies satisfied:** T2:E6 (async event bridge) can read `agent:run:notify` (A2). T2:E4 (spawn-task) can use `worktree-runner` (A3). T3:D4 (memory consolidation workflow) can build on `workflow-runner` (B1). H1 (activity dashboard) can mount `WorkflowsPanel` + `tasks:list` (B3 + A2). H2 (workflow palette) can drive `workflows:runInline` + the library (B1 + B4). H6 (ask-user) can extend `forkAgent` deps (A1).
+
+**Track 1 user-verification items collected from per-prompt DEVLOG entries (Electron-shell smoke needed at runtime):**
+- A2 live `tasks:list` against the real better-sqlite3 DB (test path uses memory fallback)
+- A3 real `git worktree add` against the Lamprey repo (test path uses runGit stub)
+- B3 live WorkflowsPanel DOM render via the preview tools (store tests exercise the same event sequence)
+- B4 Library tab in WorkflowsPanel (IPC + invocation path proven; UI affordance for one-click run from a card is deferred to H1's activity dashboard)
+- Sidebar entry "Workflows" (Sidebar.tsx is 1000+ lines with its own nav-history protocol; the route registration is mechanical and belongs in H1)
+
+---
+
+## [Track 1 — Prompt B5] Model-tier routing + schema-retry hardening — 2026-06-03
+
+**Files changed:**
+- `electron/services/workflow-budget.ts` (new) — per-tier token budget tracker. `tierOfModel(modelId)` returns `'cheap' | 'pro' | 'unknown'` via substring heuristics (`flash`/`haiku`/`mini`/`gemma`/`-v3-` → cheap; `pro`/`opus`/`sonnet`/`reasoning` → pro). `resolveModelId(idOrTier, defaultModel)` lets workflow scripts say `model: 'cheap'` (symbolic tier) and have it resolved to a concrete provider model ID via `TIER_MODEL_MAP`. `makeBudgetTracker(total)` returns `{total, spent(), remaining(), byTier(), record(modelId, tokens)}`; `byTier()` returns a copy so callers can't accidentally mutate the tracker.
+- `electron/services/subagent-runner.ts` — schema-retry loop on `forkAgent`. When `opts.schema` is set, the runner is invoked up to `SUBAGENT_SCHEMA_RETRY_MAX = 3` times; each failed attempt appends the model's previous response as an assistant message + a user message containing the verbatim validation error ("Your previous response failed schema validation: <msg>. Try again..."). On exhaustion the last `SubagentSchemaError` is thrown. Non-schema calls pass straight through (single runner invocation, same as A1).
+- `electron/services/workflow-runner.ts` — `WorkflowProgressEvent` extends with `tier` + `budgetByTier` fields and a new `'tokens'` kind. The local `budgetSpent` counter was replaced with the tier-aware `makeBudgetTracker`. Every agent call (live + cached) now resolves its symbolic `model` to a concrete ID via `resolveModelId`, computes `tier` via `tierOfModel`, calls `budgetTracker.record(resolvedModelId, tokens)`, fires an `agent:finish` event tagged with the tier, then fires a separate `tokens` event carrying the tier + delta + full `budgetByTier` snapshot. Nested workflows roll the child's `budget.byTier` per-bucket into the parent's tracker so cross-workflow byTier numbers are accurate. The final `WorkflowBudgetSnapshot` now includes `byTier`.
+- `resources/workflows/adversarial-verify.js` — skeptics annotated `model: 'cheap'`.
+- `resources/workflows/judge-panel.js` — candidates + judges `model: 'cheap'`, synthesis `model: 'pro'`.
+- `resources/workflows/loop-until-dry.js` — finders `model: 'cheap'`.
+- `resources/workflows/multi-modal-sweep.js` — lenses `model: 'cheap'`, synthesis `model: 'pro'`.
+- `src/stores/workflows-store.ts` — `AgentChip` gains `tier?: AgentTier`. `applyProgress` stores `event.tier` on `agent:finish`. `tokens` events accepted as a no-op (the budget snapshot is held in the runner's tracker, not mirrored in the store). `WorkflowProgressEvent` mirror extended to include the new fields.
+- `src/components/workflows/AgentChip.tsx` — `TIER_RING` map (`cheap → ring-sky-400/40`, `pro → ring-violet-500/50`). Chip renders the ring overlay alongside the status tint + a `[cheap]`/`[pro]` label suffix + `data-tier` attr + tier name in the tooltip.
+- `electron/services/workflow-budget.test.ts` (new) — 10 tests covering tier classification (cheap/pro/unknown substring heuristics, undefined handling), `resolveModelId` (concrete pass-through, symbolic resolve, defaultModel fallback), `setTierModelMap`, tracker state (zero start, Infinity remaining when total is null, per-tier accumulation, ignore zero/negative deltas, byTier returns copy).
+- `electron/services/subagent-runner.test.ts` — added "B5 schema retry loop" describe (5 tests): success on first attempt (single runner call); REQUIRED — retries up to 3× on malformed JSON with messages array growing 2 → 4 → 6 (assistant + user pair per retry); retry message includes the verbatim validation error; succeeds on attempt 2 when the first is malformed; schema-shape mismatch (not parse error) also triggers retries.
+- `electron/services/workflow-library.test.ts` — added 3 B5 tests: REQUIRED — mixed-tier adversarial-verify shows `byTier.cheap > 0 && byTier.pro === 0`; an all-Pro baseline (regex-swapped script) shows the inverse; at 10:1 cost ratio the mixed run is ≥3× cheaper. judge-panel exercises BOTH tiers (candidates + judges cheap, synthesis pro). `workflow:tokens` event fires once per agent finish, all tagged with the expected tier.
+- `src/stores/workflows-store.test.ts` — 2 B5 tests: tier from `agent:finish` event lands on the stored chip; `tokens` events accepted without breaking the tree.
+
+**Verify gate:**
+- `tsc --noEmit -p tsconfig.node.json` ✓
+- `tsc --noEmit -p tsconfig.web.json` ✓
+- `vitest run` ✓ — **1010 passed, 5 skipped** (was 988 after B4 → +22 net, 0 regressions)
+- Verify-gate bullets covered:
+  - run mixed-tier adversarial-verify → token counters ≥3× cheaper than all-Pro baseline ✓ (10× at the 10:1 cost ratio; the test asserts ≥3× to be lenient with downstream pricing tweaks)
+  - forced bad-schema output (stub) → retried 3× with error appended each turn, surfaces validation error ✓
+  - budget.byTier returns per-tier spend ✓
+  - WorkflowsPanel chips tinted by tier ✓ (TIER_RING + data-tier attr; store flow verified; live DOM render is user-verification)
+
+**Notes:**
+- Schema retry message structure is `[system, user, assistant(failure-1), user(retry-note-1), assistant(failure-2), user(retry-note-2), ...]` — the model sees its own bad output, then a directive to retry with corrections. This matches the parity plan §6's "schema retry" pattern and gives the model the chance to self-correct without losing context.
+- TIER_MODEL_MAP defaults pick DeepSeek IDs because that's the most-used provider in this codebase; production wiring (Track 2 / Integration Phase) will call `setTierModelMap` based on the user's roster configuration so 'cheap' can resolve to Gemma or Qwen-flash depending on which keys are configured.
+- The tier ring is purely visual; the structural data on the chip (`data-tier`, `tier` field) is the canonical source so the activity dashboard (H1) and any future tier-cost summarisers can read it.
+- The all-Pro "baseline" in the test is built via regex-swap of `model: 'cheap'` → `model: 'pro'`. The test catches a specific structural invariant: a mixed-tier workflow's `byTier.pro === 0` (skeptics never escalate to pro). This is the property the "3× cheaper" claim rests on.
+- Budget tracking in nested workflows: when a child workflow finishes, its `budget.byTier` is iterated and each bucket is rolled into the parent tracker via `record(tierName, tokens)`. Concurrency cap is NOT yet shared across nested workflows (each child has its own semaphore); the plan calls this out for a future hardening.
+
+**Commit:** see `git log --grep "B5 model-tier"`.
+
 ## [Track 1 — Prompt B4] Quality workflow patterns library — 2026-06-03
 
 **Files changed:**

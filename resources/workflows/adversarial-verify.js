@@ -29,6 +29,9 @@ const votes = await parallel(
         label: 'skeptic-' + (i + 1),
         phase: 'Refute',
         agentType: 'general',
+        // B5: skeptics use the cheap tier — refutation is high-volume and
+        // doesn't need top-tier reasoning depth.
+        model: 'cheap',
         schema: VOTE_SCHEMA
       }
     )

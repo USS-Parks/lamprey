@@ -27,6 +27,8 @@ const sweeps = await parallel(
         label: 'sweep-' + lens,
         phase: 'Sweep',
         agentType: 'Explore',
+        // B5: lenses on cheap tier — parallel discovery is volume work.
+        model: 'cheap',
         schema: FIND_SCHEMA
       }
     )
@@ -52,7 +54,13 @@ phase('Synthesise')
 log('merged ' + merged.length + ' unique findings across ' + lenses.length + ' lenses')
 const summary = await agent(
   `Summarise the unified result set below into 3-5 bullets capturing the top themes.\n\n${JSON.stringify(merged)}`,
-  { label: 'synthesise', phase: 'Synthesise', agentType: 'general' }
+  {
+    label: 'synthesise',
+    phase: 'Synthesise',
+    agentType: 'general',
+    // B5: synthesis on top tier — themes need a stronger summariser.
+    model: 'pro'
+  }
 )
 
 return {

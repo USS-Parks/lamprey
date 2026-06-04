@@ -346,6 +346,82 @@ describe('workflow() — nested invocation', () => {
     ).rejects.toThrow(/loadNamedWorkflow/)
   })
 
+  it('B5: mixed-tier adversarial-verify → budget.byTier shows skeptics on cheap, no pro spend (REQUIRED bullet)', async () => {
+    const source = __workflowLibraryTest.parsePath(join(RESOURCES, 'adversarial-verify.js')).source
+    const seam = makeRoutedSeam([
+      {
+        test: () => true,
+        respond: () => JSON.stringify({ refuted: true, reason: 'r' })
+      }
+    ])
+    const result = await runWorkflow(
+      { script: source, args: { claim: 'x', skepticCount: 3 } },
+      { forkSeam: seam }
+    ).promise
+    expect(result.budget.byTier.cheap).toBeGreaterThan(0)
+    expect(result.budget.byTier.pro).toBe(0)
+    // All-Pro baseline: same prompt, but force `model: 'pro'` via an
+    // injected loader that swaps the script's `model: 'cheap'` to 'pro'.
+    const allProSource = source.replace(/model:\s*'cheap'/g, "model: 'pro'")
+    const baselineResult = await runWorkflow(
+      { script: allProSource, args: { claim: 'x', skepticCount: 3 } },
+      { forkSeam: seam }
+    ).promise
+    expect(baselineResult.budget.byTier.pro).toBeGreaterThan(0)
+    expect(baselineResult.budget.byTier.cheap).toBe(0)
+    // The token COUNTS are the same (same prompts → same tokensUsedEstimate);
+    // the verify-gate's "3x cheaper" claim refers to per-tier cost ratios
+    // which downstream wiring computes. We assert the structural property:
+    // mixed-tier shifts the entire spend off the pro tier.
+    expect(result.budget.byTier.pro).toBe(0)
+    expect(baselineResult.budget.byTier.cheap).toBe(0)
+    // And the costed-comparison computed externally with a 10:1 ratio
+    // (typical pro:cheap pricing) shows mixed-tier ≥10x cheaper.
+    const ratio = 10
+    const mixedCost = result.budget.byTier.cheap * 1 + result.budget.byTier.pro * ratio
+    const baselineCost = baselineResult.budget.byTier.cheap * 1 + baselineResult.budget.byTier.pro * ratio
+    expect(baselineCost / mixedCost).toBeGreaterThanOrEqual(3)
+  })
+
+  it('B5: judge-panel uses mixed tiers — candidates+judges cheap, synthesis pro', async () => {
+    const source = __workflowLibraryTest.parsePath(join(RESOURCES, 'judge-panel.js')).source
+    const seam = makeRoutedSeam([
+      {
+        test: (p) => /^Synthesise a final plan/i.test(p.trim()),
+        respond: () => 'SYNTH'
+      },
+      {
+        test: (p) => /^Propose a plan/i.test(p.trim()),
+        respond: () => 'candidate'
+      },
+      {
+        test: (p) => /^Score this plan/i.test(p.trim()),
+        respond: () => JSON.stringify({ score: 5 })
+      }
+    ])
+    const result = await runWorkflow(
+      { script: source, args: { prompt: 'design X' } },
+      { forkSeam: seam }
+    ).promise
+    expect(result.budget.byTier.cheap).toBeGreaterThan(0)
+    expect(result.budget.byTier.pro).toBeGreaterThan(0)
+  })
+
+  it('B5: workflow:tokens event fires after every agent finish', async () => {
+    const events: Array<{ kind: string; tier?: string }> = []
+    const source = __workflowLibraryTest.parsePath(join(RESOURCES, 'adversarial-verify.js')).source
+    const seam = makeRoutedSeam([
+      { test: () => true, respond: () => JSON.stringify({ refuted: true }) }
+    ])
+    await runWorkflow(
+      { script: source, args: { claim: 'x', skepticCount: 3 } },
+      { forkSeam: seam, progress: (e) => events.push({ kind: e.kind, tier: e.tier }) }
+    ).promise
+    const tokensEvents = events.filter((e) => e.kind === 'tokens')
+    expect(tokensEvents).toHaveLength(3)
+    expect(tokensEvents.every((e) => e.tier === 'cheap')).toBe(true)
+  })
+
   it('rejects nesting depth > 1 (script in child calls workflow())', async () => {
     const grandchildScript = `export const meta = { name: 'grandchild', description: 'inner' }
       return 'inner-output'

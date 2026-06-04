@@ -76,6 +76,42 @@ describe('workflows-store — event accumulation', () => {
     })
   })
 
+  it("B5: agent:finish stores the tier from the event", () => {
+    const apply = useWorkflowsStore.getState().applyProgress
+    apply(ev({ kind: 'started', label: 'wf' }))
+    apply(
+      ev({
+        kind: 'agent:start',
+        agentType: 'general',
+        label: 'skeptic',
+        agentRunId: 'a1',
+        phase: ''
+      })
+    )
+    apply(
+      ev({
+        kind: 'agent:finish',
+        agentType: 'general',
+        label: 'skeptic',
+        agentRunId: 'a1',
+        status: 'done',
+        tier: 'cheap',
+        phase: ''
+      })
+    )
+    expect(useWorkflowsStore.getState().runs[0].phases[0].agents[0].tier).toBe('cheap')
+  })
+
+  it('B5: tokens events are accepted and do not break the tree', () => {
+    const apply = useWorkflowsStore.getState().applyProgress
+    apply(ev({ kind: 'started', label: 'wf' }))
+    apply(ev({ kind: 'tokens', tier: 'cheap', tokensUsedEstimate: 10 }))
+    apply(ev({ kind: 'tokens', tier: 'pro', tokensUsedEstimate: 50 }))
+    // Tree should still be valid; no errors thrown, runs[0] still in 'running'.
+    const run = useWorkflowsStore.getState().runs[0]
+    expect(run.status).toBe('running')
+  })
+
   it("a cached agent:finish carries the 'cached' flag", () => {
     const apply = useWorkflowsStore.getState().applyProgress
     apply(ev({ kind: 'started', label: 'wf' }))

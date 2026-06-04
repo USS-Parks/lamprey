@@ -32,6 +32,8 @@ while (dry < dryRoundsTarget && round < maxRounds) {
       label: 'round-' + round,
       phase: 'Find',
       agentType: 'general',
+      // B5: finders use cheap tier — loop-until-dry is volume-bound discovery.
+      model: 'cheap',
       schema: FIND_SCHEMA
     }
   )

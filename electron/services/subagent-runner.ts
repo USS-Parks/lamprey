@@ -22,6 +22,7 @@ export const SUBAGENT_DEFAULT_TIMEOUT_MS = 60_000
 export const SUBAGENT_MAX_TIMEOUT_MS = 10 * 60_000
 export const SUBAGENT_MAX_CONTEXT_BYTES = 32 * 1024
 export const SUBAGENT_SCHEMA_TOOL_NAME = 'structured_output'
+export const SUBAGENT_SCHEMA_RETRY_MAX = 3
 
 export type IsolationMode = 'worktree'
 
@@ -528,26 +529,54 @@ export function forkAgent<T = string | Record<string, unknown>>(
         runId,
         worktreePath: worktreeCtx?.path
       }
-      const raw = await deps.runner(runnerInput)
-      // If the runner returned cleanly, accept the output even if the signal
-      // just aborted — the work was already done. Aborts/timeouts only count
-      // when they cause the runner to reject (handled below in the catch).
+      // B5: schema-mode retry loop. When the model returns malformed JSON or
+      // a schema-non-conforming object, we re-prompt up to SUBAGENT_SCHEMA_RETRY_MAX
+      // times with the validation error appended; on exhaustion we surface
+      // the last error. When opts.schema is unset, this is a single straight
+      // pass through deps.runner.
+      let raw: string
       let output: string | Record<string, unknown>
       if (opts.schema) {
-        const payload = extractJsonPayload(raw)
-        let parsed: unknown
-        try {
-          parsed = JSON.parse(payload)
-        } catch (err) {
-          throw new SubagentSchemaError(
-            `failed to parse JSON: ${(err as Error).message}`,
-            raw,
-            opts.schema
-          )
+        let attempt = 0
+        let lastErr: SubagentSchemaError | null = null
+        let currentMessages: ChatCompletionMessageParam[] = runnerInput.messages
+        while (true) {
+          attempt++
+          raw = await deps.runner({ ...runnerInput, messages: currentMessages })
+          const payload = extractJsonPayload(raw)
+          try {
+            const parsed = JSON.parse(payload) as unknown
+            validateAgainstSchema(parsed, opts.schema)
+            output = parsed as Record<string, unknown>
+            break
+          } catch (err) {
+            lastErr =
+              err instanceof SubagentSchemaError
+                ? err
+                : new SubagentSchemaError(
+                    `failed to parse JSON: ${(err as Error).message}`,
+                    raw,
+                    opts.schema
+                  )
+            if (attempt >= SUBAGENT_SCHEMA_RETRY_MAX) {
+              throw lastErr
+            }
+            // Append the validation error to the message thread and retry.
+            currentMessages = [
+              ...currentMessages,
+              { role: 'assistant' as const, content: raw },
+              {
+                role: 'user' as const,
+                content:
+                  `Your previous response failed schema validation: ${lastErr.message}. ` +
+                  `Try again. Reply with ONLY the JSON object conforming to the schema, ` +
+                  `no prose, no markdown fences.`
+              }
+            ]
+          }
         }
-        validateAgainstSchema(parsed, opts.schema)
-        output = parsed as Record<string, unknown>
       } else {
+        raw = await deps.runner(runnerInput)
         output = raw
       }
       const elapsedMs = Math.max(0, clock() - startedAt)
