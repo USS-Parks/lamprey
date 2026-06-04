@@ -1,5 +1,44 @@
 # Lamprey Harness Dev Log
 
+## [Fluidity — Prompt J9] Notification consolidation — 2026-06-04
+
+Async background events (chat:onAsyncEvent — turn-completed, wake-up
+landed, side-chat reply, etc.) now route as inline transcript notice
+rows when the affected conversation is active, rather than firing a
+toast that steals focus. A new `TranscriptNotice` component renders
+the notice as a slim row interleaved with messages by timestamp.
+
+When the conversation is NOT active (or no active conv exists), the
+event still fires a toast so the user knows something happened in
+another window — the toast surface stays useful for "switch focus to
+see this" events. Errors continue to use `toast.error()` as before.
+
+**Files changed:**
+- `src/stores/inline-notices-store.ts` (new) — per-conversation notice queue (ring of 50)
+- `src/lib/interleave-notices.ts` (new) — pure ts-ordered merge helper (unused inline, kept for tests + reuse)
+- `src/lib/interleave-notices.test.ts` (new) — 5 cases
+- `src/components/chat/TranscriptNotice.tsx` (new) — inline notice row
+- `src/components/chat/AsyncEventToast.tsx` — routes active-conv events to inline notices
+- `src/components/chat/MessageList.tsx` — bucket-interleaves notices with messages
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- vitest ✓ (1247 passed / 16 skipped — +5 J9 tests)
+- user-verification-needed: in Electron, while viewing a conversation, fire a `chat:onAsyncEvent` for that conv → inline notice row appears between messages, sorted by ts; same event for a DIFFERENT conv → toast fires instead; an error path still produces a toast (toast.error unchanged).
+
+**Notes:** WakeupPill stays as a decorator on system messages (already
+in-transcript). The plan's "WakeupPill routes through TranscriptNotice"
+phrasing is satisfied de-facto because the wake-up event arrives as a
+system message via the chat stream — it's already a transcript row, the
+pill is just its header glyph. The interleave helper is exported as a
+reusable utility even though MessageList ended up using the same bucket
+pattern chapters use (which was already there).
+
+**Commit:** pending
+
+---
+
 ## [Fluidity — Prompt J8] Status line: context% slot + amber-warn at 70% — 2026-06-04
 
 Status line slot order is now `model · context · workflow · branch ·
