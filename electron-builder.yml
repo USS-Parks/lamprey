@@ -25,6 +25,11 @@ extraResources:
     to: vendor
   - from: resources/skills
     to: skills
+  # Track 2 / C4 — bundled slash commands. The slash-command loader
+  # bootstraps `userData/slash-commands/` from process.resourcesPath/slash-commands
+  # on first run, then hot-reloads from the userData dir.
+  - from: resources/slash-commands
+    to: slash-commands
   - from: resources/icon.png
     to: icon.png
   - from: resources/icon.ico

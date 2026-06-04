@@ -12,6 +12,10 @@ import { startAutomations, stopAutomations } from './services/automations-runner
 import { mcpManager } from './services/mcp-manager'
 import { ensureNodeReplDefaultServer } from './services/node-repl-default-server'
 import { initializeSkillLoader, shutdownSkillLoader } from './services/skill-loader'
+import {
+  initializeSlashCommandLoader,
+  shutdownSlashCommandLoader
+} from './services/slash-commands'
 import { shutdownReviewWatcher } from './ipc/review'
 import { destroyTray, handleWindowClose, initializeTray, refreshTrayMenu } from './services/tray'
 import { registerGlobalShortcuts } from './services/shortcuts'
@@ -427,6 +431,14 @@ app.whenReady().then(() => {
     console.error('[main] Skill loader init error:', (err as Error).message)
   }
 
+  // Track 2 / C4 — slash commands. Watches userData/slash-commands for
+  // live edits; bootstraps the bundled built-ins on first run.
+  try {
+    initializeSlashCommandLoader()
+  } catch (err) {
+    console.error('[main] Slash-command loader init error:', (err as Error).message)
+  }
+
   try {
     void fireHooks('sessionStart')
     startAutomations()
@@ -469,6 +481,7 @@ app.on('will-quit', () => {
   suppressBoundsPersist = true
   mcpManager.shutdown().catch(() => {})
   shutdownSkillLoader()
+  shutdownSlashCommandLoader()
   destroyArtifactSandbox()
   destroyTray()
   ptyKillAll()

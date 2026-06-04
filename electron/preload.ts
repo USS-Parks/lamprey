@@ -271,6 +271,23 @@ const api = {
     }
   },
 
+  // Track 2 / C4 — slash commands. `list` returns user-visible commands
+  // only (`hidden: true` entries stay out of the palette but `resolve`
+  // still resolves them by name); `listAll` is for diagnostics; `resolve`
+  // returns the interpolated prompt body. `onChanged` fires whenever
+  // chokidar picks up a file mutation in userData/slash-commands.
+  slash: {
+    list: () => ipcRenderer.invoke('slash:list'),
+    listAll: () => ipcRenderer.invoke('slash:listAll'),
+    resolve: (payload: { name: string; rest?: string }) =>
+      ipcRenderer.invoke('slash:resolve', payload),
+    onChanged: (cb: (e: unknown) => void): (() => void) => {
+      const handler = (_: unknown, e: unknown) => cb(e)
+      ipcRenderer.on('slash:changed', handler)
+      return () => ipcRenderer.removeListener('slash:changed', handler)
+    }
+  },
+
   hooks: {
     list: () => ipcRenderer.invoke('hooks:list'),
     create: (input: {

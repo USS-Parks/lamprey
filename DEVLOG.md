@@ -1,5 +1,52 @@
 # Lamprey Harness Dev Log
 
+## [Track 2 — Prompt C4] Slash command system + built-ins — 2026-06-03
+
+**Files changed:**
+- `electron/services/slash-commands.ts` (new) — filesystem-discovered loader mirroring `skill-loader.ts`. Built-ins live in `resources/slash-commands/`; the loader bootstraps `userData/slash-commands/` from there on first run and watches for live edits via chokidar. Frontmatter: `{name, description, args?, hidden?}`. Body is the prompt template; `interpolateSlashBody` supports `{{args}}` (joined rest), `{{arg1}}..{{argN}}` (positional, empty when out of range), `{{<named>}}` (from `args:` frontmatter), and leaves unmatched non-positional tokens literal.
+- `electron/ipc/slash.ts` (new) — `slash:list` (visible commands), `slash:listAll` (incl. hidden), `slash:resolve({name, rest})`. Hidden entries stay out of `slash:list` but `resolve` still resolves them.
+- `electron/ipc/index.ts` — registers the new handlers.
+- `electron/main.ts` — `initializeSlashCommandLoader()` at startup; `shutdownSlashCommandLoader()` at will-quit.
+- `electron/preload.ts` — `slash.list / listAll / resolve / onChanged` bindings.
+- `electron-builder.yml` — bundles `resources/slash-commands/` into the packaged `process.resourcesPath/slash-commands/`.
+- `resources/slash-commands/*.md` (9 built-ins): `/init`, `/review`, `/verify`, `/simplify`, `/loop`, `/plan`, `/workflow`, `/spawn-task`, `/clear` (hidden).
+- `src/stores/slash-commands-store.ts` (new) — renderer store: `commands`, `load`, `resolve`, `applyChange` (live `slash:changed` reducer).
+- `src/components/chat/SlashCommandPalette.tsx` (new) — popover above the chat input that lists matching commands when content starts with `/`. Keyboard: ↑/↓ to focus, Tab/Enter to apply, Esc to dismiss. Each row shows `/name`, the source badge (`user`/`builtin`), optional `<arg>` placeholders, and the description.
+- `src/components/chat/ChatInput.tsx` — detects leading `/` (no newline), mounts the palette, routes the existing renderer-side cases (`/compact`, `/fork`, `/models`, `/fast`) plus two repurposed ones: `/plan` now calls `usePlanStore().enterPlanMode(activeConvId)` (C3's real gate) and `/clear` drops visible messages. Anything else goes through `useSlashCommandsStore().resolve(name, rest)` → `onSend(prompt)`.
+- `electron/services/slash-commands.test.ts` (new) — 14 tests over `parseSlashFile`, `fileNameToSlug`, `isMarkdownFile`, `interpolateSlashBody`. Electron is mocked at the module boundary (same pattern as `event-log.test.ts`).
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- vitest 889 passed / 5 skipped (875 → +14 new) ✓
+- Manual smoke — **user-verification-needed** (Electron-only, `window.api.slash` IPC + chokidar watch):
+  1. Launch Electron. Type `/` in the chat input → palette appears with the 8 visible built-ins.
+  2. Type `/rev` → "review" ranks first. Tab inserts `/review `.
+  3. Send `/verify` → the verify prompt dispatches to the model as a user turn.
+  4. Drop a file in `userData/slash-commands/release-notes.md`:
+     ```
+     ---
+     name: release-notes
+     description: Draft release notes for the named version.
+     args: [version]
+     ---
+     Draft release notes for version {{version}}.
+     ```
+     The palette updates without restart (chokidar fires `slash:changed`). Send `/release-notes 1.2.3` → the model receives "Draft release notes for version 1.2.3.".
+  5. Send `/plan` → PlanModeBanner appears (C3 gate flips). Send `/clear` → visible messages drop but the conversation row stays.
+  6. Type `/nope` → toast "Unknown slash command: /nope" (no IPC fallback hit).
+
+**Notes:**
+- The pre-C4 `/plan` was a renderer-side prefix-the-message UI flag. C4 retargets `/plan` at C3's dispatcher-level gate (`PlanModeBanner` appears) — the model gets a real "no mutations" guarantee rather than a polite prompt prefix. The legacy Shift+Tab toggle for the pre-C3 UI flag stays in place for users who muscle-memory it; that flag can be retired in a follow-up.
+- The `/workflow` and `/spawn-task` templates ship as prompt text that *describes* the future capability (Track 1 / B1 and Track 2 / E4). Until those land, sending the command surfaces the description; the renderer does not error.
+- `/clear` is `hidden: true` in the markdown so it stays out of the palette but is still typeable; the renderer takes precedence and short-circuits, the IPC path stays available for harness callers.
+- Tag taxonomy: slash-commands have a `source: 'user' | 'builtin'` field on the renderer-visible payload, surfaced as a chip in the palette. `userData/slash-commands/<name>.md` shadows the built-in of the same name (built-in's body is copied into userData on first run, so the user's override always wins).
+- Merge-hotspot coordination: `electron/preload.ts` extended with a new `slash` namespace; no overlap with the C1/C2/C3 surfaces. `chat.ts` not touched (slash routing lives entirely in `ChatInput.tsx`).
+
+**Commit:** see `git log feat/track-2-tool-layer`.
+
+---
+
 ## [Track 2 — Prompt C3] Plan mode state gate — 2026-06-03
 
 **Files changed:**
