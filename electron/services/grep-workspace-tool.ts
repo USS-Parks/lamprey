@@ -259,12 +259,12 @@ export async function executeGrep(
   let resolvedRg = rgPath
   if (!resolvedRg) {
     try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
       const { rgPath: pkgRg } = (await import('@vscode/ripgrep')) as { rgPath: string }
       resolvedRg = pkgRg
     } catch (err) {
       throw new Error(
-        `bundled ripgrep is unavailable: ${(err as Error)?.message ?? 'unknown'}. Reinstall dependencies.`
+        `bundled ripgrep is unavailable: ${(err as Error)?.message ?? 'unknown'}. Reinstall dependencies.`,
+        { cause: err }
       )
     }
   }

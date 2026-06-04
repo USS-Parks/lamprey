@@ -167,7 +167,6 @@ export async function runExplore(
   let totalToolCalls = 0
   let step = 0
   let lastContent = ''
-  let hitMaxSteps = false
 
   for (; step < maxSteps; step++) {
     if (deps.signal?.aborted) {
@@ -260,9 +259,9 @@ export async function runExplore(
         })
         continue
       }
-      let parsedArgs: Record<string, unknown> = {}
+      let parsedArgs: Record<string, unknown>
       try {
-        parsedArgs = JSON.parse(call.function.arguments || '{}')
+        parsedArgs = JSON.parse(call.function.arguments || '{}') as Record<string, unknown>
       } catch (err) {
         messages.push({
           role: 'tool',
@@ -293,7 +292,9 @@ export async function runExplore(
     }
   }
 
-  hitMaxSteps = true
+  // Loop exhausted without a no-tool-calls terminal turn. Return whatever
+  // the last assistant content was, marked hitMaxSteps: true so the caller
+  // can surface "narrow the question" guidance.
   const finalAnswer = lastContent.slice(0, FINAL_RESPONSE_BYTE_CAP)
   emitSubagentEvent('subagent.completed', deps.correlationId, {
     step,
@@ -309,7 +310,7 @@ export async function runExplore(
     steps: step,
     toolCalls: totalToolCalls,
     durationMs: Date.now() - startedAt,
-    hitMaxSteps
+    hitMaxSteps: true
   }
 }
 
