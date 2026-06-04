@@ -1,5 +1,26 @@
 # Lamprey Harness Dev Log
 
+## [Integration Phase Complete] UI Mastery wrap-up - 2026-06-04
+
+**Prompts completed:** H1 Activity dashboard, H2 Workflow command palette + author UX, H3 Session sidebar + resume polish, H4 Hook editor + skill manager polish, H5 Plan-mode UX + spawn-task tray, H6 Status line + AskUserQuestion UI.
+
+**Files changed in this wrap-up:** `README.md`, `.gitignore`, `DEVLOG.md`, `package.json`
+
+**Verify gate:**
+- tsc node OK
+- tsc web OK
+- vitest OK (87 files passed, 2 skipped; 1168 tests passed, 16 skipped)
+- production build OK
+- smoke-renderer OK against fresh `out/` bundle
+- smoke-bundle OK against fresh `out/` bundle
+- user-verification-needed: launch Electron and exercise the full UI stack end to end: Activity dashboard, Workflow palette/editor, Sessions sidebar, Hooks + Skills manager, Plan mode + Spawn-task tray, Status line, and AskUserQuestion modal blocking/resuming a workflow.
+
+**Notes:** All Integration Phase rows are marked complete in `PLANNING/LAMPREY_PARITY_PLAN.md`. README now documents the completed parity layer and removes the stale hook-wiring roadmap item. `.tmp-test-user-data/` is ignored because the integration tests generate it under the workspace. Package version is bumped to `0.1.44`.
+
+**Commit:** pending
+
+---
+
 ## [Integration — Prompt H6] Status line + AskUserQuestion UI — 2026-06-04
 
 The last Integration-phase prompt: a persistent status bar at the bottom of

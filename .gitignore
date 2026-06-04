@@ -7,6 +7,7 @@ coverage/
 *.log
 lamprey.db
 .opencode/
+.tmp-test-user-data/
 SESSION-LOG/
 .claude/
 opencode.jsonc
