@@ -1,5 +1,45 @@
 # Lamprey Harness Dev Log
 
+## [Fluidity — Prompt J8] Status line: context% slot + amber-warn at 70% — 2026-06-04
+
+Status line slot order is now `model · context · workflow · branch ·
+wakeups` (was `model · workflow · wakeups · tokens · rag`). New slots:
+
+- `context`: shows `N% ctx` where N = tokens-spent / active-model
+  contextWindow. Neutral below 70, amber 70–89, red ≥ 90. Hidden when
+  the model's window is unknown.
+- `branch`: shows the current git branch from `review:branches` IPC.
+  Polled every 30s so out-of-band branch switches surface within a
+  half-minute.
+
+`tokens` and `rag` slots are still valid for user-authored
+`userData/statusline.md` overrides — they're just out of the default
+list. The empty-slots fallback in `normalizeSlots` also dropped from
+ALL_SLOTS down to DEFAULT_VISIBLE_SLOTS so an empty `slots: []` block
+behaves identically to no file (both show the new 5-slot defaults).
+
+**Files changed:**
+- `src/lib/context-meter.ts` (new) — `contextPercent` + `contextTone` (70/90 thresholds)
+- `src/lib/context-meter.test.ts` (new) — 7 cases for percent + tone
+- `electron/services/statusline-config.ts` — added `context`/`branch` slots + new default order
+- `electron/services/statusline-config.test.ts` — updated empty-slots fallback test
+- `src/components/layout/StatusLine.tsx` — branch loader effect, context% renderer with tone
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- vitest ✓ (1242 passed / 16 skipped — +7 J8 tests)
+- user-verification-needed: in Electron, watch the status line as a conversation grows — context% climbs; pass 70% → slot turns amber; pass 90% → red; branch slot reflects current git branch and updates within 30s of a `git checkout`; existing userData/statusline.md with custom `slots` still honored.
+
+**Notes:** Context window is read from `modelInfo.contextWindow`
+(supplied by the provider catalog). Models without a published window
+size hide the slot — better silence than 0% / NaN%. Branch lookup uses
+the existing `review:branches` IPC; no new channel.
+
+**Commit:** pending
+
+---
+
 ## [Fluidity — Prompt J7] Inline subagent rendering — 2026-06-04
 
 `multi_agent_run` tool calls now render in the transcript as a nested

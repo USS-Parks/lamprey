@@ -25,9 +25,36 @@ import matter from 'gray-matter'
 // Unknown slot ids are dropped silently so a user-written file can not crash
 // the renderer. Missing file → DEFAULTS.
 
-export type StatusLineSlot = 'model' | 'workflow' | 'wakeups' | 'tokens' | 'rag'
+// Fluidity J8: `context` + `branch` slots added; default slot order changed
+// to `model · context · workflow · branch · wakeups`. `tokens` and `rag`
+// remain valid for user-authored `userData/statusline.md` overrides but
+// drop out of the default list.
+export type StatusLineSlot =
+  | 'model'
+  | 'context'
+  | 'workflow'
+  | 'branch'
+  | 'wakeups'
+  | 'tokens'
+  | 'rag'
 
-const ALL_SLOTS: StatusLineSlot[] = ['model', 'workflow', 'wakeups', 'tokens', 'rag']
+const ALL_SLOTS: StatusLineSlot[] = [
+  'model',
+  'context',
+  'workflow',
+  'branch',
+  'wakeups',
+  'tokens',
+  'rag'
+]
+
+const DEFAULT_VISIBLE_SLOTS: StatusLineSlot[] = [
+  'model',
+  'context',
+  'workflow',
+  'branch',
+  'wakeups'
+]
 
 export interface StatusLineConfig {
   slots: StatusLineSlot[]
@@ -36,10 +63,12 @@ export interface StatusLineConfig {
 }
 
 export const DEFAULT_STATUSLINE_CONFIG: StatusLineConfig = {
-  slots: [...ALL_SLOTS],
+  slots: [...DEFAULT_VISIBLE_SLOTS],
   formats: {
     model: '{name}',
+    context: '{percent}% ctx',
     workflow: '{label}',
+    branch: '{name}',
     wakeups: '{count} wake-up{plural}',
     tokens: '{kilo}k tokens',
     rag: '{count} corpus'
@@ -52,7 +81,10 @@ function configPath(): string {
 }
 
 function normalizeSlots(value: unknown): StatusLineSlot[] {
-  if (!Array.isArray(value)) return [...ALL_SLOTS]
+  // Empty / missing frontmatter falls back to the default-visible set, not
+  // every possible slot — this matches the no-file case so the two paths
+  // behave the same.
+  if (!Array.isArray(value)) return [...DEFAULT_VISIBLE_SLOTS]
   const seen = new Set<StatusLineSlot>()
   const out: StatusLineSlot[] = []
   for (const v of value) {
@@ -63,7 +95,7 @@ function normalizeSlots(value: unknown): StatusLineSlot[] {
     seen.add(key)
     out.push(key)
   }
-  return out.length > 0 ? out : [...ALL_SLOTS]
+  return out.length > 0 ? out : [...DEFAULT_VISIBLE_SLOTS]
 }
 
 function normalizeFormats(value: unknown): Partial<Record<StatusLineSlot, string>> {
