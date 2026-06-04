@@ -1,12 +1,12 @@
 # Lamprey Harness — Claude Code Instructions
 
 ## What This Is
-Electron desktop **multi-agent coding harness** (React 19, TypeScript, electron-vite). Routes per-model to three providers — DeepSeek (V4 Pro, V4 Flash, V3, R1), Google (Gemma), and Alibaba DashScope (Qwen) — and can run a Planner → Coder → Reviewer pipeline that assigns a different model to each role. See `PLANNING/LAMPREY_HARNESS_FINAL.md` for the original 22-prompt build plan; the post-Prompt-21 "multi-provider revision" extends it.
+Electron desktop **multi-agent coding harness** (React 19, TypeScript, electron-vite). Routes per-model to four providers — DeepSeek (V4 Pro, V4 Flash, V3, R1), Google (Gemma), Alibaba DashScope (Qwen), and OpenRouter (Gemma 4 family) — and can run a Planner → Coder → Reviewer pipeline that assigns a different model to each role. See `PLANNING/LAMPREY_HARNESS_FINAL.md` for the original 22-prompt build plan; the post-Prompt-21 "multi-provider revision" extends it.
 
 ## Architecture quick-pointers (multi-provider revision)
 - Provider registry + dispatch: `electron/services/providers/registry.ts` — `MODEL_CATALOG`, `chatStream`, `chatOnce`, `validateProviderKey`. Adding a model = append to `MODEL_CATALOG`.
 - Agent orchestration: `electron/ipc/chat.ts` `runMultiAgent()`. System prompts in `electron/services/system-prompt-builder.ts` (`AGENT_ROLE_PROMPTS`, `buildAgentSystemPrompt`).
-- Multi-provider keychain: same `electron/services/keychain.ts` keyed by `deepseek` | `google` | `dashscope`. IPC: `settings:saveProviderKey` / `:test` / `:delete` / `:list`.
+- Multi-provider keychain: same `electron/services/keychain.ts` keyed by `deepseek` | `google` | `dashscope` | `openrouter`. IPC: `settings:saveProviderKey` / `:test` / `:delete` / `:list`.
 - Agent store: `src/stores/agent-store.ts`. Mode + roster persist via `AppSettings.agentMode` + `agentRoster`.
 - UI surfaces: `src/components/settings/ApiKeySettings.tsx` (multi-provider list), `AgentSettings.tsx` (roster + mode), `chat/AgentRunBanner.tsx` (live pipeline status), `chat/ChatInput.tsx` `AgentModeToggle`.
 
@@ -15,7 +15,8 @@ Electron desktop **multi-agent coding harness** (React 19, TypeScript, electron-
 - **RAG add-on (R1–R14)**: complete, audited, hardened (see DEVLOG 2026-06-03 audit entry).
 - **Parity Phase (36 prompts + Integration H1–H6)**: complete — see `PLANNING/LAMPREY_PARITY_PLAN.md` and the H1–H6 wrap-up entry in `DEVLOG.md` (2026-06-04).
 - **Fluidity Phase (J1–J11)**: complete (2026-06-04) — micro-interaction parity with Claude Code. Merged to `main` as commit `2691730`. See `PLANNING/LAMPREY_FLUIDITY_PLAN.md` and the per-prompt + phase-complete entries in `DEVLOG.md`. Eleven prompts shipped on `feat/fluidity-phase`: ESC + ↑ history, Shift+Tab mode cycle, @file mention, # memory shortcut, inline approval chips, tool-card auto-collapse, inline subagents, status-line context%, notification consolidation, path:line autolinking, right-panel default-collapsed.
-- Read `DEVLOG.md` for detailed build history before making changes. Both parity + fluidity plans are now reference-only — there is no active plan at the moment.
+- **Audit Remediation sprint (Prompts 1–12)**: in progress — see `PLANNING/AUDIT_REMEDIATION_PLAN.md` + `AUDIT_REMEDIATION_PROGRESS.md`. Closes a full-repo audit's findings (security, correctness, tests/CI, deps, docs, structure). Prompts 9–12 landed earlier; Prompts 1–8 plus a dependency-security follow-up are the current pass.
+- Read `DEVLOG.md` for detailed build history before making changes. The parity + fluidity plans are reference-only.
 
 ## Build & Run
 ```bash
@@ -37,7 +38,7 @@ npx electron-vite build
 - **IPC pattern**: All calls return `{ success: true, data: T } | { success: false, error: string }`
 - **Database**: better-sqlite3 at `userData/lamprey.db` (WAL mode, foreign keys)
 - **API keys**: Electron safeStorage → `userData/keys.json` (base64-encoded encrypted)
-- **Artifact sandbox**: `WebContentsView` (not deprecated BrowserView) with CSP + sandbox isolation, vendor files in `resources/vendor/`
+- **Artifact sandbox**: `WebContentsView` (not deprecated BrowserView) with CSP + sandbox isolation, vendor files in `resources/vendor/`. **Trust boundary:** artifact source (model- or user-supplied HTML/JS) is treated as *untrusted*. The sandbox + CSP + isolation are what contain it — do not assume artifact content has been validated upstream; the containment is the security control, not any pre-render sanitization.
 
 ## Key Decisions
 - `window.api` guards needed in renderer code — app must not crash outside Electron (browser dev mode)

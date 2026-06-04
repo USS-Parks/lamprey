@@ -63,7 +63,7 @@ Three processes, one preload bridge:
 
 - `electron/main.ts` — entry. Wires IPC, sets up the artifact CSP, owns the BrowserWindow lifecycle.
 - `electron/ipc/` — per-domain IPC handler files (`chat.ts`, `conversation.ts`, `memory.ts`, etc.). Every handler returns `{ success: true, data: T }` or `{ success: false, error: string }`.
-- `electron/services/` — business logic (DeepSeek client, SQLite store, MCP manager, skill watcher, artifact sandbox, keychain, tray, updater).
+- `electron/services/` — business logic (the OpenAI-compatible provider registry in `providers/registry.ts`, SQLite store, MCP manager, skill watcher, artifact sandbox, keychain, tray, updater).
 - `electron/preload.ts` — the `window.api` contextBridge. **Never add a raw `ipcRenderer.invoke` in renderer code.**
 - `src/` — React 19 renderer. Zustand stores under `src/stores/`, IPC-bound hooks under `src/hooks/`, components grouped by domain.
 
@@ -117,7 +117,7 @@ If a PR touches more than ~600 lines, break it up. Reviewers can't hold more tha
 
 - Style-only churn (rename / reformat with no behavior change).
 - New abstractions added "for future flexibility." If you can't show three call sites today, the abstraction is premature.
-- Multi-provider AI client refactors. v0.2 will address provider abstraction; v0.1 is DeepSeek-only on purpose.
+- Bespoke per-provider client classes. Multi-provider routing already lives in the OpenAI-compatible `providers/registry.ts` (DeepSeek, Google/Gemma, DashScope/Qwen, OpenRouter); add a model by appending to `MODEL_CATALOG`, not by adding a new client.
 
 ---
 

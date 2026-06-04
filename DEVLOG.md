@@ -1,5 +1,35 @@
 # Lamprey Harness Dev Log
 
+## [Audit Remediation — Prompt 2] Documentation refresh — 2026-06-04
+
+Closes DOC-1, DOC-2, DOC-3, DOC-5, DOC-6, SEC-4 (doc). Pure docs + one comment.
+
+- **DOC-1** — README advertised draft release v0.1.38. Re-anchored the download
+  table, quick-start, and roadmap "Built and shipped" header to **v0.2.0** (the
+  latest milestone release, with its real asset names + sizes: exe 244 MB / zip
+  316 MB). Verified against the GitHub releases list — v0.2.0 is the current
+  milestone; dev is one patch ahead at 0.2.1. The historical "v0.1.26 sprint"
+  roadmap label is left as narrative.
+- **DOC-2** — CLAUDE.md said "three providers"; the registry defines **four**
+  (`deepseek | google | dashscope | openrouter`). Fixed the opening line and the
+  keychain architecture pointer.
+- **DOC-3** — CONTRIBUTING.md dropped the stale "v0.1 is DeepSeek-only" framing
+  and the "DeepSeek client" services blurb; both now point at the OpenAI-
+  compatible `providers/registry.ts`.
+- **DOC-5** — SKILLS.md cited a stale "64K context window"; catalog windows are
+  now 128K–1M+ (flagship DeepSeek V4 = 1M). Reworded to not hardcode a figure.
+- **DOC-6** — `settings.ts:82` provider-id comment now lists `openrouter`.
+- **SEC-4** — CLAUDE.md artifact-sandbox bullet now states the trust boundary
+  explicitly: artifact source is untrusted; the sandbox/CSP/isolation is the
+  containment, not upstream sanitization.
+- Also refreshed the CLAUDE.md "Current State" to mark the Audit Remediation
+  sprint as active (it previously said "no active plan").
+
+Verify: tsc node ✓ · tsc web ✓ · lint 0 errors ✓ · vitest 1276 pass + 11 skip ✓.
+Bundle smokes skipped (no bundle change).
+
+---
+
 ## [Audit Remediation — Prompt 1] Hygiene & quick wins — 2026-06-04
 
 Closes DOC-4, STRUCT-1, STRUCT-2, DEP-1, DEP-2, DEP-3, CI-3 from the

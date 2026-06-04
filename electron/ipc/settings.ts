@@ -82,7 +82,7 @@ export function registerSettingsHandlers(): void {
     }
   })
 
-  // Multi-provider key API. Keys are keyed by provider id (deepseek/google/dashscope).
+  // Multi-provider key API. Keys are keyed by provider id (deepseek/google/dashscope/openrouter).
   ipcMain.handle('settings:saveProviderKey', async (_event, provider, key) => {
     try {
       if (!isProvider(provider)) return { success: false, error: `Unknown provider: ${provider}` }

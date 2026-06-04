@@ -59,7 +59,7 @@ Skills run after memory but inside the same single system message. They don't re
 
 - **Be declarative.** Tell the model what to do, not what not to do. "Format every response as a bulleted list." beats "Don't write paragraphs."
 - **One concern per skill.** A skill about voice shouldn't also dictate formatting. Combine via the sidebar toggle instead.
-- **Watch the char count.** The editor warns at 4000 characters because long skills displace conversation history within the 64K context window.
+- **Watch the char count.** The editor warns at 4000 characters because long skills displace conversation history within the model's context window (which ranges from ~128K to 1M+ tokens across the catalog — but every character a skill spends is a character the conversation can't).
 - **Use `<skill>` tags in your prompt.** When you need to reference a specific behavior, mention the skill by name — the model can read its own system prompt.
 - **Test in isolation.** Toggle one skill on, send the same message you'd send without it, compare. If you can't tell which response was better, the skill is too vague.
 
