@@ -1,5 +1,47 @@
 # Lamprey Harness Dev Log
 
+## Parity Phase planning — three-track roster authored (2026-06-03)
+
+Planning-only turn. No source changes; one new planning artifact landed.
+
+### Artifact
+
+`PLANNING/LAMPREY_PARITY_PLAN.md` — 36 prompts organized as three concurrent execution tracks (T1: 8 prompts runtime foundation; T2: 9 prompts tool layer + continuity; T3: 13 prompts memory + verify + scheduling) plus a final 6-prompt Integration Phase run from a single session after all three tracks merge. Each track has explicit owner files, do-not-touch lists, cross-track wait gates, and per-prompt verify gates.
+
+### How we got here
+
+1. Started from a question: "what does Claude Code do that Lamprey currently cannot?" — produced a comparative architecture writeup (Claude Code internals, MCP / workflows / subagents / memory / hooks / lazy schemas / worktrees / cron / plan mode / chapters / spawn-task / compression, vs Codex, vs current Lamprey).
+2. Audited the actual codebase (via Explore agent) — found more existing surface than CLAUDE.md indicated: `multi-agent-run-tool.ts`, `hooks-store.ts` + `hooks-runner.ts` (stubs, not wired), `automations-runner.ts` (no UI), `worktree.ts` (manual only), `plan-goal-store.ts` (data, not mode state). The plan refactors these into shape rather than duplicating.
+3. Authored initial 30-prompt plan with Phase A–H structure.
+4. User asked which phases could run concurrently → analyzed merge-collision hotspots and produced a 3-track + Integration Phase recommendation.
+5. User asked to revise the doc around three tracks with explicit "ask user which track, then run to completion" session bootstrap → restructured the plan around three executable tracks, per-track owner files, cross-track wait protocols, and a §0 bootstrap that fresh sessions can read and act on directly.
+6. User asked whether the plan captured Claude Code's distinctive smaller tools (Monitor, PushNotification, AskUserQuestion, cross-session messaging, slash commands, etc.) → audited honestly, identified 13 gaps, proposed 6 additional prompts, user picked option 1 (fold them in).
+7. Final plan has 36 prompts, three tracks running in parallel worktree sessions, Integration Phase last.
+
+### Architectural invariants locked in the plan (§2)
+
+- IPC envelope `{success, data} | {success, error}` — already the standard, made explicit.
+- Workflow + hook sandbox uses Node built-in `vm` (NOT `vm2` or `isolated-vm`).
+- Memory is filesystem-first (`userData/lamprey-memory/<projectSlug>/<slug>.md` with YAML frontmatter), SQLite second.
+- Workflow journaling to `userData/workflows/<runId>.jsonl`; resume keys on (prompt + opts) hash.
+- Hooks block tool calls synchronously with configurable timeout (default 5s).
+- Plan mode is a per-conversation flag gating tools tagged `mutates: true`.
+- Lazy tool schemas: `tools:list` returns stubs only; full schemas via `tools:resolve`.
+- Worktree isolation per subagent is opt-in via `isolation: 'worktree'`; auto-cleanup if `git diff` is empty.
+- System-prompt block order: `memory_index → skills → retrieved_context → chapters → conversation`.
+
+### Distinctive Claude Code tools mirrored in this plan
+
+Beyond the architectural backbone (workflow runner, subagents, memory, chapters, lazy tools, compression, preview, scheduling), the plan also mirrors: extensible subagent types (filesystem-discovered), workflow model-tier routing + schema retry, slash command system + built-ins (`/init`, `/review`, `/verify`, `/simplify`, `/loop`, `/plan`, `/workflow`, `/spawn-task`), async event-to-prompt bridge (`<task-notifications>` blocks injected into the receiver's next turn), monitor + background shell primitive, push notifications + cross-session messaging, status line, and `ask_user_question` modal that pauses a workflow until answered.
+
+### Execution status as of this entry
+
+Three sessions started in parallel worktrees. Each session reads §0 of `LAMPREY_PARITY_PLAN.md`, selects its track via `AskUserQuestion`, and runs the full track sequentially per the per-prompt verify gates. Merge-hotspot coordination (`tool-registry.ts` → T2:C1 first; `chat.ts` → T2:C2/C3 first; `system-prompt-builder.ts` → T3:D2 first) is locked in plan §8.
+
+**Commit:** planning-only, no source changes.
+
+---
+
 ## Audit + remediation — comprehensive verification of spine + RAG (2026-06-03)
 
 Full-codebase audit after the RAG stack landed. Five parallel audit agents ran across six dimensions (RAG plumbing, event spine + IPC, validation + error handling, type lockstep + dead code, lint cleanliness, runtime smell), then a skeptic-mode adversarial verification of every fix. **0 lint errors, 0 TS errors, 819 / 824 tests pass (5 intentionally skipped: 2 DB-only contract placeholders + 2 network-only embedding model download + 1 cross-encoder rerank).** Up from the post-R14 baseline of 797 by +22 new validation tests (chat:send, settings sanitizer), 0 regressions.

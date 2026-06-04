@@ -11,10 +11,15 @@ Electron desktop **multi-agent coding harness** (React 19, TypeScript, electron-
 - UI surfaces: `src/components/settings/ApiKeySettings.tsx` (multi-provider list), `AgentSettings.tsx` (roster + mode), `chat/AgentRunBanner.tsx` (live pipeline status), `chat/ChatInput.tsx` `AgentModeToggle`.
 
 ## Current State
-- **Prompts 1–20**: Committed and pushed to main
-- **Prompt 21 + ASSETS + visual pass**: Implemented locally (process-level error handlers, SecurityBanner, README/SKILLS/CONTRIBUTING/LICENSE, ASSETS branding, redesigned welcome).
-- **Multi-provider revision (post-21)**: provider registry, Gemma + Qwen support, agent roster + pipeline, multi-key UI. Awaiting review and push.
-- Read `DEVLOG.md` for detailed build history before making changes
+- **Prompts 1–20 + 21 + multi-provider revision**: complete (see `memory/project_build_status.md` for per-prompt commit SHAs).
+- **RAG add-on (R1–R14)**: complete, audited, hardened (see DEVLOG 2026-06-03 audit entry).
+- **Parity Phase — Three concurrent tracks underway** (started 2026-06-03):
+  - **Active plan**: `PLANNING/LAMPREY_PARITY_PLAN.md` — 36 prompts, three tracks + Integration Phase, each track running in its own git worktree session.
+  - **Track 1** (8 prompts, A1→B5): Runtime foundation — subagent runner, workflow runner, journaling + resume, model-tier routing.
+  - **Track 2** (9 prompts, C1→E4): Tool layer + continuity — lazy tool schemas, hooks-into-dispatch, plan mode, slash commands, chapters, compression, async event bridge, spawn-task.
+  - **Track 3** (13 prompts, D1→D4): Memory + verification + scheduling — typed memory + index, FTS session search, preview tools, monitor + bg shell, PR depth, cron UI, self-paced loop, push notifications + cross-session messaging, headless CLI, memory consolidation.
+  - **Integration Phase** (6 prompts, H1→H6): runs in a single session after all three tracks merge — activity dashboard, workflow palette, sessions sidebar, hook editor, plan-mode UX, status line + AskUserQuestion UI.
+- Read `DEVLOG.md` for detailed build history before making changes. Read `PLANNING/LAMPREY_PARITY_PLAN.md` §0 before starting any track session.
 
 ## Build & Run
 ```bash
@@ -49,7 +54,8 @@ npx electron-vite build
 - `react-markdown` v10 requires `pre` passthrough override to prevent double-wrapping CodeBlock components
 
 ## Execution Rules
-1. Follow the build plan (`PLANNING/LAMPREY_HARNESS_FINAL.md`) strictly sequential — no skips
-2. Complete each prompt's VERIFICATION step before moving to the next
-3. Log each prompt's work in `DEVLOG.md`
-4. Never push to GitHub directly — user reviews and pushes
+1. **Active plan is `PLANNING/LAMPREY_PARITY_PLAN.md`** (original `LAMPREY_HARNESS_FINAL.md` + RAG roster are complete and now reference-only). New sessions on this repo must read §0 of the parity plan before doing anything; it covers track selection, verify gates, cross-track wait protocol, and commit discipline.
+2. Each prompt in a track must pass its verify gate (both tsc configs + relevant tests + smoke checks) before being marked `[x]` and committed.
+3. Log each prompt's work in `DEVLOG.md` per the format in `PLANNING/LAMPREY_PARITY_PLAN.md` §0 Step 4.
+4. Never push to GitHub directly — user reviews and pushes.
+5. Parallel track sessions MUST run in separate git worktrees (per `feedback_parallel_session_worktree` memory). Coordinate the three merge-hotspot files (`tool-registry.ts`, `chat.ts`, `system-prompt-builder.ts`) per the parity plan §8 protocol.
