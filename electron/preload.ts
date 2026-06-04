@@ -373,6 +373,8 @@ const api = {
   // events arrive over `workflow:progress`.
   workflows: {
     list: () => ipcRenderer.invoke('workflows:list'),
+    validate: (input: { script: string }) => ipcRenderer.invoke('workflows:validate', input),
+    save: (input: { script: string }) => ipcRenderer.invoke('workflows:save', input),
     runInline: (input: {
       script: string
       args?: unknown

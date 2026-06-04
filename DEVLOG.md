@@ -2468,6 +2468,24 @@ Verification: `npx tsc --noEmit -p tsconfig.node.json` and `npx tsc --noEmit -p 
 ## Prompt 12 — Google OAuth and MCP Live Testing (2026-05-30)
 
 Implemented the full Google OAuth flow in `electron/ipc/mcp.ts`. The `mcp:setupGoogleOAuth` handler reads client_id and client_secret from keychain, builds the Google authorization URL with Gmail + Drive scopes and `access_type=offline` + `prompt=consent`, opens it via `shell.openExternal()`, and starts an HTTP server on `localhost:9876` to receive the callback. On callback: extracts the authorization code, exchanges it via POST to `https://oauth2.googleapis.com/token`, stores access_token, refresh_token, and computed expiry in keychain, then calls `mcpManager.reconnect()` for both gmail and drive servers. The callback server has a 2-minute timeout and returns user-friendly HTML ("Lamprey connected!" or "Authorization denied."). Updated `electron/services/mcp-manager.ts` to add 5-minute early token refresh — SSE connections now refresh if the token expires within 5 minutes, not just when already expired. Updated `src/components/settings/McpSettings.tsx` to include masked input fields for client_id and client_secret with a "Save credentials" button (calls `settings:saveGoogleCredentials` IPC), plus the existing "Connect Google Account" button which now shows "Waiting for authorization..." during the flow and reloads the server list on success. Created `scripts/setup-oauth.ts` as CLI fallback: accepts client_id and client_secret as args, prints the auth URL to console, starts localhost:9876, exchanges the code, and prints the tokens for manual paste if the in-app flow fails. Verification: `tsc --noEmit` passes both configs with zero errors. Production build succeeds (53.96 KB main, 4.38 KB preload). Full OAuth flow requires Google Cloud OAuth credentials configured per the Prerequisites section. Gmail and Drive will connect after the user authorizes.
+## [Integration — Prompt H2] Workflow command palette + author UX — 2026-06-04
+
+**Files changed:** `electron/ipc/workflows.ts`, `electron/preload.ts`, `electron/services/workflow-library.ts`, `electron/services/workflow-library.test.ts`, `src/App.tsx`, `src/components/workflows/WorkflowPalette.tsx`, `src/components/workflows/WorkflowEditor.tsx`, `src/components/workflows/MetaScaffolder.tsx`, `src/components/workflows/DryRunPanel.tsx`, `src/stores/workflows-store.ts`, `src/stores/ui-store.ts`, `src/hooks/useKeyboardShortcuts.ts`, `PLANNING/LAMPREY_PARITY_PLAN.md`
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- vitest ✓ (1152 passed, 16 skipped)
+- workflow-library focused tests ✓ (31 tests)
+- production build ✓
+- smoke-renderer ✓
+- smoke-bundle ✓
+- user-verification-needed: launch Electron, press Ctrl+K, confirm the workflow palette opens, run `adversarial-verify`, create/save a new workflow, confirm it lands in the Library after refresh, and confirm the dry-run panel shows agent/workflow call shapes without invoking a model.
+
+**Notes:** Added `workflows:validate` and `workflows:save` IPC so the authoring UI persists user workflows to `userData/workflows/scripts/` using the existing literal-meta parser. Ctrl+K now opens the workflow palette; file quick-open remains on Ctrl+P and the sidebar Search row still focuses conversation filtering. The editor uses a textarea-backed code surface rather than adding the heavy Monaco dependency in this prompt; validation, scaffolding, registry suggestions, save-as-meta-name, and static dry-run are wired.
+
+**Commit:** pending
+
 ## [Integration — Prompt H1] Activity dashboard live agent tree — 2026-06-04
 
 **Files changed:** `src/stores/activity-store.ts`, `src/components/activity/ActivityDashboard.tsx`, `src/components/activity/ActivityNode.tsx`, `src/components/activity/ActivityTray.tsx`, `src/components/layout/Sidebar.tsx`, `PLANNING/LAMPREY_PARITY_PLAN.md`

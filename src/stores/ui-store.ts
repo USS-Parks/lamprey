@@ -144,6 +144,10 @@ interface UiState {
   openQuickOpen: () => void
   closeQuickOpen: () => void
   toggleQuickOpen: () => void
+  workflowPaletteVisible: boolean
+  openWorkflowPalette: () => void
+  closeWorkflowPalette: () => void
+  toggleWorkflowPalette: () => void
   worktreeModalOpen: boolean
   openWorktreeModal: () => void
   closeWorktreeModal: () => void
@@ -191,6 +195,7 @@ export const useUiStore = create<UiState>((set, get) => ({
   activeTool: null,
   activeShell: readShell(),
   quickOpenVisible: false,
+  workflowPaletteVisible: false,
   requestedOpenFilePath: null,
   requestedOpenFileToken: 0,
   worktreeModalOpen: false,
@@ -276,6 +281,10 @@ export const useUiStore = create<UiState>((set, get) => ({
   openQuickOpen: () => set({ quickOpenVisible: true }),
   closeQuickOpen: () => set({ quickOpenVisible: false }),
   toggleQuickOpen: () => set((s) => ({ quickOpenVisible: !s.quickOpenVisible })),
+  openWorkflowPalette: () => set({ workflowPaletteVisible: true }),
+  closeWorkflowPalette: () => set({ workflowPaletteVisible: false }),
+  toggleWorkflowPalette: () =>
+    set((s) => ({ workflowPaletteVisible: !s.workflowPaletteVisible })),
   openWorktreeModal: () => set({ worktreeModalOpen: true }),
   closeWorktreeModal: () => set({ worktreeModalOpen: false }),
   togglePlanMode: () => set((s) => ({ planMode: !s.planMode })),

@@ -12,7 +12,12 @@ import {
 } from '../services/subagent-runner'
 import { realAgentRunStore } from '../services/agent-run-store'
 import { broadcastAgentRunEvent } from './tasks'
-import { getWorkflow, listWorkflows } from '../services/workflow-library'
+import {
+  getWorkflow,
+  listWorkflows,
+  saveUserWorkflow,
+  validateWorkflowSource
+} from '../services/workflow-library'
 import * as memStore from '../services/memory-store'
 
 // Track 1 / B1: workflows:* IPC + workflow:progress broadcast wiring.
@@ -112,6 +117,37 @@ export function registerWorkflowsHandlers(): void {
       return { success: true, data: { live, library } }
     } catch (err: unknown) {
       return { success: false, error: messageFor(err, 'list failed') }
+    }
+  })
+
+  ipcMain.handle('workflows:validate', async (_e, input: { script: string }) => {
+    try {
+      if (!input || typeof input.script !== 'string') {
+        return { success: false, error: 'script required' }
+      }
+      return { success: true, data: validateWorkflowSource(input.script) }
+    } catch (err: unknown) {
+      return { success: false, error: messageFor(err, 'validate failed') }
+    }
+  })
+
+  ipcMain.handle('workflows:save', async (_e, input: { script: string }) => {
+    try {
+      if (!input || typeof input.script !== 'string') {
+        return { success: false, error: 'script required' }
+      }
+      const entry = saveUserWorkflow(input.script)
+      return {
+        success: true,
+        data: {
+          name: entry.name,
+          description: entry.description,
+          origin: entry.origin,
+          filePath: entry.filePath
+        }
+      }
+    } catch (err: unknown) {
+      return { success: false, error: messageFor(err, 'save failed') }
     }
   })
 

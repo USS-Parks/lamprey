@@ -6,6 +6,7 @@ import { ArtifactPanel } from '@/components/artifacts/ArtifactPanel'
 import { RightPanelHome } from '@/components/artifacts/RightPanelHome'
 import { ToolsPanel } from '@/components/tools/ToolsPanel'
 import { QuickOpenPalette } from '@/components/tools/QuickOpenPalette'
+import { WorkflowPalette } from '@/components/workflows/WorkflowPalette'
 import { WorktreeManagerModal } from '@/components/worktree/WorktreeManagerModal'
 import { ApiKeyModal } from '@/components/settings/ApiKeyModal'
 import { SettingsDialog } from '@/components/settings/SettingsDialog'
@@ -440,6 +441,7 @@ function App(): React.ReactElement {
       )}
 
       <QuickOpenPalette />
+      <WorkflowPalette />
       <WorktreeManagerModal />
       <AsyncEventToast />
 

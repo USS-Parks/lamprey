@@ -10,7 +10,13 @@ vi.mock('@electron-toolkit/utils', () => ({
   is: { dev: true }
 }))
 
-import { __workflowLibraryTest } from './workflow-library'
+import {
+  __workflowLibraryTest,
+  getWorkflow,
+  listWorkflows,
+  saveUserWorkflow,
+  validateWorkflowSource
+} from './workflow-library'
 import { runWorkflow, type WorkflowForkSeam } from './workflow-runner'
 import { forkAgent } from './subagent-runner'
 import { BUILT_IN_SUBAGENT_TYPES } from './subagent-types'
@@ -46,6 +52,28 @@ describe('workflow-library — built-ins ship and parse', () => {
       expect(entry.meta.description.length).toBeGreaterThan(20)
       expect(entry.source).toContain('export const meta')
     }
+  })
+
+  it('validates and saves a user-authored workflow into the library', () => {
+    const source = `export const meta = {
+      name: 'h2-test-user-workflow',
+      description: 'Saved from the H2 authoring surface.'
+    }
+    return { ok: true }
+    `
+    const meta = validateWorkflowSource(source)
+    expect(meta.name).toBe('h2-test-user-workflow')
+
+    const saved = saveUserWorkflow(source)
+    expect(saved.origin).toBe('user')
+    expect(saved.filePath.endsWith('h2-test-user-workflow.js')).toBe(true)
+    expect(getWorkflow('h2-test-user-workflow')?.source).toBe(source)
+    expect(listWorkflows().some((entry) => entry.name === 'h2-test-user-workflow')).toBe(true)
+  })
+
+  it('rejects non-literal meta while validating author input', () => {
+    const source = "export const meta = { name: `bad-${Date.now()}`, description: 'bad' }"
+    expect(() => validateWorkflowSource(source)).toThrow(/backticks|template/i)
   })
 })
 
