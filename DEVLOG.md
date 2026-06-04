@@ -1,5 +1,36 @@
 # Lamprey Harness Dev Log
 
+## [Track 3 — Prompt F4] Monitor primitive + background shell — 2026-06-03
+
+**Files changed:**
+- `electron/services/shell-tool.ts` (extend) — adds `executeShellCommandInBackground(args, workspaceRoot)` returning a `ShellBackgroundHandle` synchronously. Internally tracks a `BackgroundSession` (proc, status, stdout/stderr rolling buffers capped at STDOUT_CAP/STDERR_CAP, per-stream line buffer for clean split). Emits `bg-line` (one per newline-delimited chunk, with `stdout|stderr` flag) and `bg-exit` events on the new `shellBackgroundBus` EventEmitter. Workspace-root confinement reuses the existing `resolveCwdWithinWorkspace` so background commands obey the same boundary as foreground. New exports: `getBackgroundShell`, `listBackgroundShells`, `killBackgroundShell`, `destroyBackgroundShell`, `destroyAllBackgroundShells`.
+- `electron/services/monitor-service.ts` (new) — `startMonitor({ processId, untilPattern? })` subscribes to the shell bus, owns a bounded (2000-line) per-monitor buffer, and returns a `MonitorHandle` with a string id. `readMonitor(id, since?)` drains lines newer than the cursor (returns `{ handle, lines, cursor }` so the caller can poll incrementally). `stopMonitor` / `destroyMonitor` for lifecycle. The `untilPattern` regex triggers an auto-stop + `monitor:matched` event the first time a line matches; further ingested lines for that monitor are dropped. `bg-exit` from the source process also flips the monitor to `exited` and fires `monitor:exit`. Bus subscription is set up lazily on first `startMonitor` call.
+- `electron/ipc/monitor.ts` (new) — IPC + bus broadcaster: `shell:bg:spawn/list/get/kill/destroy` and `monitor:start/read/stop/destroy/list`. Fans the main-side `shellBackgroundBus` + `monitorBus` events out to every BrowserWindow over `shell:bg:line`, `shell:bg:exit`, `monitor:line`, `monitor:matched`, `monitor:exit`, `monitor:stopped`.
+- `electron/ipc/index.ts` — registers the new monitor handler set.
+- `electron/main.ts` — `destroyAllBackgroundShells()` + `destroyAllMonitors()` on `will-quit`.
+- `electron/preload.ts` — `window.api.shellBg.*` and `window.api.monitor.*` with onLine/onMatched/onExit subscriptions returning unsubscribe functions.
+- `electron/services/monitor-service.test.ts` (new) — 8 unit tests + 1 platform-skipped: synchronous spawn shape, real-process `bg-line` emission (deterministic — waits for `bg-exit` not a timer), `bg-exit` with exit code, empty-command rejection, monitor line-buffering with cursor pagination, untilPattern auto-stop + matched-event fire, post-match line gating (status-guard in `ingestLine`), `monitor:stopped` bus event, invalid-regex rejection, and registry list/destroy.
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- vitest monitor-service ✓ (8 passed | 1 skipped on win32, verified 3× stable)
+- vitest full suite ✓ (860 passed | 14 skipped — 8 new + 852 baseline)
+- user-verification-needed (renderer + descriptor registration for Electron-only checks):
+  1. from the renderer console: `await window.api.shellBg.spawn({ command: 'npx electron-vite dev', cwd: '<a Vite project>' })` → returns `{ id, pid, status: 'running' }`;
+  2. subscribe to `window.api.shellBg.onLine` and observe each stdout line arrives;
+  3. `await window.api.monitor.start({ processId: '<id>', untilPattern: 'Local:.*localhost' })` → returns a `streamId`; subscribe `window.api.monitor.onMatched(cb)` and watch the dev-server URL line fire `matched`;
+  4. `await window.api.monitor.read(streamId)` returns the buffered lines + a cursor; next call with `since: cursor` returns only new lines;
+  5. `await window.api.shellBg.spawn({ command: 'node -e "console.log(\\"done\\"); process.exit(0)"' })` → after exit, the `shell:bg:exit` listener fires with `exitCode: 0`.
+
+**Notes:**
+- Tool descriptors (`bash_run_background`, `monitor_start`, `monitor_read`, `monitor_stop`) are deferred to T2:C1 per the merge protocol — they need the lazy-schema shape to register.
+- The monitor's bus subscription is lazy + idempotent (`busSubscribed` guard) so importing the module doesn't attach listeners to the shell bus until the first `startMonitor` call.
+- Status-gating lives inside `ingestLine` itself (not in the bus callback) so both bus-driven and direct (test) ingestion respect a matched/stopped/exited monitor. This was caught by the post-match line-gating test.
+- The `bg-line` flush drains any trailing partial line on process exit so `printf "no-trailing-newline"` doesn't get swallowed — verified by inspection; the dev-server-manager helper from F1 doesn't have this concern because it tails-only, not line-splits.
+
+**Commit:** see git log on `feat/track-3-memory-verify`.
+
 ## [Track 3 — Prompt F3] PR / Issue browse + actions UI — 2026-06-03
 
 **Files changed:**

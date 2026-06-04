@@ -30,6 +30,7 @@ import { registerPlanHandlers } from './plan'
 import { registerGitHubHandlers } from './github'
 import { registerEventsHandlers } from './events'
 import { registerRagHandlers } from './rag'
+import { registerMonitorHandlers } from './monitor'
 
 export function registerAllIpcHandlers(): void {
   registerChatHandlers()
@@ -59,4 +60,5 @@ export function registerAllIpcHandlers(): void {
   registerGitHubHandlers()
   registerEventsHandlers()
   registerRagHandlers()
+  registerMonitorHandlers()
 }

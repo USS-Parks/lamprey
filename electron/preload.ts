@@ -398,6 +398,50 @@ const api = {
     }
   },
 
+  // F4 — Background shell + monitor primitive.
+  shellBg: {
+    spawn: (args: { command: string; cwd?: string; env?: Record<string, string>; emitLines?: boolean }) =>
+      ipcRenderer.invoke('shell:bg:spawn', args),
+    list: () => ipcRenderer.invoke('shell:bg:list'),
+    get: (processId: string) => ipcRenderer.invoke('shell:bg:get', processId),
+    kill: (processId: string) => ipcRenderer.invoke('shell:bg:kill', processId),
+    destroy: (processId: string) => ipcRenderer.invoke('shell:bg:destroy', processId),
+    onLine: (cb: (evt: { processId: string; stream: 'stdout' | 'stderr'; line: string; at: number }) => void) => {
+      const h = (_: unknown, evt: any) => cb(evt)
+      ipcRenderer.on('shell:bg:line', h)
+      return () => ipcRenderer.removeListener('shell:bg:line', h)
+    },
+    onExit: (cb: (evt: { processId: string; exitCode: number | null; signal: string | null; durationMs: number }) => void) => {
+      const h = (_: unknown, evt: any) => cb(evt)
+      ipcRenderer.on('shell:bg:exit', h)
+      return () => ipcRenderer.removeListener('shell:bg:exit', h)
+    }
+  },
+
+  monitor: {
+    start: (opts: { processId: string; untilPattern?: string }) =>
+      ipcRenderer.invoke('monitor:start', opts),
+    read: (streamId: string, since?: number) => ipcRenderer.invoke('monitor:read', streamId, since),
+    stop: (streamId: string) => ipcRenderer.invoke('monitor:stop', streamId),
+    destroy: (streamId: string) => ipcRenderer.invoke('monitor:destroy', streamId),
+    list: () => ipcRenderer.invoke('monitor:list'),
+    onLine: (cb: (evt: { streamId: string; processId: string; entry: unknown }) => void) => {
+      const h = (_: unknown, evt: any) => cb(evt)
+      ipcRenderer.on('monitor:line', h)
+      return () => ipcRenderer.removeListener('monitor:line', h)
+    },
+    onMatched: (cb: (evt: { streamId: string; processId: string; matchedLine: string; entry: unknown }) => void) => {
+      const h = (_: unknown, evt: any) => cb(evt)
+      ipcRenderer.on('monitor:matched', h)
+      return () => ipcRenderer.removeListener('monitor:matched', h)
+    },
+    onExit: (cb: (evt: { streamId: string; processId: string; exitCode: number | null }) => void) => {
+      const h = (_: unknown, evt: any) => cb(evt)
+      ipcRenderer.on('monitor:exit', h)
+      return () => ipcRenderer.removeListener('monitor:exit', h)
+    }
+  },
+
   terminal: {
     spawn: (args: {
       id: string

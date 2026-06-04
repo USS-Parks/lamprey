@@ -8,6 +8,8 @@ import { destroy as destroyArtifactSandbox } from './services/artifact-sandbox'
 import { ptyKillAll } from './services/pty-manager'
 import { destroyAll as destroyBrowserTabs } from './services/browser-manager'
 import { destroyAllDevServers } from './services/dev-server-manager'
+import { destroyAllBackgroundShells } from './services/shell-tool'
+import { destroyAllMonitors } from './services/monitor-service'
 import { fireHooks } from './services/hooks-runner'
 import { startAutomations, stopAutomations } from './services/automations-runner'
 import { mcpManager } from './services/mcp-manager'
@@ -491,6 +493,8 @@ app.on('will-quit', () => {
   ptyKillAll()
   destroyBrowserTabs()
   destroyAllDevServers()
+  destroyAllBackgroundShells()
+  destroyAllMonitors()
   stopAutomations()
   void shutdownReviewWatcher()
   closeDb()
