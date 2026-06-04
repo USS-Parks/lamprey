@@ -10,8 +10,10 @@ import {
   isValidSlug,
   parsePullRequest,
   parseRepoList,
+  parseReviewComment,
   planPushBranch,
-  resolveOAuthCredentials
+  resolveOAuthCredentials,
+  type RawReviewComment
 } from './github-service'
 
 describe('isValidSlug', () => {
@@ -353,5 +355,56 @@ describe('friendlyAuthHint', () => {
 
   it('returns undefined for unrelated stderr', () => {
     expect(friendlyAuthHint('Everything up-to-date', 'oauth')).toBeUndefined()
+  })
+})
+
+// ─── F2 — PR review threading ────────────────────────────────────────────
+
+describe('parseReviewComment', () => {
+  const sample: RawReviewComment = {
+    id: 12345,
+    pull_request_review_id: 999,
+    pull_request_url: 'https://api.github.com/repos/o/r/pulls/7',
+    diff_hunk: '@@ -1,3 +1,4 @@',
+    path: 'src/index.ts',
+    position: 4,
+    original_position: 4,
+    line: 42,
+    start_line: null,
+    side: 'RIGHT',
+    body: 'Looks like a use-after-free.',
+    html_url: 'https://github.com/o/r/pull/7#discussion_r12345',
+    user: { login: 'octocat', avatar_url: 'https://example.com/octocat.png' },
+    created_at: '2026-06-03T12:00:00Z',
+    updated_at: '2026-06-03T12:05:00Z'
+  }
+
+  it('maps the GitHub review-comment shape to the normalised one', () => {
+    const out = parseReviewComment(sample)
+    expect(out.id).toBe(12345)
+    expect(out.reviewId).toBe(999)
+    expect(out.path).toBe('src/index.ts')
+    expect(out.line).toBe(42)
+    expect(out.side).toBe('RIGHT')
+    expect(out.body).toContain('use-after-free')
+    expect(out.user.login).toBe('octocat')
+    expect(out.user.avatarUrl).toContain('octocat.png')
+  })
+
+  it('treats absent in_reply_to_id as a top-level comment', () => {
+    expect(parseReviewComment(sample).inReplyToId).toBeNull()
+  })
+
+  it('carries in_reply_to_id when set (thread reply)', () => {
+    const reply: RawReviewComment = { ...sample, id: 67890, in_reply_to_id: 12345 }
+    expect(parseReviewComment(reply).inReplyToId).toBe(12345)
+  })
+
+  it('preserves null line + start_line for file-level comments', () => {
+    const fileLevel: RawReviewComment = { ...sample, line: null, start_line: null, side: null }
+    const out = parseReviewComment(fileLevel)
+    expect(out.line).toBeNull()
+    expect(out.startLine).toBeNull()
+    expect(out.side).toBeNull()
   })
 })

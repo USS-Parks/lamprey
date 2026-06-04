@@ -1,4 +1,6 @@
-import { spawn } from 'child_process'
+import { spawn, type ChildProcessWithoutNullStreams } from 'child_process'
+import { EventEmitter } from 'events'
+import { randomUUID } from 'crypto'
 import { resolve, relative, isAbsolute } from 'path'
 import { resolveWorkspaceRelative } from './path-utils'
 
@@ -220,6 +222,309 @@ export function executeShellCommand(
     proc.on('error', (err: Error) => finish(null, null, err.message))
     proc.on('exit', (code, signal) => finish(code, signal ?? null))
   })
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// F4 — Background shell + event bus
+//
+// `executeShellCommandInBackground` is the "fire and forget" cousin of
+// `executeShellCommand`: it returns a handle synchronously and emits
+// `bg-line` / `bg-exit` events on `shellBackgroundBus` instead of
+// resolving a Promise. The monitor-service.ts module subscribes to the
+// bus to feed line-by-line output into its rolling buffers.
+//
+// Output buffering is bounded the same way the foreground path is
+// (STDOUT_CAP / STDERR_CAP) so a runaway dev server can't OOM the
+// main process even if no monitor is attached.
+// ────────────────────────────────────────────────────────────────────────
+
+export type ShellBackgroundStatus = 'running' | 'exited' | 'failed'
+
+export interface ShellBackgroundHandle {
+  id: string
+  command: string
+  cwd: string
+  pid: number | null
+  startedAt: number
+  status: ShellBackgroundStatus
+  exitCode: number | null
+  signal: NodeJS.Signals | null
+  stdout: string
+  stderr: string
+  bytesWritten: number
+}
+
+interface BackgroundSession {
+  id: string
+  command: string
+  cwd: string
+  proc: ChildProcessWithoutNullStreams | null
+  pid: number | null
+  startedAt: number
+  status: ShellBackgroundStatus
+  exitCode: number | null
+  signal: NodeJS.Signals | null
+  stdout: string
+  stderr: string
+  bytesWritten: number
+  stdoutLineBuf: string
+  stderrLineBuf: string
+}
+
+export interface ShellBackgroundLineEvent {
+  processId: string
+  stream: 'stdout' | 'stderr'
+  line: string
+  at: number
+}
+
+export interface ShellBackgroundExitEvent {
+  processId: string
+  exitCode: number | null
+  signal: NodeJS.Signals | null
+  durationMs: number
+}
+
+const bgSessions = new Map<string, BackgroundSession>()
+export const shellBackgroundBus = new EventEmitter()
+shellBackgroundBus.setMaxListeners(50)
+
+function snapshotBg(session: BackgroundSession): ShellBackgroundHandle {
+  return {
+    id: session.id,
+    command: session.command,
+    cwd: session.cwd,
+    pid: session.pid,
+    startedAt: session.startedAt,
+    status: session.status,
+    exitCode: session.exitCode,
+    signal: session.signal,
+    stdout: session.stdout,
+    stderr: session.stderr,
+    bytesWritten: session.bytesWritten
+  }
+}
+
+function flushLines(
+  session: BackgroundSession,
+  stream: 'stdout' | 'stderr',
+  chunk: string
+): void {
+  const bufKey = stream === 'stdout' ? 'stdoutLineBuf' : 'stderrLineBuf'
+  const combined = session[bufKey] + chunk
+  const lines = combined.split(/\r?\n/)
+  const tail = lines.pop() ?? ''
+  session[bufKey] = tail
+  for (const line of lines) {
+    const evt: ShellBackgroundLineEvent = {
+      processId: session.id,
+      stream,
+      line,
+      at: Date.now()
+    }
+    shellBackgroundBus.emit('bg-line', evt)
+  }
+}
+
+export interface SpawnBackgroundOptions extends ShellArgs {
+  /** When true, lines arrive on the bus as they come in. Default true. */
+  emitLines?: boolean
+}
+
+export function executeShellCommandInBackground(
+  args: SpawnBackgroundOptions,
+  workspaceRoot: string
+): ShellBackgroundHandle {
+  const id = randomUUID()
+  const startedAt = Date.now()
+
+  if (!args || typeof args.command !== 'string' || args.command.trim() === '') {
+    const session: BackgroundSession = {
+      id,
+      command: args?.command ?? '',
+      cwd: workspaceRoot,
+      proc: null,
+      pid: null,
+      startedAt,
+      status: 'failed',
+      exitCode: null,
+      signal: null,
+      stdout: '',
+      stderr: 'command is required and must be a non-empty string',
+      bytesWritten: 0,
+      stdoutLineBuf: '',
+      stderrLineBuf: ''
+    }
+    bgSessions.set(id, session)
+    return snapshotBg(session)
+  }
+
+  const cwd = resolveCwdWithinWorkspace(workspaceRoot, args.cwd)
+  if (cwd === null) {
+    const session: BackgroundSession = {
+      id,
+      command: args.command,
+      cwd: args.cwd ?? workspaceRoot,
+      proc: null,
+      pid: null,
+      startedAt,
+      status: 'failed',
+      exitCode: null,
+      signal: null,
+      stdout: '',
+      stderr: `cwd "${args.cwd}" is outside the workspace root "${workspaceRoot}"`,
+      bytesWritten: 0,
+      stdoutLineBuf: '',
+      stderrLineBuf: ''
+    }
+    bgSessions.set(id, session)
+    return snapshotBg(session)
+  }
+
+  const env: NodeJS.ProcessEnv = { ...process.env, ...(args.env || {}) }
+  const { cmd, args: shellArgs } = buildShellInvocation(args.command)
+
+  // We force `stdio: ['ignore', 'pipe', 'pipe']` so stdin is null but
+  // both stdout + stderr are real Readable streams. The narrower
+  // ChildProcessWithoutNullStreams type *requires* a stdin Writable,
+  // so cast through `unknown` to acknowledge the shape mismatch.
+  let proc: ChildProcessWithoutNullStreams
+  try {
+    proc = (spawn(cmd, shellArgs, {
+      cwd,
+      env,
+      windowsHide: true,
+      stdio: ['ignore', 'pipe', 'pipe']
+    }) as unknown) as ChildProcessWithoutNullStreams
+  } catch (err: any) {
+    const session: BackgroundSession = {
+      id,
+      command: args.command,
+      cwd,
+      proc: null,
+      pid: null,
+      startedAt,
+      status: 'failed',
+      exitCode: null,
+      signal: null,
+      stdout: '',
+      stderr: err?.message ?? 'spawn failed',
+      bytesWritten: 0,
+      stdoutLineBuf: '',
+      stderrLineBuf: ''
+    }
+    bgSessions.set(id, session)
+    return snapshotBg(session)
+  }
+
+  const session: BackgroundSession = {
+    id,
+    command: args.command,
+    cwd,
+    proc,
+    pid: proc.pid ?? null,
+    startedAt,
+    status: 'running',
+    exitCode: null,
+    signal: null,
+    stdout: '',
+    stderr: '',
+    bytesWritten: 0,
+    stdoutLineBuf: '',
+    stderrLineBuf: ''
+  }
+  bgSessions.set(id, session)
+
+  const emit = args.emitLines !== false
+
+  proc.stdout?.on('data', (buf: Buffer) => {
+    const chunk = buf.toString('utf8')
+    session.bytesWritten += chunk.length
+    const r = appendCapped(session.stdout, chunk, STDOUT_CAP)
+    session.stdout = r.next
+    if (emit) flushLines(session, 'stdout', chunk)
+  })
+  proc.stderr?.on('data', (buf: Buffer) => {
+    const chunk = buf.toString('utf8')
+    session.bytesWritten += chunk.length
+    const r = appendCapped(session.stderr, chunk, STDERR_CAP)
+    session.stderr = r.next
+    if (emit) flushLines(session, 'stderr', chunk)
+  })
+  proc.on('error', (err: Error) => {
+    session.status = 'failed'
+    session.stderr = (session.stderr + '\n' + err.message).slice(-STDERR_CAP)
+  })
+  proc.on('exit', (code, signal) => {
+    // Drain any trailing partial line so a `printf "no-trailing-newline"`
+    // doesn't get swallowed.
+    if (session.stdoutLineBuf) {
+      const tail = session.stdoutLineBuf
+      session.stdoutLineBuf = ''
+      if (emit) {
+        shellBackgroundBus.emit('bg-line', {
+          processId: session.id,
+          stream: 'stdout',
+          line: tail,
+          at: Date.now()
+        } satisfies ShellBackgroundLineEvent)
+      }
+    }
+    if (session.stderrLineBuf) {
+      const tail = session.stderrLineBuf
+      session.stderrLineBuf = ''
+      if (emit) {
+        shellBackgroundBus.emit('bg-line', {
+          processId: session.id,
+          stream: 'stderr',
+          line: tail,
+          at: Date.now()
+        } satisfies ShellBackgroundLineEvent)
+      }
+    }
+    session.exitCode = code
+    session.signal = signal as NodeJS.Signals | null
+    session.status = code === 0 || code === null ? 'exited' : 'failed'
+    const evt: ShellBackgroundExitEvent = {
+      processId: session.id,
+      exitCode: code,
+      signal: session.signal,
+      durationMs: Date.now() - session.startedAt
+    }
+    shellBackgroundBus.emit('bg-exit', evt)
+  })
+
+  return snapshotBg(session)
+}
+
+export function getBackgroundShell(id: string): ShellBackgroundHandle | null {
+  const s = bgSessions.get(id)
+  return s ? snapshotBg(s) : null
+}
+
+export function listBackgroundShells(): ShellBackgroundHandle[] {
+  return Array.from(bgSessions.values()).map(snapshotBg)
+}
+
+export function killBackgroundShell(id: string, signal: NodeJS.Signals = 'SIGTERM'): boolean {
+  const s = bgSessions.get(id)
+  if (!s || !s.proc || s.status !== 'running') return false
+  try {
+    s.proc.kill(signal)
+  } catch (err) {
+    console.error('[shell-bg] kill failed:', (err as Error).message)
+    return false
+  }
+  return true
+}
+
+export function destroyBackgroundShell(id: string): void {
+  killBackgroundShell(id, 'SIGKILL')
+  bgSessions.delete(id)
+}
+
+export function destroyAllBackgroundShells(): void {
+  for (const id of [...bgSessions.keys()]) destroyBackgroundShell(id)
 }
 
 /**

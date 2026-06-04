@@ -1,6 +1,6 @@
 import { ipcMain } from 'electron'
 import * as store from '../services/automations-store'
-import { parseCron, runAutomation } from '../services/automations-runner'
+import { describeCron, nextFireAfter, parseCron, runAutomation } from '../services/automations-runner'
 
 export function registerAutomationsHandlers(): void {
   ipcMain.handle('automations:list', async () => {
@@ -77,6 +77,38 @@ export function registerAutomationsHandlers(): void {
       return { success: true, data: true }
     } catch (err: any) {
       return { success: false, error: err?.message ?? 'run failed' }
+    }
+  })
+
+  // G1 — cron expression validation + human-readable preview + next-fire
+  // hint. Used by the AutomationsPanel CronEditor; returns
+  // { valid: true, description, nextFireAt } on success or
+  // { valid: false, error } when the expression doesn't parse.
+  ipcMain.handle('automations:validateCron', async (_e, expr: string) => {
+    try {
+      if (typeof expr !== 'string' || expr.trim() === '') {
+        return { success: true, data: { valid: false, error: 'cron expression is required' } }
+      }
+      try {
+        parseCron(expr)
+      } catch (err: any) {
+        return {
+          success: true,
+          data: { valid: false, error: err?.message ?? 'cron parse error' }
+        }
+      }
+      const description = describeCron(expr)
+      const next = nextFireAfter(expr)
+      return {
+        success: true,
+        data: {
+          valid: true,
+          description: description ?? null,
+          nextFireAt: next ? next.getTime() : null
+        }
+      }
+    } catch (err: any) {
+      return { success: false, error: err?.message ?? 'validate failed' }
     }
   })
 }

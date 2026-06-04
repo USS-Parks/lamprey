@@ -79,6 +79,59 @@ export interface GitHubProjectRepoLink {
   linkedAt: number
 }
 
+export interface GitHubIssue {
+  number: number
+  title: string
+  state: 'open' | 'closed'
+  body: string | null
+  htmlUrl: string
+  user: { login: string; avatarUrl: string | null }
+  labels: Array<{ name: string; color: string }>
+  createdAt: string
+  updatedAt: string
+}
+
+export interface PullRequestReviewComment {
+  id: number
+  reviewId: number | null
+  body: string
+  path: string
+  line: number | null
+  startLine: number | null
+  side: 'LEFT' | 'RIGHT' | null
+  position: number | null
+  inReplyToId: number | null
+  htmlUrl: string
+  user: { login: string; avatarUrl: string | null }
+  createdAt: string
+  updatedAt: string
+}
+
+export type PullRequestStatusState =
+  | 'pending'
+  | 'success'
+  | 'failure'
+  | 'error'
+  | 'neutral'
+  | 'skipped'
+  | 'cancelled'
+  | 'timed_out'
+  | 'action_required'
+
+export interface PullRequestStatusCheck {
+  context: string
+  state: PullRequestStatusState
+  description: string | null
+  targetUrl: string | null
+  source: 'commit-status' | 'check-run'
+}
+
+export interface PullRequestStatusSummary {
+  sha: string
+  overall: 'success' | 'pending' | 'failure' | 'neutral'
+  checks: PullRequestStatusCheck[]
+}
+
 export interface ConversationPullRequestLink {
   conversationId: string
   prNumber: number

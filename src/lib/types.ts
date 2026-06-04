@@ -10,6 +10,12 @@ export interface Message {
   // assistant body may be composer-generated while draft preserves the
   // model's raw post-tool reply.
   draft?: string
+  /** Track 2 / E5 — populated for messages that the auto context
+   *  compressor folded into a summary. The value is the id of the
+   *  summary message that replaced them in prompt assembly. Renderer
+   *  shows a CompressedRegionPill at the boundary instead of the
+   *  original message body. */
+  compressedInto?: string
 }
 
 export type ConversationKind = 'local' | 'cloud' | 'worktree'
@@ -45,12 +51,38 @@ export interface Skill {
   enabled: boolean
 }
 
+export type MemoryType = 'user' | 'feedback' | 'project' | 'reference'
+
 export interface MemoryEntry {
   id: number
   content: string
   createdAt: number
   updatedAt: number
   sourceConversationId?: string
+  // D1 typed-shape additions. Optional so pre-D3 callers keep compiling.
+  name?: string
+  description?: string
+  type?: MemoryType
+  projectSlug?: string
+  filePath?: string
+}
+
+export interface MemoryFile {
+  name: string
+  projectSlug: string
+  description: string
+  type: MemoryType
+  body: string
+  filePath: string
+  sourceConversationId: string | null
+  createdAt: number
+  updatedAt: number
+}
+
+export interface BrokenMemoryLink {
+  from: string
+  fromFilePath: string
+  target: string
 }
 
 export interface McpServerConfig {
@@ -337,7 +369,25 @@ export interface LampreyToolDescriptor {
   /** Tool self-gates (its handler is the approval call); never routed through
    * the dispatch-time approval modal. Only `request_permissions` sets this. */
   selfApproves?: boolean
+  /** Track 2 / C1 — derived tag list. Includes providerKind, every risk
+   *  class, and meta tags ('lazy', 'approval-required', 'parallelizable').
+   *  Used for tools:search keyword ranking and renderer filter chips. */
+  tags: string[]
+  /** Track 2 / C1 — true when the schema came from an external provider
+   *  (MCP server, plugin host). `tools:list` ships stubs without
+   *  `inputSchema`; call `window.api.tools.resolve([name])` to expand. */
+  lazy: boolean
+  /** Track 2 / C3 — true when invoking this tool may mutate the workspace,
+   *  external systems, or persistent state. The chat dispatcher refuses
+   *  mutating tools while plan mode is on for the conversation; the
+   *  PlanModeBanner exposes a one-click exit. */
+  mutates: boolean
 }
+
+/** Track 2 / C1 — stub shape returned by `window.api.tools.list()`.
+ *  No `inputSchema` — call `tools.resolve(names[])` or `tools.search({ query })`
+ *  to get the full descriptor for any tool the renderer wants to inspect. */
+export type LampreyToolStub = Omit<LampreyToolDescriptor, 'inputSchema'>
 
 export type LampreyToolCallStatus =
   | 'pending'
@@ -538,6 +588,8 @@ export type EventType =
   | 'model.request.failed'
   | 'chat.cancelled'
   | 'chat.error'
+  | 'chat.chapter.marked'
+  | 'chat.compressed'
   | 'workspace.changed'
   | 'worktree.created'
   | 'worktree.removed'

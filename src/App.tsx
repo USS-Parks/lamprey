@@ -28,6 +28,7 @@ import { useShellSignals } from '@/hooks/useShellSignals'
 import { useMediaQuery, NARROW_VIEWPORT_QUERY } from '@/hooks/useMediaQuery'
 import { UpdateBanner } from '@/components/ui/UpdateBanner'
 import { SecurityBanner } from '@/components/ui/SecurityBanner'
+import { AsyncEventToast } from '@/components/chat/AsyncEventToast'
 import { useThemedIcon } from '@/lib/themed-icon'
 import artifactsPlaceholderLight from '@assets/Lamprey Code Window Icon.png'
 import artifactsPlaceholderDark from '@assets/Lamprey Code Window Icon Dark View.png'
@@ -400,6 +401,7 @@ function App(): React.ReactElement {
 
       <QuickOpenPalette />
       <WorktreeManagerModal />
+      <AsyncEventToast />
 
       {/* Viewport-fixed floating overlay. Anchored to viewport coords so
           when the right panel expands the card stays put and retreats

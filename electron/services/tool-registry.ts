@@ -19,6 +19,11 @@ import {
   type ShellArgs
 } from './shell-tool'
 import type { AuditStatus } from './tool-result-status'
+import {
+  computeToolTags,
+  parseSelectQuery,
+  searchDescriptors as searchDescriptorsByQuery
+} from './tool-search'
 
 // Types are duplicated between main and renderer the same way mcp-manager.ts
 // keeps its own McpTool/McpServerConfig — the two tsconfig roots can't reach
@@ -61,6 +66,71 @@ export interface LampreyToolDescriptor {
    * badge; this flag only suppresses the dispatch-time modal.
    */
   selfApproves?: boolean
+  /**
+   * Derived tag list computed from `providerKind`, `risks`, `requiresApproval`,
+   * `parallelizable`, `lazy`, and `mutates`. Used by `tools:search` for
+   * keyword ranking and by the renderer for filter chips. See
+   * `tool-search.ts` for the taxonomy. Always populated on the registry's
+   * output (`getDescriptors`, `getStubs`, `getById`) — registration sites
+   * may omit it via `LampreyToolRegistration`.
+   */
+  tags: string[]
+  /**
+   * True when the input schema is sourced from an external provider (MCP
+   * server, future plugin host) rather than statically defined in code.
+   * The schema is still embedded on this descriptor in main; `lazy` is a
+   * hint that `tools:list` may omit the schema from its IPC payload and
+   * clients should call `tools:resolve` / `tools:search` to get the full
+   * `inputSchema`. Native tools default to `false`; MCP tools default to
+   * `true`.
+   */
+  lazy: boolean
+  /**
+   * Track 2 / C3 — true when invoking this tool may mutate the workspace,
+   * external systems, or persistent state. The chat dispatcher refuses
+   * mutating tools when a conversation is in plan mode (the model can
+   * still read freely). Defaults to `risks.includes('write') ||
+   * risks.includes('destructive')` when not set explicitly. The
+   * `enter_plan_mode` / `exit_plan_mode` tools opt out (`mutates: false`)
+   * so the model can always flip the gate; they mutate session state but
+   * not the workspace.
+   */
+  mutates: boolean
+}
+
+/**
+ * Stub shape returned by `tools:list`. Identical to `LampreyToolDescriptor`
+ * minus `inputSchema`. The renderer holds stubs by default and pulls full
+ * descriptors via `tools:resolve(names[])` or `tools:search({ query })` —
+ * a 100-tool MCP catalog shrinks its IPC payload from ~50KB to ~5KB this way.
+ */
+export type LampreyToolStub = Omit<LampreyToolDescriptor, 'inputSchema'>
+
+/**
+ * Registration input shape. `tags`, `lazy`, and `mutates` are optional here
+ * so existing registration sites do not need to repeat the derived fields;
+ * the registry normalizes them on insert. Every other field stays required
+ * as before.
+ */
+export type LampreyToolRegistration =
+  Omit<LampreyToolDescriptor, 'tags' | 'lazy' | 'mutates'> & {
+    tags?: string[]
+    lazy?: boolean
+    mutates?: boolean
+  }
+
+/**
+ * Track 2 / C3 — true when invoking the tool may mutate the workspace,
+ * external systems, or persistent state. Honoured by the chat dispatcher's
+ * plan-mode gate. The `mutates` field is the authoritative answer; the
+ * function exists for callers that want to derive intent from an arbitrary
+ * descriptor shape (e.g. tests, future plugin scaffolds).
+ */
+export function isMutatingDescriptor(
+  descriptor: LampreyToolDescriptor | undefined
+): boolean {
+  if (!descriptor) return false
+  return descriptor.mutates === true
 }
 
 /**
@@ -198,12 +268,36 @@ class ToolRegistry {
   private natives = new Map<string, LampreyToolDescriptor>()
   private nativeHandlers = new Map<string, NativeToolHandler>()
 
-  registerNative(descriptor: LampreyToolDescriptor, handler?: NativeToolHandler): void {
-    if (descriptor.providerKind !== 'native') {
+  registerNative(
+    input: LampreyToolRegistration,
+    handler?: NativeToolHandler
+  ): void {
+    if (input.providerKind !== 'native') {
       throw new Error(
-        `registerNative: refusing to register descriptor with providerKind="${descriptor.providerKind}"`
+        `registerNative: refusing to register descriptor with providerKind="${input.providerKind}"`
       )
     }
+    // Normalize derived fields (tags, lazy, mutates) at insert time so
+    // reads never need to recompute them. Native tools default to
+    // lazy: false — their schemas are inlined at registration. `mutates`
+    // defaults to risks-includes-write-or-destructive; callers can
+    // override (e.g. enter_plan_mode mutates session state but not the
+    // workspace, so it ships mutates: false).
+    const lazy = input.lazy ?? false
+    const mutates =
+      input.mutates ??
+      input.risks.some((r) => r === 'write' || r === 'destructive')
+    const tags =
+      input.tags ??
+      computeToolTags({
+        providerKind: input.providerKind,
+        risks: input.risks,
+        requiresApproval: input.requiresApproval,
+        parallelizable: input.parallelizable,
+        lazy,
+        mutates
+      })
+    const descriptor: LampreyToolDescriptor = { ...input, tags, lazy, mutates }
     this.natives.set(descriptor.id, descriptor)
     if (handler) this.nativeHandlers.set(descriptor.id, handler)
   }
@@ -225,6 +319,11 @@ class ToolRegistry {
   /**
    * Currently visible descriptors, in stable order:
    *   natives (insertion order) → MCP (server id, then tool name).
+   *
+   * Each descriptor carries the full `inputSchema`. For the renderer-facing
+   * stub list (no schemas), see `getStubs()`. Chat dispatch always uses
+   * `getDescriptors()` / `getOpenAITools()` so the model still receives
+   * every tool's schema.
    */
   getDescriptors(): LampreyToolDescriptor[] {
     const list: LampreyToolDescriptor[] = []
@@ -242,6 +341,21 @@ class ToolRegistry {
         const risks: ToolRisk[] = isDestructive
           ? ['destructive', 'write', 'network']
           : ['network']
+        const lazy = true
+        // C3 — MCP tools opt in to plan-mode gating by default when their
+        // risks include write/destructive. Chrome's destructive set
+        // (click/fill/submit/type/press/select_option) thus mutates: true;
+        // every other MCP read tool stays unmuted.
+        const mutates =
+          risks.some((r) => r === 'write' || r === 'destructive')
+        const tags = computeToolTags({
+          providerKind: 'mcp',
+          risks,
+          requiresApproval: isDestructive,
+          parallelizable: false,
+          lazy,
+          mutates
+        })
         list.push({
           id,
           name: id,
@@ -253,12 +367,63 @@ class ToolRegistry {
             (tool.inputSchema as unknown) || { type: 'object', properties: {} },
           risks,
           requiresApproval: isDestructive,
-          enabled: true
+          enabled: true,
+          tags,
+          lazy,
+          mutates
         })
       }
     }
 
     return list
+  }
+
+  /**
+   * Renderer-facing stub list. Identical to `getDescriptors()` minus the
+   * `inputSchema` field. Backs `tools:list`. Use `resolveByName()` or
+   * `search()` to expand stubs to full descriptors.
+   */
+  getStubs(): LampreyToolStub[] {
+    return this.getDescriptors().map((d) => {
+      // Strip inputSchema cleanly so renderer-side JSON.stringify doesn't
+      // accidentally include `undefined` properties.
+      const {
+        inputSchema: _omit,
+        ...stub
+      } = d
+      void _omit
+      return stub
+    })
+  }
+
+  /**
+   * Resolve one or more tool names to their full descriptors. Names that
+   * don't match are silently dropped — the renderer should compare the
+   * returned list against its request to detect missing tools. Order
+   * follows the input.
+   */
+  resolveByName(names: string[]): LampreyToolDescriptor[] {
+    if (!Array.isArray(names) || names.length === 0) return []
+    const all = this.getDescriptors()
+    const byName = new Map(all.map((d) => [d.name, d]))
+    const out: LampreyToolDescriptor[] = []
+    for (const n of names) {
+      const d = byName.get(n)
+      if (d) out.push(d)
+    }
+    return out
+  }
+
+  /**
+   * Two-mode search backing `tools:search`. `select:<names>` returns the
+   * named tools in order (alias for `resolveByName`). Anything else is
+   * keyword-scored across name / tags / description with weights 3 / 2 / 1.
+   * See `tool-search.ts` for the scoring details.
+   */
+  search(query: string, maxResults = 10): LampreyToolDescriptor[] {
+    const select = parseSelectQuery(query)
+    if (select) return this.resolveByName(select)
+    return searchDescriptorsByQuery(this.getDescriptors(), query, maxResults)
   }
 
   getById(id: string): LampreyToolDescriptor | undefined {
@@ -508,6 +673,87 @@ toolRegistry.registerNative(
     return { result, status: failed ? 'error' : 'done' }
   }
 )
+
+// Track 2 / C3 — plan-mode toggles. These tools flip a per-conversation
+// boolean (conversations.plan_mode_active) that the chat dispatcher
+// consults before approving any mutating tool. Their handlers live inline
+// because they need to emit a `plan:mode-changed` event to the renderer —
+// the same pattern memory_add uses for `memory:added`. Mutates is
+// explicitly false: the flag belongs to session state, not workspace
+// state, and the model must always be able to flip it off.
+toolRegistry.registerNative({
+  id: 'enter_plan_mode',
+  name: 'enter_plan_mode',
+  title: 'Plan mode: enter',
+  description:
+    'Enter plan mode for the current conversation. While plan mode is active, the dispatcher refuses any tool that mutates the workspace, external systems, or persistent state — only read-only tools run. Use this when the user wants you to think and plan before any changes. The model or the user can exit via `exit_plan_mode` or the banner button.',
+  providerKind: 'native',
+  providerId: 'internal',
+  inputSchema: {
+    type: 'object',
+    properties: {},
+    additionalProperties: false
+  },
+  risks: [],
+  requiresApproval: false,
+  enabled: true,
+  mutates: false
+})
+
+toolRegistry.registerNative({
+  id: 'exit_plan_mode',
+  name: 'exit_plan_mode',
+  title: 'Plan mode: exit',
+  description:
+    'Exit plan mode for the current conversation. Mutating tools (apply_patch, shell_command, destructive MCP tools) are once again allowed. Use after agreement is reached on the plan and you are ready to execute.',
+  providerKind: 'native',
+  providerId: 'internal',
+  inputSchema: {
+    type: 'object',
+    properties: {},
+    additionalProperties: false
+  },
+  risks: [],
+  requiresApproval: false,
+  enabled: true,
+  mutates: false
+})
+
+// Track 2 / E1 — mark_chapter. Anchors a chapter title (and optional
+// short summary) to the message the model has just produced or the user
+// has just submitted. The renderer's chapter sidebar (E2) uses these to
+// build a TOC; long sessions get navigable without scrolling. Mutates
+// is false: the row is purely organizational, no workspace effect.
+toolRegistry.registerNative({
+  id: 'mark_chapter',
+  name: 'mark_chapter',
+  title: 'Mark a session chapter',
+  description:
+    "Mark the start of a new chapter in this session. Use when the work shifts to a meaningfully different phase — e.g. after finishing exploration and starting implementation, after a fix lands and you move to verification, or when the user pivots to an unrelated request. The user sees a divider in the transcript and a floating table of contents for jumping between chapters. Use sparingly: a chapter should cover a coherent stretch of work, not every tool call.",
+  providerKind: 'native',
+  providerId: 'internal',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      title: {
+        type: 'string',
+        description:
+          'Short noun-phrase title for the chapter (under 40 chars). Shown in the table of contents. e.g. "Codebase exploration", "Auth bug fix", "Test verification".'
+      },
+      summary: {
+        type: 'string',
+        description:
+          'Optional one-line summary of what this chapter covers. Shown on hover in the table of contents.'
+      }
+    },
+    required: ['title'],
+    additionalProperties: false
+  },
+  risks: [],
+  requiresApproval: false,
+  enabled: true,
+  mutates: false
+})
 
 // Tool packs are loaded by electron/services/tool-packs.ts (imported from
 // electron/ipc/index.ts), not from this file. Side-effect imports at the

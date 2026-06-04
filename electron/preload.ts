@@ -24,6 +24,11 @@ const api = {
       ipcRenderer.on('chat:phase', (_, e) => cb(e)),
     onAgentStatus: (cb: (e: unknown) => void) =>
       ipcRenderer.on('agent:status', (_, e) => cb(e)),
+    onAsyncEvent: (cb: (e: unknown) => void): (() => void) => {
+      const handler = (_: unknown, e: unknown): void => cb(e)
+      ipcRenderer.on('async-event:received', handler)
+      return () => ipcRenderer.removeListener('async-event:received', handler)
+    },
     offAll: () => {
       ;[
         'chat:chunk',
@@ -61,6 +66,23 @@ const api = {
         for (const [ch, h] of handlers) ipcRenderer.removeListener(ch, h)
       }
     }
+  },
+
+  // E3 — cross-session search + archive surface. Separate namespace so
+  // the legacy `conversation.*` calls stay untouched.
+  sessions: {
+    list: (opts?: {
+      tab?: 'recent' | 'pinned' | 'archived'
+      query?: string
+      limit?: number
+      offset?: number
+    }) => ipcRenderer.invoke('sessions:list', opts),
+    archive: (id: string, archived: boolean) =>
+      ipcRenderer.invoke('sessions:archive', id, archived),
+    setPinned: (id: string, pinned: boolean) =>
+      ipcRenderer.invoke('sessions:setPinned', id, pinned),
+    search: (query: string, limit?: number) =>
+      ipcRenderer.invoke('sessions:search', query, limit)
   },
 
   conversation: {
@@ -140,15 +162,43 @@ const api = {
   },
 
   memory: {
-    list: () => ipcRenderer.invoke('memory:list'),
+    // `filter` is optional; pass `{ type?: MemoryType, projectSlug?: string }`
+    // to scope the result to a typed file-backed view. The no-arg form
+    // returns the legacy shape (numeric ids) so the pre-D3 MemoryPanel
+    // keeps rendering during the transition.
+    list: (filter?: { type?: string; projectSlug?: string }) =>
+      ipcRenderer.invoke('memory:list', filter),
     add: (content: string) => ipcRenderer.invoke('memory:add', content),
     update: (id: number, content: string) => ipcRenderer.invoke('memory:update', id, content),
-    delete: (id: number) => ipcRenderer.invoke('memory:delete', id),
+    delete: (idOrName: number | string) => ipcRenderer.invoke('memory:delete', idOrName),
     clear: () => ipcRenderer.invoke('memory:clear'),
     export: () => ipcRenderer.invoke('memory:export'),
     import: (entries: unknown[]) => ipcRenderer.invoke('memory:import', entries),
+    // Typed file-backed surface (D1).
+    write: (payload: {
+      name: string
+      type: 'user' | 'feedback' | 'project' | 'reference'
+      body: string
+      description?: string
+      projectSlug?: string
+      sourceConversationId?: string
+    }) => ipcRenderer.invoke('memory:write', payload),
+    read: (name: string) => ipcRenderer.invoke('memory:read', name),
+    search: (query: string, limit?: number) =>
+      ipcRenderer.invoke('memory:search', query, limit),
+    // D2: read the on-disk MEMORY.md for a project, plus the broken-link
+    // list so D3's sidebar pip can surface "to-write" suggestions.
+    readIndex: (projectSlug?: string) =>
+      ipcRenderer.invoke('memory:readIndex', projectSlug),
+    listBrokenLinks: (projectSlug?: string) =>
+      ipcRenderer.invoke('memory:listBrokenLinks', projectSlug),
     onAdded: (cb: (entry: unknown) => void) =>
-      ipcRenderer.on('memory:added', (_, entry) => cb(entry))
+      ipcRenderer.on('memory:added', (_, entry) => cb(entry)),
+    onChanged: (cb: (entries: unknown[]) => void): (() => void) => {
+      const handler = (_: unknown, entries: unknown[]) => cb(entries)
+      ipcRenderer.on('memory:changed', handler)
+      return () => ipcRenderer.removeListener('memory:changed', handler)
+    }
   },
 
   mcp: {
@@ -165,8 +215,13 @@ const api = {
   },
 
   tools: {
+    // Track 2 / C1: `tools:list` returns lightweight stubs (no inputSchema).
+    // Renderer uses `resolve` / `search` to pull full descriptors on demand.
     list: () => ipcRenderer.invoke('tools:list'),
     get: (id: string) => ipcRenderer.invoke('tools:get', id),
+    resolve: (names: string[]) => ipcRenderer.invoke('tools:resolve', names),
+    search: (payload: { query: string; maxResults?: number }) =>
+      ipcRenderer.invoke('tools:search', payload),
     getRecentCalls: (limit?: number) => ipcRenderer.invoke('tools:getRecentCalls', limit),
     getCallsForConversation: (conversationId: string, limit?: number) =>
       ipcRenderer.invoke('tools:getCallsForConversation', conversationId, limit),
@@ -220,6 +275,26 @@ const api = {
       const handler = (_: unknown, e: { conversationId: string; snapshot: unknown }) => cb(e)
       ipcRenderer.on('plan:updated', handler)
       return () => ipcRenderer.removeListener('plan:updated', handler)
+    },
+    // Track 2 / C3 — plan-mode gate. Banner hydrates via `isModeActive` on
+    // conversation switch; the Exit button calls `exitMode`. Live updates
+    // arrive via `onModeChanged` (the model toggles via the
+    // enter_plan_mode / exit_plan_mode tools mid-turn).
+    isModeActive: (conversationId: string) =>
+      ipcRenderer.invoke('plan:isModeActive', conversationId),
+    enterMode: (conversationId: string) =>
+      ipcRenderer.invoke('plan:enterMode', conversationId),
+    exitMode: (conversationId: string) =>
+      ipcRenderer.invoke('plan:exitMode', conversationId),
+    onModeChanged: (
+      cb: (e: { conversationId: string; active: boolean }) => void
+    ): (() => void) => {
+      const handler = (
+        _: unknown,
+        e: { conversationId: string; active: boolean }
+      ) => cb(e)
+      ipcRenderer.on('plan:mode-changed', handler)
+      return () => ipcRenderer.removeListener('plan:mode-changed', handler)
     }
   },
 
@@ -246,6 +321,55 @@ const api = {
     }
   },
 
+  // Track 2 / E1 — session chapters. `markChapter` anchors a chapter to
+  // a message; `list` hydrates the renderer's TOC; `chaptersForAnchor`
+  // returns rows pinned to a specific message id; `delete` removes one.
+  // `onMarked` is the live subscription to `chat:chapter-marked` so any
+  // open chapter sidebar updates without polling.
+  session: {
+    markChapter: (payload: {
+      conversationId: string
+      title: string
+      summary?: string | null
+      anchorMessageId: string
+    }) => ipcRenderer.invoke('session:markChapter', payload),
+    listChapters: (conversationId: string) =>
+      ipcRenderer.invoke('session:listChapters', conversationId),
+    chaptersForAnchor: (anchorMessageId: string) =>
+      ipcRenderer.invoke('session:chaptersForAnchor', anchorMessageId),
+    deleteChapter: (id: string) => ipcRenderer.invoke('session:deleteChapter', id),
+    onChapterMarked: (
+      cb: (e: { conversationId: string; chapter: unknown }) => void
+    ): (() => void) => {
+      const handler = (
+        _: unknown,
+        e: { conversationId: string; chapter: unknown }
+      ) => cb(e)
+      ipcRenderer.on('chat:chapter-marked', handler)
+      return () => ipcRenderer.removeListener('chat:chapter-marked', handler)
+    }
+  },
+
+  // Track 2 / C4 — slash commands. `list` returns user-visible commands
+  // only (`hidden: true` entries stay out of the palette but `resolve`
+  // still resolves them by name); `listAll` is for diagnostics; `resolve`
+  // returns the interpolated prompt body. `onChanged` fires whenever
+  // chokidar picks up a file mutation in userData/slash-commands.
+  slash: {
+    list: () => ipcRenderer.invoke('slash:list'),
+    listAll: () => ipcRenderer.invoke('slash:listAll'),
+    resolve: (payload: { name: string; rest?: string }) =>
+      ipcRenderer.invoke('slash:resolve', payload),
+    onChanged: (cb: (e: unknown) => void): (() => void) => {
+      const handler = (_: unknown, e: unknown) => cb(e)
+      ipcRenderer.on('slash:changed', handler)
+      return () => ipcRenderer.removeListener('slash:changed', handler)
+    }
+  },
+
+  // Track 1 / B1+B3 — workflow runner control. `runInline` accepts a
+  // raw script body; `run` fires a named workflow from disk. Progress
+  // events arrive over `workflow:progress`.
   workflows: {
     list: () => ipcRenderer.invoke('workflows:list'),
     runInline: (input: {
@@ -265,7 +389,19 @@ const api = {
     }
   },
 
+  // Track 1 / A2 — background subagent task tracking. `onNotify` fires
+  // when a background fork completes; E6 (this branch) layers the
+  // async-event-bridge on top so the next user turn sees a synthetic
+  // <task-notifications> block.
   tasks: {
+    spawn: (payload: {
+      sourceConversationId: string
+      title: string
+      prompt: string
+      tldr?: string | null
+      cwd?: string | null
+      model?: string | null
+    }) => ipcRenderer.invoke('tasks:spawn', payload),
     list: (filter?: {
       status?: 'running' | 'done' | 'error' | 'aborted' | Array<'running' | 'done' | 'error' | 'aborted'>
       parentConvId?: string | null
@@ -282,18 +418,49 @@ const api = {
       const wrapped = (_e: unknown, event: unknown): void => listener(event)
       ipcRenderer.on('agent:run:notify', wrapped)
       return () => ipcRenderer.removeListener('agent:run:notify', wrapped)
+    },
+    onSpawned: (listener: (event: unknown) => void): (() => void) => {
+      const wrapped = (_e: unknown, event: unknown): void => listener(event)
+      ipcRenderer.on('tasks:spawned', wrapped)
+      return () => ipcRenderer.removeListener('tasks:spawned', wrapped)
     }
   },
 
   hooks: {
     list: () => ipcRenderer.invoke('hooks:list'),
-    create: (input: { event: string; label: string; command: string }) =>
-      ipcRenderer.invoke('hooks:create', input),
+    create: (input: {
+      event: string
+      label: string
+      command: string
+      language?: 'js' | 'shell'
+      timeoutMs?: number
+    }) => ipcRenderer.invoke('hooks:create', input),
     update: (
       id: string,
-      patch: Partial<{ event: string; label: string; command: string; enabled: boolean }>
+      patch: Partial<{
+        event: string
+        label: string
+        command: string
+        enabled: boolean
+        language: 'js' | 'shell'
+        timeoutMs: number
+      }>
     ) => ipcRenderer.invoke('hooks:update', id, patch),
-    delete: (id: string) => ipcRenderer.invoke('hooks:delete', id)
+    delete: (id: string) => ipcRenderer.invoke('hooks:delete', id),
+    // Track 2 / C2 — test-run an unsaved hook body against a sample context.
+    test: (payload: {
+      code: string
+      event: string
+      context?: {
+        conversationId?: string
+        toolName?: string
+        args?: Record<string, unknown>
+        result?: string
+        promptBody?: string
+        cwd?: string
+      }
+      timeoutMs?: number
+    }) => ipcRenderer.invoke('hooks:test', payload)
   },
 
   automations: {
@@ -305,7 +472,8 @@ const api = {
       patch: Partial<{ label: string; cron: string; prompt: string; model: string; enabled: boolean }>
     ) => ipcRenderer.invoke('automations:update', id, patch),
     delete: (id: string) => ipcRenderer.invoke('automations:delete', id),
-    runNow: (id: string) => ipcRenderer.invoke('automations:runNow', id)
+    runNow: (id: string) => ipcRenderer.invoke('automations:runNow', id),
+    validateCron: (expr: string) => ipcRenderer.invoke('automations:validateCron', expr)
   },
 
   worktree: {
@@ -389,6 +557,50 @@ const api = {
       ;['browser:tabUpdated', 'browser:tabClosed', 'browser:activeTab'].forEach((ch) =>
         ipcRenderer.removeAllListeners(ch)
       )
+    }
+  },
+
+  // F4 — Background shell + monitor primitive.
+  shellBg: {
+    spawn: (args: { command: string; cwd?: string; env?: Record<string, string>; emitLines?: boolean }) =>
+      ipcRenderer.invoke('shell:bg:spawn', args),
+    list: () => ipcRenderer.invoke('shell:bg:list'),
+    get: (processId: string) => ipcRenderer.invoke('shell:bg:get', processId),
+    kill: (processId: string) => ipcRenderer.invoke('shell:bg:kill', processId),
+    destroy: (processId: string) => ipcRenderer.invoke('shell:bg:destroy', processId),
+    onLine: (cb: (evt: { processId: string; stream: 'stdout' | 'stderr'; line: string; at: number }) => void) => {
+      const h = (_: unknown, evt: any) => cb(evt)
+      ipcRenderer.on('shell:bg:line', h)
+      return () => ipcRenderer.removeListener('shell:bg:line', h)
+    },
+    onExit: (cb: (evt: { processId: string; exitCode: number | null; signal: string | null; durationMs: number }) => void) => {
+      const h = (_: unknown, evt: any) => cb(evt)
+      ipcRenderer.on('shell:bg:exit', h)
+      return () => ipcRenderer.removeListener('shell:bg:exit', h)
+    }
+  },
+
+  monitor: {
+    start: (opts: { processId: string; untilPattern?: string }) =>
+      ipcRenderer.invoke('monitor:start', opts),
+    read: (streamId: string, since?: number) => ipcRenderer.invoke('monitor:read', streamId, since),
+    stop: (streamId: string) => ipcRenderer.invoke('monitor:stop', streamId),
+    destroy: (streamId: string) => ipcRenderer.invoke('monitor:destroy', streamId),
+    list: () => ipcRenderer.invoke('monitor:list'),
+    onLine: (cb: (evt: { streamId: string; processId: string; entry: unknown }) => void) => {
+      const h = (_: unknown, evt: any) => cb(evt)
+      ipcRenderer.on('monitor:line', h)
+      return () => ipcRenderer.removeListener('monitor:line', h)
+    },
+    onMatched: (cb: (evt: { streamId: string; processId: string; matchedLine: string; entry: unknown }) => void) => {
+      const h = (_: unknown, evt: any) => cb(evt)
+      ipcRenderer.on('monitor:matched', h)
+      return () => ipcRenderer.removeListener('monitor:matched', h)
+    },
+    onExit: (cb: (evt: { streamId: string; processId: string; exitCode: number | null }) => void) => {
+      const h = (_: unknown, evt: any) => cb(evt)
+      ipcRenderer.on('monitor:exit', h)
+      return () => ipcRenderer.removeListener('monitor:exit', h)
     }
   },
 
@@ -547,6 +759,51 @@ const api = {
       ipcRenderer.invoke('github:getPullRequest', args),
     listConversationPullRequests: (args: { conversationId: string }) =>
       ipcRenderer.invoke('github:listConversationPullRequests', args),
+
+    // F2 — PR review threading + inline review post.
+    listPullRequestReviewComments: (args: { owner: string; repo: string; number: number }) =>
+      ipcRenderer.invoke('github:listPullRequestReviewComments', args),
+    listPullRequestReviewThreads: (args: { owner: string; repo: string; number: number }) =>
+      ipcRenderer.invoke('github:listPullRequestReviewThreads', args),
+    createPullRequestReview: (args: {
+      owner: string
+      repo: string
+      number: number
+      body?: string
+      event?: 'APPROVE' | 'REQUEST_CHANGES' | 'COMMENT'
+      commitId?: string
+      comments?: Array<{
+        path: string
+        body: string
+        position?: number
+        line?: number
+        start_line?: number
+        side?: 'LEFT' | 'RIGHT'
+        start_side?: 'LEFT' | 'RIGHT'
+      }>
+    }) => ipcRenderer.invoke('github:createPullRequestReview', args),
+    replyToReviewComment: (args: {
+      owner: string
+      repo: string
+      number: number
+      commentId: number
+      body: string
+    }) => ipcRenderer.invoke('github:replyToReviewComment', args),
+    resolveReviewThread: (args: { threadId: string }) =>
+      ipcRenderer.invoke('github:resolveReviewThread', args),
+    unresolveReviewThread: (args: { threadId: string }) =>
+      ipcRenderer.invoke('github:unresolveReviewThread', args),
+
+    // F3 — issues + status checks.
+    listIssues: (args: {
+      owner: string
+      repo: string
+      state?: 'open' | 'closed' | 'all'
+      per_page?: number
+      labels?: string
+    }) => ipcRenderer.invoke('github:listIssues', args),
+    getPullRequestStatus: (args: { owner: string; repo: string; number: number }) =>
+      ipcRenderer.invoke('github:getPullRequestStatus', args),
     pushBranch: (args: {
       cwd: string
       branch: string

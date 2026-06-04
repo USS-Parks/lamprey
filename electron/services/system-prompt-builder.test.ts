@@ -103,6 +103,54 @@ describe('buildSystemPrompt — default base', () => {
     expect(skillIdx).toBeGreaterThan(memoryIdx)
     expect(out).toContain('skill body')
   })
+
+  // D2 — the always-loaded `<memory_index>` block sits between the
+  // legacy `<memory>` block and the skill blocks. Per the parity-plan
+  // §2 invariant, the inter-block order is
+  //   memory_index → skills → retrieved_context → chapters → conversation
+  // so the index must precede skills.
+  it('places the <memory_index> block between <memory> and skills', () => {
+    const out = buildSystemPrompt(
+      [{ name: 'test-skill', content: 'skill body' }],
+      '<memory>m</memory>',
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      '<memory_index>\n- [a](a.md) — A\n</memory_index>'
+    )
+    const memIdx = out.indexOf('<memory>')
+    const idxIdx = out.indexOf('<memory_index>')
+    const skillIdx = out.indexOf('<skill name="test-skill">')
+    expect(memIdx).toBeGreaterThan(-1)
+    expect(idxIdx).toBeGreaterThan(memIdx)
+    expect(skillIdx).toBeGreaterThan(idxIdx)
+  })
+
+  it('drops the <memory_index> block entirely when empty', () => {
+    const out = buildSystemPrompt([], '', undefined, undefined, undefined, undefined, '   ')
+    expect(out).not.toContain('<memory_index>')
+  })
+
+  it('places task notifications after memory index and before skills', () => {
+    const out = buildSystemPrompt(
+      [{ name: 'test-skill', content: 'skill body' }],
+      '<memory>fact</memory>',
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      '<memory_index>\n- [a](a.md) — A\n</memory_index>',
+      '<task-notifications>\n- done\n</task-notifications>'
+    )
+    const memoryIdx = out.indexOf('<memory>')
+    const memoryIndexIdx = out.indexOf('<memory_index>')
+    const notifyIdx = out.indexOf('<task-notifications>')
+    const skillIdx = out.indexOf('<skill name="test-skill">')
+    expect(memoryIndexIdx).toBeGreaterThan(memoryIdx)
+    expect(notifyIdx).toBeGreaterThan(memoryIndexIdx)
+    expect(skillIdx).toBeGreaterThan(notifyIdx)
+  })
 })
 
 describe('buildSystemPrompt — override path', () => {

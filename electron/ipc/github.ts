@@ -421,6 +421,106 @@ export function registerGitHubHandlers(): void {
   )
 
   // -------------------------------------------------------------------------
+  // F2 — PR review threading + inline review post
+  // -------------------------------------------------------------------------
+
+  ipcMain.handle(
+    'github:listPullRequestReviewComments',
+    async (_e, args: { owner: string; repo: string; number: number }) => {
+      try {
+        return envelope(
+          await github.getPullRequestReviewComments(args.owner, args.repo, args.number)
+        )
+      } catch (err: any) {
+        return failure(err?.message ?? 'List review comments failed')
+      }
+    }
+  )
+
+  ipcMain.handle(
+    'github:listPullRequestReviewThreads',
+    async (_e, args: { owner: string; repo: string; number: number }) => {
+      try {
+        return envelope(
+          await github.listPullRequestReviewThreads(args.owner, args.repo, args.number)
+        )
+      } catch (err: any) {
+        return failure(err?.message ?? 'List review threads failed')
+      }
+    }
+  )
+
+  ipcMain.handle(
+    'github:createPullRequestReview',
+    async (_e, args: github.CreatePullRequestReviewInput) => {
+      try {
+        return envelope(await github.createPullRequestReview(args))
+      } catch (err: any) {
+        return failure(err?.message ?? 'Create review failed')
+      }
+    }
+  )
+
+  ipcMain.handle(
+    'github:replyToReviewComment',
+    async (_e, args: github.ReplyToReviewCommentInput) => {
+      try {
+        return envelope(await github.replyToReviewComment(args))
+      } catch (err: any) {
+        return failure(err?.message ?? 'Reply to review comment failed')
+      }
+    }
+  )
+
+  ipcMain.handle(
+    'github:resolveReviewThread',
+    async (_e, args: { threadId: string }) => {
+      try {
+        return envelope(await github.resolveReviewThread(args.threadId))
+      } catch (err: any) {
+        return failure(err?.message ?? 'Resolve review thread failed')
+      }
+    }
+  )
+
+  ipcMain.handle(
+    'github:unresolveReviewThread',
+    async (_e, args: { threadId: string }) => {
+      try {
+        return envelope(await github.unresolveReviewThread(args.threadId))
+      } catch (err: any) {
+        return failure(err?.message ?? 'Unresolve review thread failed')
+      }
+    }
+  )
+
+  // F3 — issues + status checks.
+  ipcMain.handle(
+    'github:listIssues',
+    async (
+      _e,
+      args: { owner: string; repo: string; state?: 'open' | 'closed' | 'all'; per_page?: number; labels?: string }
+    ) => {
+      try {
+        return envelope(await github.listIssues(args.owner, args.repo, args))
+      } catch (err: any) {
+        return failure(err?.message ?? 'List issues failed')
+      }
+    }
+  )
+
+  ipcMain.handle(
+    'github:getPullRequestStatus',
+    async (_e, args: { owner: string; repo: string; number: number }) => {
+      try {
+        return envelope(await github.getPullRequestStatus(args.owner, args.repo, args.number))
+      } catch (err: any) {
+        return failure(err?.message ?? 'Get PR status failed')
+      }
+    }
+  )
+
+  // -------------------------------------------------------------------------
   // Push (token-authenticated where possible)
   // -------------------------------------------------------------------------
 

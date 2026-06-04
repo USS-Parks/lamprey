@@ -10,7 +10,37 @@ interface Tab {
   title: string
   url: string
   loading: boolean
+  // F1 — preview verification capture buffers. Bounded so the preview
+  // tools don't OOM on a noisy page.
+  consoleLogs: ConsoleEntry[]
+  networkEvents: NetworkEntry[]
+  // True once `attachDebugger` has wired CDP Network.* listeners. We
+  // attach lazily on the first preview_network call so tabs that never
+  // need it don't pay the debugger overhead.
+  networkAttached: boolean
 }
+
+export interface ConsoleEntry {
+  level: 'log' | 'warning' | 'error' | 'info' | 'debug'
+  message: string
+  line?: number
+  sourceId?: string
+  at: number
+}
+
+export interface NetworkEntry {
+  requestId: string
+  url: string
+  method: string
+  status?: number
+  mimeType?: string
+  resourceType?: string
+  at: number
+  finishedAt?: number
+}
+
+const CONSOLE_CAP = 500
+const NETWORK_CAP = 500
 
 interface Bounds {
   x: number
@@ -68,11 +98,56 @@ function attachTabListeners(tab: Tab): void {
   })
   wc.on('did-navigate', (_e, url) => {
     tab.url = url
+    // Reset capture buffers on navigation so logs from the old page
+    // don't pollute the new one's verification surface.
+    tab.consoleLogs = []
+    tab.networkEvents = []
     emitTab(tab)
   })
   wc.on('did-navigate-in-page', (_e, url) => {
     tab.url = url
     emitTab(tab)
+  })
+
+  // F1 — capture page-side console messages for the preview tools.
+  // Electron 35 ships a single `event` object with named fields
+  // (level: 'log' | 'warning' | 'error' | 'info' | 'debug', message,
+  // sourceId, lineNumber). Older Electron versions used positional
+  // args (level: number, message, line, sourceId); the cast-through-
+  // unknown handles both shapes without forcing a type narrow.
+  wc.on('console-message', (event: unknown) => {
+    const e = event as {
+      level?: number | string
+      message?: unknown
+      lineNumber?: number
+      sourceId?: string
+    }
+    let level: ConsoleEntry['level'] = 'log'
+    if (typeof e.level === 'string') {
+      if (e.level === 'warning' || e.level === 'error' || e.level === 'info' || e.level === 'debug') {
+        level = e.level
+      }
+    } else if (typeof e.level === 'number') {
+      const byNumber: Record<number, ConsoleEntry['level']> = {
+        0: 'log',
+        1: 'warning',
+        2: 'error',
+        3: 'info',
+        4: 'debug'
+      }
+      level = byNumber[e.level] ?? 'log'
+    }
+    const entry: ConsoleEntry = {
+      level,
+      message: String(e.message ?? ''),
+      line: e.lineNumber,
+      sourceId: e.sourceId,
+      at: Date.now()
+    }
+    tab.consoleLogs.push(entry)
+    if (tab.consoleLogs.length > CONSOLE_CAP) {
+      tab.consoleLogs.splice(0, tab.consoleLogs.length - CONSOLE_CAP)
+    }
   })
 
   // Pop-up handler: open new windows as new tabs in our browser instead of
@@ -81,6 +156,94 @@ function attachTabListeners(tab: Tab): void {
     void newTab(url)
     return { action: 'deny' }
   })
+}
+
+/**
+ * Lazy CDP attach for network capture. Called on the first
+ * `preview_network` request against a tab; subsequent calls are no-ops.
+ */
+export function ensureNetworkCapture(tabId: string): boolean {
+  const tab = tabs.get(tabId)
+  if (!tab) return false
+  if (tab.networkAttached) return true
+  const dbg = tab.view.webContents.debugger
+  try {
+    if (!dbg.isAttached()) dbg.attach('1.3')
+    void dbg.sendCommand('Network.enable')
+  } catch (err) {
+    console.warn('[browser-manager] debugger attach failed:', (err as Error).message)
+    return false
+  }
+
+  dbg.on('message', (_event, method, params) => {
+    if (method === 'Network.requestWillBeSent') {
+      const p = params as any
+      tab.networkEvents.push({
+        requestId: p.requestId,
+        url: p.request?.url ?? '',
+        method: p.request?.method ?? 'GET',
+        resourceType: p.type,
+        at: Date.now()
+      })
+    } else if (method === 'Network.responseReceived') {
+      const p = params as any
+      const existing = tab.networkEvents.find((e) => e.requestId === p.requestId)
+      if (existing) {
+        existing.status = p.response?.status
+        existing.mimeType = p.response?.mimeType
+        existing.finishedAt = Date.now()
+      }
+    }
+    if (tab.networkEvents.length > NETWORK_CAP) {
+      tab.networkEvents.splice(0, tab.networkEvents.length - NETWORK_CAP)
+    }
+  })
+
+  tab.networkAttached = true
+  return true
+}
+
+export function getTabConsoleLogs(tabId: string, since?: number): ConsoleEntry[] {
+  const tab = tabs.get(tabId)
+  if (!tab) return []
+  if (typeof since === 'number') return tab.consoleLogs.filter((e) => e.at > since)
+  return [...tab.consoleLogs]
+}
+
+export function getTabNetworkEvents(tabId: string, since?: number): NetworkEntry[] {
+  const tab = tabs.get(tabId)
+  if (!tab) return []
+  ensureNetworkCapture(tabId)
+  if (typeof since === 'number') return tab.networkEvents.filter((e) => e.at > since)
+  return [...tab.networkEvents]
+}
+
+export function clearTabConsoleLogs(tabId: string): void {
+  const tab = tabs.get(tabId)
+  if (tab) tab.consoleLogs = []
+}
+
+export function clearTabNetworkEvents(tabId: string): void {
+  const tab = tabs.get(tabId)
+  if (tab) tab.networkEvents = []
+}
+
+/**
+ * Resize a tab's WebContentsView. When no bounds have been published
+ * yet, falls back to the main window's content area minus a 56px top
+ * chrome reservation.
+ */
+export function resizeTab(tabId: string, width: number, height: number): boolean {
+  const tab = tabs.get(tabId)
+  if (!tab) return false
+  const win = getMainWindow()
+  if (!win) return false
+  const w = Math.round(Math.max(160, width))
+  const h = Math.round(Math.max(120, height))
+  const x = lastBounds ? Math.round(lastBounds.x) : 0
+  const y = lastBounds ? Math.round(lastBounds.y) : 56
+  tab.view.setBounds({ x, y, width: w, height: h })
+  return true
 }
 
 function applyBoundsToActive(): void {
@@ -160,7 +323,16 @@ export async function newTab(rawUrl?: string): Promise<Tab> {
       webSecurity: true
     }
   })
-  const tab: Tab = { id, view, title: url, url, loading: true }
+  const tab: Tab = {
+    id,
+    view,
+    title: url,
+    url,
+    loading: true,
+    consoleLogs: [],
+    networkEvents: [],
+    networkAttached: false
+  }
   tabs.set(id, tab)
   attachTabListeners(tab)
 

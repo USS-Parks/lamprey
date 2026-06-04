@@ -852,6 +852,507 @@ export async function getPullRequest(owner: string, repo: string, number: number
 }
 
 // ---------------------------------------------------------------------------
+// F2 — PR review threading + inline review post
+// ---------------------------------------------------------------------------
+//
+// Two GitHub APIs are involved:
+//   1. REST `/repos/.../pulls/{n}/comments` — review (line) comments + their
+//      reply endpoint. This is what `getPullRequestReviewComments`,
+//      `createPullRequestReview`, and `replyToReviewComment` use.
+//   2. GraphQL `pullRequestReviewThread` + `resolveReviewThread` mutation —
+//      thread state (resolved / open) lives only in GraphQL. We piggyback
+//      on the same OAuth token via the standard /graphql endpoint.
+
+export interface RawReviewComment {
+  id: number
+  pull_request_review_id: number | null
+  pull_request_url: string
+  diff_hunk: string
+  path: string
+  position: number | null
+  original_position: number | null
+  line: number | null
+  start_line: number | null
+  side: 'LEFT' | 'RIGHT' | null
+  in_reply_to_id?: number
+  body: string
+  html_url: string
+  user: { login: string; avatar_url: string | null }
+  created_at: string
+  updated_at: string
+}
+
+export interface PullRequestReviewComment {
+  id: number
+  reviewId: number | null
+  body: string
+  path: string
+  line: number | null
+  startLine: number | null
+  side: 'LEFT' | 'RIGHT' | null
+  position: number | null
+  inReplyToId: number | null
+  htmlUrl: string
+  user: { login: string; avatarUrl: string | null }
+  createdAt: string
+  updatedAt: string
+}
+
+/** Pure: turn a GitHub review-comment payload into our normalised shape. Exported for tests. */
+export function parseReviewComment(raw: RawReviewComment): PullRequestReviewComment {
+  return {
+    id: raw.id,
+    reviewId: raw.pull_request_review_id,
+    body: raw.body,
+    path: raw.path,
+    line: raw.line,
+    startLine: raw.start_line,
+    side: raw.side,
+    position: raw.position,
+    inReplyToId: raw.in_reply_to_id ?? null,
+    htmlUrl: raw.html_url,
+    user: { login: raw.user?.login ?? '', avatarUrl: raw.user?.avatar_url ?? null },
+    createdAt: raw.created_at,
+    updatedAt: raw.updated_at
+  }
+}
+
+export async function getPullRequestReviewComments(
+  owner: string,
+  repo: string,
+  number: number
+): Promise<PullRequestReviewComment[]> {
+  if (!isValidSlug(owner) || !isValidSlug(repo)) throw new Error('Invalid repo')
+  if (!Number.isInteger(number) || number <= 0) throw new Error('Invalid PR number')
+  const raw = await githubRequest<RawReviewComment[]>(
+    `/repos/${owner}/${repo}/pulls/${number}/comments?per_page=100`,
+    {},
+    provider()
+  )
+  return raw.map(parseReviewComment)
+}
+
+export interface CreatePullRequestReviewInput {
+  owner: string
+  repo: string
+  number: number
+  /** Markdown body for the overall review (optional). */
+  body?: string
+  /** APPROVE / REQUEST_CHANGES / COMMENT. Defaults to COMMENT. */
+  event?: 'APPROVE' | 'REQUEST_CHANGES' | 'COMMENT'
+  /** Optional commit SHA to pin the review to. GitHub picks the PR head if omitted. */
+  commitId?: string
+  /** Inline comments. `position` is the diff-hunk position; for line-anchored
+   *  comments pass `line` (+ optional `start_line` for a range). */
+  comments?: Array<{
+    path: string
+    body: string
+    position?: number
+    line?: number
+    start_line?: number
+    side?: 'LEFT' | 'RIGHT'
+    start_side?: 'LEFT' | 'RIGHT'
+  }>
+}
+
+export interface CreatedPullRequestReview {
+  id: number
+  state: string
+  htmlUrl: string
+  submittedAt: string | null
+}
+
+export async function createPullRequestReview(
+  input: CreatePullRequestReviewInput
+): Promise<CreatedPullRequestReview> {
+  if (!isValidSlug(input.owner) || !isValidSlug(input.repo)) throw new Error('Invalid repo')
+  if (!Number.isInteger(input.number) || input.number <= 0) throw new Error('Invalid PR number')
+  const event = input.event ?? 'COMMENT'
+  if (!['APPROVE', 'REQUEST_CHANGES', 'COMMENT'].includes(event)) {
+    throw new Error(`Invalid review event: ${event}`)
+  }
+  const cleanedComments = (input.comments ?? [])
+    .filter((c) => c && typeof c.path === 'string' && typeof c.body === 'string')
+    .map((c) => ({
+      path: c.path,
+      body: c.body,
+      position: typeof c.position === 'number' ? c.position : undefined,
+      line: typeof c.line === 'number' ? c.line : undefined,
+      start_line: typeof c.start_line === 'number' ? c.start_line : undefined,
+      side: c.side,
+      start_side: c.start_side
+    }))
+  const payload: Record<string, unknown> = { event }
+  if (input.body && input.body.trim()) payload.body = input.body
+  if (input.commitId && input.commitId.trim()) payload.commit_id = input.commitId
+  if (cleanedComments.length > 0) payload.comments = cleanedComments
+
+  const raw = await githubRequest<{
+    id: number
+    state: string
+    html_url: string
+    submitted_at: string | null
+  }>(
+    `/repos/${input.owner}/${input.repo}/pulls/${input.number}/reviews`,
+    { method: 'POST', body: payload },
+    provider()
+  )
+  return {
+    id: raw.id,
+    state: raw.state,
+    htmlUrl: raw.html_url,
+    submittedAt: raw.submitted_at
+  }
+}
+
+export interface ReplyToReviewCommentInput {
+  owner: string
+  repo: string
+  number: number
+  commentId: number
+  body: string
+}
+
+export async function replyToReviewComment(
+  input: ReplyToReviewCommentInput
+): Promise<PullRequestReviewComment> {
+  if (!isValidSlug(input.owner) || !isValidSlug(input.repo)) throw new Error('Invalid repo')
+  if (!Number.isInteger(input.number) || input.number <= 0) throw new Error('Invalid PR number')
+  if (!Number.isInteger(input.commentId) || input.commentId <= 0) {
+    throw new Error('Invalid comment id')
+  }
+  if (!input.body || !input.body.trim()) throw new Error('reply body is required')
+  const raw = await githubRequest<RawReviewComment>(
+    `/repos/${input.owner}/${input.repo}/pulls/${input.number}/comments/${input.commentId}/replies`,
+    { method: 'POST', body: { body: input.body } },
+    provider()
+  )
+  return parseReviewComment(raw)
+}
+
+// ── Review threads (GraphQL only) ───────────────────────────────────────
+
+async function graphqlRequest<T>(query: string, variables: Record<string, unknown>): Promise<T> {
+  const p = provider()
+  const token = await p.getAccessToken()
+  if (!token) {
+    throw new GitHubApiError(401, 'No GitHub token available — connect GitHub first.', '')
+  }
+  const res = await fetch('https://api.github.com/graphql', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/vnd.github+json',
+      'User-Agent': 'Lamprey-Harness',
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ query, variables })
+  })
+  if (!res.ok) {
+    const text = await res.text().catch(() => '')
+    if (res.status === 401) {
+      try { deps.onTokenRejected?.() } catch { /* noop */ }
+    }
+    throw new GitHubApiError(res.status, `GitHub GraphQL ${res.status}: ${text.slice(0, 400)}`, text)
+  }
+  const body = (await res.json()) as { data?: T; errors?: Array<{ message: string; type?: string }> }
+  if (body.errors && body.errors.length > 0) {
+    const first = body.errors[0]
+    // Surface scope-missing errors verbatim so the model + UI can prompt
+    // the user to re-auth with `pull_request:write`.
+    throw new GitHubApiError(403, `GraphQL error: ${first.message}`, JSON.stringify(body.errors))
+  }
+  return body.data as T
+}
+
+export interface PullRequestReviewThread {
+  id: string
+  isResolved: boolean
+  isOutdated: boolean
+  path: string
+  comments: Array<{
+    id: string
+    databaseId: number | null
+    body: string
+    author: { login: string } | null
+    createdAt: string
+  }>
+}
+
+export async function listPullRequestReviewThreads(
+  owner: string,
+  repo: string,
+  number: number
+): Promise<PullRequestReviewThread[]> {
+  if (!isValidSlug(owner) || !isValidSlug(repo)) throw new Error('Invalid repo')
+  if (!Number.isInteger(number) || number <= 0) throw new Error('Invalid PR number')
+  const data = await graphqlRequest<{
+    repository: {
+      pullRequest: {
+        reviewThreads: {
+          nodes: Array<{
+            id: string
+            isResolved: boolean
+            isOutdated: boolean
+            path: string
+            comments: {
+              nodes: Array<{
+                id: string
+                databaseId: number | null
+                body: string
+                author: { login: string } | null
+                createdAt: string
+              }>
+            }
+          }>
+        }
+      }
+    }
+  }>(
+    `
+      query Threads($owner: String!, $repo: String!, $number: Int!) {
+        repository(owner: $owner, name: $repo) {
+          pullRequest(number: $number) {
+            reviewThreads(first: 100) {
+              nodes {
+                id
+                isResolved
+                isOutdated
+                path
+                comments(first: 100) {
+                  nodes { id databaseId body author { login } createdAt }
+                }
+              }
+            }
+          }
+        }
+      }
+    `,
+    { owner, repo, number }
+  )
+  return (data.repository?.pullRequest?.reviewThreads?.nodes ?? []).map((n) => ({
+    id: n.id,
+    isResolved: n.isResolved,
+    isOutdated: n.isOutdated,
+    path: n.path,
+    comments: (n.comments?.nodes ?? []).map((c) => ({
+      id: c.id,
+      databaseId: c.databaseId,
+      body: c.body,
+      author: c.author ? { login: c.author.login } : null,
+      createdAt: c.createdAt
+    }))
+  }))
+}
+
+export async function resolveReviewThread(threadId: string): Promise<{ resolved: boolean }> {
+  if (!threadId || typeof threadId !== 'string') throw new Error('threadId is required')
+  const data = await graphqlRequest<{
+    resolveReviewThread: { thread: { isResolved: boolean } }
+  }>(
+    `
+      mutation Resolve($id: ID!) {
+        resolveReviewThread(input: { threadId: $id }) {
+          thread { isResolved }
+        }
+      }
+    `,
+    { id: threadId }
+  )
+  return { resolved: Boolean(data.resolveReviewThread?.thread?.isResolved) }
+}
+
+// ---------------------------------------------------------------------------
+// F3 — Issues + PR status checks
+// ---------------------------------------------------------------------------
+
+export interface GitHubIssue {
+  number: number
+  title: string
+  state: 'open' | 'closed'
+  body: string | null
+  htmlUrl: string
+  user: { login: string; avatarUrl: string | null }
+  labels: Array<{ name: string; color: string }>
+  createdAt: string
+  updatedAt: string
+}
+
+interface RawIssue {
+  number: number
+  title: string
+  state: 'open' | 'closed'
+  body: string | null
+  html_url: string
+  user: { login: string; avatar_url: string | null }
+  labels: Array<{ name: string; color: string }>
+  created_at: string
+  updated_at: string
+  pull_request?: unknown
+}
+
+function parseIssue(raw: RawIssue): GitHubIssue {
+  return {
+    number: raw.number,
+    title: raw.title,
+    state: raw.state,
+    body: raw.body,
+    htmlUrl: raw.html_url,
+    user: { login: raw.user?.login ?? '', avatarUrl: raw.user?.avatar_url ?? null },
+    labels: (raw.labels ?? []).map((l) => ({ name: l.name, color: l.color })),
+    createdAt: raw.created_at,
+    updatedAt: raw.updated_at
+  }
+}
+
+export async function listIssues(
+  owner: string,
+  repo: string,
+  opts: { state?: 'open' | 'closed' | 'all'; per_page?: number; labels?: string } = {}
+): Promise<GitHubIssue[]> {
+  if (!isValidSlug(owner) || !isValidSlug(repo)) throw new Error('Invalid repo')
+  const state = opts.state ?? 'open'
+  const per = Math.min(100, Math.max(1, opts.per_page ?? 30))
+  const params = new URLSearchParams({
+    state,
+    per_page: String(per),
+    sort: 'updated',
+    direction: 'desc'
+  })
+  if (opts.labels) params.set('labels', opts.labels)
+  const raw = await githubRequest<RawIssue[]>(
+    `/repos/${owner}/${repo}/issues?${params.toString()}`,
+    {},
+    provider()
+  )
+  // The /issues endpoint returns PRs too (they're a subclass of issues on
+  // the GitHub data model). Filter them out so the panel matches user
+  // intuition; PRs already have their own list endpoint.
+  return raw.filter((r) => !r.pull_request).map(parseIssue)
+}
+
+export interface PullRequestStatusCheck {
+  context: string
+  state: 'pending' | 'success' | 'failure' | 'error' | 'neutral' | 'skipped' | 'cancelled' | 'timed_out' | 'action_required'
+  description: string | null
+  targetUrl: string | null
+  source: 'commit-status' | 'check-run'
+}
+
+export interface PullRequestStatusSummary {
+  sha: string
+  overall: 'success' | 'pending' | 'failure' | 'neutral'
+  checks: PullRequestStatusCheck[]
+}
+
+/**
+ * Combine the legacy commit-status API (POST-based, used by Travis-era CI)
+ * and the modern check-runs API (used by GitHub Actions + most others)
+ * into a single rollup. The overall status takes a worst-of of all
+ * non-skipped checks: any failure/error → failure, else any pending →
+ * pending, else success. Empty result rolls up to 'neutral'.
+ */
+export async function getPullRequestStatus(
+  owner: string,
+  repo: string,
+  number: number
+): Promise<PullRequestStatusSummary> {
+  if (!isValidSlug(owner) || !isValidSlug(repo)) throw new Error('Invalid repo')
+  if (!Number.isInteger(number) || number <= 0) throw new Error('Invalid PR number')
+  const pr = await getPullRequest(owner, repo, number)
+  const sha = pr.head.sha
+  if (!sha) {
+    return { sha: '', overall: 'neutral', checks: [] }
+  }
+
+  const [commitStatus, checkRuns] = await Promise.all([
+    githubRequest<{
+      state: string
+      statuses: Array<{
+        context: string
+        state: string
+        description: string | null
+        target_url: string | null
+      }>
+    }>(`/repos/${owner}/${repo}/commits/${sha}/status`, {}, provider()).catch(() => null),
+    githubRequest<{
+      check_runs: Array<{
+        name: string
+        status: string
+        conclusion: string | null
+        details_url: string | null
+        output?: { summary?: string | null }
+      }>
+    }>(`/repos/${owner}/${repo}/commits/${sha}/check-runs`, {}, provider()).catch(() => null)
+  ])
+
+  const checks: PullRequestStatusCheck[] = []
+  if (commitStatus?.statuses) {
+    for (const s of commitStatus.statuses) {
+      checks.push({
+        context: s.context,
+        state: (s.state as PullRequestStatusCheck['state']) ?? 'pending',
+        description: s.description,
+        targetUrl: s.target_url,
+        source: 'commit-status'
+      })
+    }
+  }
+  if (checkRuns?.check_runs) {
+    for (const c of checkRuns.check_runs) {
+      const state: PullRequestStatusCheck['state'] =
+        c.status === 'completed'
+          ? ((c.conclusion ?? 'neutral') as PullRequestStatusCheck['state'])
+          : 'pending'
+      checks.push({
+        context: c.name,
+        state,
+        description: c.output?.summary ?? null,
+        targetUrl: c.details_url,
+        source: 'check-run'
+      })
+    }
+  }
+
+  let overall: PullRequestStatusSummary['overall'] = 'neutral'
+  let sawPending = false
+  let sawFailure = false
+  let sawSuccess = false
+  for (const c of checks) {
+    if (c.state === 'skipped' || c.state === 'neutral' || c.state === 'cancelled') continue
+    if (c.state === 'failure' || c.state === 'error' || c.state === 'timed_out' || c.state === 'action_required') {
+      sawFailure = true
+    } else if (c.state === 'pending') {
+      sawPending = true
+    } else if (c.state === 'success') {
+      sawSuccess = true
+    }
+  }
+  if (sawFailure) overall = 'failure'
+  else if (sawPending) overall = 'pending'
+  else if (sawSuccess) overall = 'success'
+
+  return { sha, overall, checks }
+}
+
+export async function unresolveReviewThread(threadId: string): Promise<{ resolved: boolean }> {
+  if (!threadId || typeof threadId !== 'string') throw new Error('threadId is required')
+  const data = await graphqlRequest<{
+    unresolveReviewThread: { thread: { isResolved: boolean } }
+  }>(
+    `
+      mutation Unresolve($id: ID!) {
+        unresolveReviewThread(input: { threadId: $id }) {
+          thread { isResolved }
+        }
+      }
+    `,
+    { id: threadId }
+  )
+  return { resolved: Boolean(data.unresolveReviewThread?.thread?.isResolved) }
+}
+
+// ---------------------------------------------------------------------------
 // Push (token-authenticated via askpass)
 // ---------------------------------------------------------------------------
 

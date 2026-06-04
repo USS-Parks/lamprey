@@ -1,61 +1,57 @@
-﻿import { useState, useRef, useEffect } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMemoryStore } from '@/stores/memory-store'
 import { toast } from '@/stores/toast-store'
-import type { MemoryEntry } from '@/lib/types'
+import type { MemoryFile, MemoryType } from '@/lib/types'
+import { MemoryLinkGraph } from './MemoryLinkGraph'
+import { MemoryEditor } from './MemoryEditor'
+import { MEMORY_TYPE_LABELS, MemoryTypeBadge } from './MemoryTypeBadge'
 
-const UNDO_MS = 3000
+type TabKey = 'all' | MemoryType
+
+const TABS: TabKey[] = ['all', 'user', 'feedback', 'project', 'reference']
+const TAB_LABEL: Record<TabKey, string> = { all: 'All', ...MEMORY_TYPE_LABELS }
+
+interface EditorState {
+  open: boolean
+  initial?: MemoryFile | null
+  draft?: { name?: string; type?: MemoryType; body?: string }
+}
 
 export function MemoryPanel() {
-  const { memories, addMemory, updateMemory, deleteMemory, restoreMemory, clearAll, exportMemories, importMemories } =
-    useMemoryStore()
-  const [adding, setAdding] = useState(false)
-  const [draft, setDraft] = useState('')
-  const [editingId, setEditingId] = useState<number | null>(null)
+  const entries = useMemoryStore((s) => s.entries)
+  const counts = useMemoryStore((s) => s.countsByType)
+  const exportMemories = useMemoryStore((s) => s.exportMemories)
+  const importMemories = useMemoryStore((s) => s.importMemories)
+  const clearAll = useMemoryStore((s) => s.clearAll)
+  const duplicateEntry = useMemoryStore((s) => s.duplicateEntry)
+
+  const [activeTab, setActiveTab] = useState<TabKey>('all')
   const [menuOpen, setMenuOpen] = useState(false)
-  const [undo, setUndo] = useState<{ entry: MemoryEntry; expiresAt: number } | null>(null)
-  const undoTimerRef = useRef<number | null>(null)
+  const [editor, setEditor] = useState<EditorState>({ open: false })
   const fileInputRef = useRef<HTMLInputElement>(null)
 
+  // Live `memory:changed` subscription so external edits and other
+  // panel writes refresh the view without forcing a parent reload.
   useEffect(() => {
+    const api = (window as any).api
+    const unsubscribe = api?.memory?.onChanged?.(() => {
+      useMemoryStore.getState().receiveChanged([])
+    })
     return () => {
-      if (undoTimerRef.current) window.clearTimeout(undoTimerRef.current)
+      if (typeof unsubscribe === 'function') unsubscribe()
     }
   }, [])
 
-  const startAdd = () => {
-    setAdding(true)
-    setDraft('')
-  }
-
-  const commitAdd = async () => {
-    const text = draft.trim()
-    if (text) {
-      await addMemory(text)
-    }
-    setAdding(false)
-    setDraft('')
-  }
-
-  const cancelAdd = () => {
-    setAdding(false)
-    setDraft('')
-  }
-
-  const handleDelete = async (id: number) => {
-    const removed = await deleteMemory(id)
-    if (!removed) return
-    if (undoTimerRef.current) window.clearTimeout(undoTimerRef.current)
-    setUndo({ entry: removed, expiresAt: Date.now() + UNDO_MS })
-    undoTimerRef.current = window.setTimeout(() => setUndo(null), UNDO_MS)
-  }
-
-  const handleUndo = async () => {
-    if (!undo) return
-    if (undoTimerRef.current) window.clearTimeout(undoTimerRef.current)
-    const entry = undo.entry
-    setUndo(null)
-    await restoreMemory(entry)
-  }
+  const tabCounts = counts()
+  const filtered = useMemo(() => {
+    const list = activeTab === 'all' ? entries : entries.filter((e) => e.type === activeTab)
+    return [...list].sort((a, b) => {
+      if (a.type !== b.type) return a.type.localeCompare(b.type)
+      const left = (a.description || a.name).toLowerCase()
+      const right = (b.description || b.name).toLowerCase()
+      return left.localeCompare(right)
+    })
+  }, [entries, activeTab])
 
   const handleExport = async () => {
     setMenuOpen(false)
@@ -68,11 +64,6 @@ export function MemoryPanel() {
     a.download = `lamprey-memory-${new Date().toISOString().slice(0, 10)}.json`
     a.click()
     URL.revokeObjectURL(url)
-  }
-
-  const handleImportClick = () => {
-    setMenuOpen(false)
-    fileInputRef.current?.click()
   }
 
   const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -94,6 +85,26 @@ export function MemoryPanel() {
     await clearAll()
   }
 
+  const openNew = (type?: MemoryType) => {
+    setEditor({ open: true, draft: { type: type ?? (activeTab === 'all' ? 'feedback' : activeTab) } })
+  }
+
+  const openEdit = (entry: MemoryFile) => {
+    setEditor({ open: true, initial: entry })
+  }
+
+  if (editor.open) {
+    return (
+      <div className="border-t border-[var(--border)] px-2 py-2">
+        <MemoryEditor
+          initial={editor.initial}
+          initialDraft={editor.draft}
+          onClose={() => setEditor({ open: false })}
+        />
+      </div>
+    )
+  }
+
   return (
     <div className="border-t border-[var(--border)] px-2 py-2">
       <div className="flex items-center justify-between px-2 py-1">
@@ -101,15 +112,15 @@ export function MemoryPanel() {
           <span className="text-[12px] font-medium uppercase tracking-wider text-[var(--text-muted)]">
             Memory
           </span>
-          {memories.length > 0 && (
+          {tabCounts.all > 0 && (
             <span className="rounded bg-[var(--bg-tertiary)] px-1 text-[12px] text-[var(--text-secondary)]">
-              {memories.length}
+              {tabCounts.all}
             </span>
           )}
         </div>
         <div className="flex items-center gap-1">
           <button
-            onClick={startAdd}
+            onClick={() => openNew()}
             title="Add memory entry"
             className="rounded px-1.5 py-0.5 text-xs text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-tertiary)] hover:text-[var(--accent)]"
           >
@@ -139,7 +150,10 @@ export function MemoryPanel() {
                     Export JSON
                   </button>
                   <button
-                    onClick={handleImportClick}
+                    onClick={() => {
+                      setMenuOpen(false)
+                      fileInputRef.current?.click()
+                    }}
                     className="block w-full px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-primary)] hover:text-[var(--text-primary)]"
                   >
                     Import JSON
@@ -165,131 +179,114 @@ export function MemoryPanel() {
         onChange={handleImportFile}
       />
 
-      {memories.length === 0 && !adding ? (
+      <div className="mt-1 flex items-center gap-1 overflow-x-auto px-1 pb-1">
+        {TABS.map((tab) => {
+          const c = tabCounts[tab] ?? 0
+          const isActive = activeTab === tab
+          return (
+            <button
+              key={tab}
+              type="button"
+              onClick={() => setActiveTab(tab)}
+              className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium uppercase tracking-wider transition-colors ${
+                isActive
+                  ? 'bg-[var(--accent)] text-[var(--bg-primary)]'
+                  : 'text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]'
+              }`}
+            >
+              <span>{TAB_LABEL[tab]}</span>
+              <span
+                className={`rounded ${
+                  isActive ? 'bg-black/20' : 'bg-[var(--bg-tertiary)]'
+                } px-1 text-[10px]`}
+              >
+                {c}
+              </span>
+            </button>
+          )
+        })}
+      </div>
+
+      {filtered.length === 0 ? (
         <p className="px-2 py-3 text-[12px] leading-relaxed text-[var(--text-muted)]">
-          Tell me something to remember.
+          {activeTab === 'all'
+            ? 'Tell me something to remember.'
+            : `No ${TAB_LABEL[activeTab].toLowerCase()} memories yet.`}
         </p>
       ) : (
-        <div className="flex flex-col gap-0.5">
-          {memories.map((entry, idx) => (
-            <MemoryRow
-              key={entry.id}
-              entry={entry}
-              index={idx + 1}
-              isEditing={editingId === entry.id}
-              onStartEdit={() => setEditingId(entry.id)}
-              onFinishEdit={async (value) => {
-                if (value.trim() && value.trim() !== entry.content) {
-                  await updateMemory(entry.id, value)
-                }
-                setEditingId(null)
-              }}
-              onDelete={() => handleDelete(entry.id)}
-            />
+        <ul className="flex flex-col gap-0.5">
+          {filtered.map((entry) => (
+            <li key={entry.name}>
+              <MemoryRow
+                entry={entry}
+                onOpen={() => openEdit(entry)}
+                onDuplicate={async () => {
+                  const dup = await duplicateEntry(entry.name)
+                  if (dup) openEdit(dup)
+                }}
+                onDelete={async () => {
+                  if (!confirm(`Delete "${entry.name}"?`)) return
+                  await useMemoryStore.getState().deleteEntry(entry.name)
+                }}
+              />
+            </li>
           ))}
-        </div>
+        </ul>
       )}
 
-      {adding && (
-        <div className="mt-1 px-1">
-          <textarea
-            autoFocus
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault()
-                commitAdd()
-              } else if (e.key === 'Escape') {
-                e.preventDefault()
-                cancelAdd()
-              }
-            }}
-            onBlur={commitAdd}
-            rows={2}
-            placeholder="Something to remember..."
-            className="w-full resize-none rounded border border-[var(--accent)] bg-[var(--bg-primary)] px-2 py-1 text-xs text-[var(--text-primary)] outline-none"
-          />
-        </div>
-      )}
-
-      {undo && (
-        <div className="mx-1 mt-2 flex items-center justify-between rounded border border-[var(--border)] bg-[var(--bg-tertiary)] px-2 py-1.5 text-[12px] text-[var(--text-secondary)]">
-          <span>Memory deleted</span>
-          <button
-            onClick={handleUndo}
-            className="rounded px-2 py-0.5 text-[var(--accent)] hover:bg-[var(--bg-primary)]"
-          >
-            Undo
-          </button>
-        </div>
-      )}
+      <MemoryLinkGraph
+        onPick={(target) =>
+          setEditor({
+            open: true,
+            draft: {
+              name: target,
+              type: 'reference',
+              body: ''
+            }
+          })
+        }
+      />
     </div>
   )
 }
 
 interface MemoryRowProps {
-  entry: MemoryEntry
-  index: number
-  isEditing: boolean
-  onStartEdit: () => void
-  onFinishEdit: (value: string) => void
-  onDelete: () => void
+  entry: MemoryFile
+  onOpen: () => void
+  onDuplicate: () => void | Promise<void>
+  onDelete: () => void | Promise<void>
 }
 
-function MemoryRow({ entry, index, isEditing, onStartEdit, onFinishEdit, onDelete }: MemoryRowProps) {
-  const [value, setValue] = useState(entry.content)
-
-  useEffect(() => {
-    setValue(entry.content)
-  }, [entry.content, isEditing])
-
-  if (isEditing) {
-    return (
-      <div className="flex gap-2 rounded border-l-2 border-[var(--accent)] bg-[var(--bg-tertiary)] px-2 py-1">
-        <span className="pt-1 text-[12px] text-[var(--text-muted)]">{index}.</span>
-        <textarea
-          autoFocus
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault()
-              onFinishEdit(value)
-            } else if (e.key === 'Escape') {
-              e.preventDefault()
-              onFinishEdit(entry.content)
-            }
-          }}
-          onBlur={() => onFinishEdit(value)}
-          rows={Math.min(6, Math.max(2, value.split('\n').length))}
-          className="flex-1 resize-none rounded border border-[var(--border)] bg-[var(--bg-primary)] px-2 py-1 text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
-        />
-      </div>
-    )
-  }
-
+function MemoryRow({ entry, onOpen, onDuplicate, onDelete }: MemoryRowProps) {
   return (
     <div className="group flex items-start gap-2 rounded border-l-2 border-transparent px-2 py-1 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)]">
-      <span className="pt-0.5 text-[12px] text-[var(--text-muted)]">{index}.</span>
+      <MemoryTypeBadge type={entry.type} compact />
       <button
-        onClick={onStartEdit}
-        title={entry.content}
+        type="button"
+        onClick={onOpen}
+        title={entry.description || entry.body}
         className="line-clamp-2 min-w-0 flex-1 text-left leading-snug"
       >
-        {entry.content}
+        <span className="block truncate font-medium text-[var(--text-primary)]">
+          {entry.description || entry.name}
+        </span>
+        <span className="block truncate font-mono text-[10px] text-[var(--text-muted)]">
+          {entry.name}
+        </span>
       </button>
       <button
-        onClick={onStartEdit}
-        title="Edit"
+        type="button"
+        onClick={onDuplicate}
+        title="Duplicate"
         className="hidden rounded p-0.5 text-[var(--text-muted)] hover:text-[var(--accent)] group-hover:block"
       >
         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+          <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
         </svg>
       </button>
       <button
+        type="button"
         onClick={onDelete}
         title="Delete"
         className="hidden rounded p-0.5 text-[var(--text-muted)] hover:text-[var(--error)] group-hover:block"

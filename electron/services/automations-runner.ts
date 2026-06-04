@@ -231,3 +231,84 @@ export function stopAutomations(): void {
     timer = null
   }
 }
+
+// ─── G1 — cron preview + next-fire helpers ──────────────────────────
+
+const COMMON_PRESETS: Record<string, string> = {
+  '* * * * *': 'Every minute',
+  '*/5 * * * *': 'Every 5 minutes',
+  '*/10 * * * *': 'Every 10 minutes',
+  '*/15 * * * *': 'Every 15 minutes',
+  '*/30 * * * *': 'Every 30 minutes',
+  '0 * * * *': 'Every hour, on the hour',
+  '0 */2 * * *': 'Every 2 hours',
+  '0 9 * * *': 'Daily at 09:00',
+  '0 9 * * 1-5': 'Weekdays at 09:00',
+  '0 0 * * *': 'Daily at midnight',
+  '0 0 * * 0': 'Weekly at midnight Sunday',
+  '0 0 1 * *': 'Monthly on the 1st'
+}
+
+function describeFieldSet(set: FieldSet, min: number, max: number, label: string): string {
+  const all = max - min + 1
+  if (set.size === all) return `every ${label}`
+  const sorted = [...set].sort((a, b) => a - b)
+  if (sorted.length === 1) return `at ${label} ${sorted[0]}`
+  // Detect step pattern: equally spaced from min.
+  if (sorted.length >= 3) {
+    const step = sorted[1] - sorted[0]
+    let stepOk = step > 1
+    for (let i = 2; i < sorted.length; i++) {
+      if (sorted[i] - sorted[i - 1] !== step) {
+        stepOk = false
+        break
+      }
+    }
+    if (stepOk) return `every ${step} ${label}${label.endsWith('s') ? '' : 's'}`
+  }
+  return `${label}s ${sorted.join(',')}`
+}
+
+/**
+ * Render a friendly description of a cron expression. Returns null if
+ * the expression doesn't parse. Falls back to a field-by-field summary
+ * for unrecognized patterns.
+ */
+export function describeCron(expr: string): string | null {
+  const trimmed = expr.trim().replace(/\s+/g, ' ')
+  if (COMMON_PRESETS[trimmed]) return COMMON_PRESETS[trimmed]
+  let parsed: CronExpr
+  try {
+    parsed = parseCron(trimmed)
+  } catch {
+    return null
+  }
+  const minutes = describeFieldSet(parsed.minutes, 0, 59, 'minute')
+  const hours = describeFieldSet(parsed.hours, 0, 23, 'hour')
+  return `${minutes}, ${hours}`
+}
+
+/**
+ * Find the next firing time on or after `from`. Returns null when no
+ * match within the next 366 days (handles bad expressions defensively).
+ * Tests the minute granularity the tick scheduler uses, so the result
+ * is always at second 0.
+ */
+export function nextFireAfter(expr: string, from: Date = new Date()): Date | null {
+  let parsed: CronExpr
+  try {
+    parsed = parseCron(expr)
+  } catch {
+    return null
+  }
+  // Start at the next minute boundary.
+  const candidate = new Date(from)
+  candidate.setSeconds(0, 0)
+  candidate.setMinutes(candidate.getMinutes() + 1)
+  const horizonMinutes = 366 * 24 * 60
+  for (let i = 0; i < horizonMinutes; i++) {
+    if (matches(parsed, candidate)) return new Date(candidate)
+    candidate.setMinutes(candidate.getMinutes() + 1)
+  }
+  return null
+}

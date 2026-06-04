@@ -115,7 +115,10 @@ import type {
   GitHubProjectRepoLink,
   ConversationPullRequestLink,
   PushBranchResult,
-  OAuthLoginResult
+  OAuthLoginResult,
+  GitHubIssue,
+  PullRequestReviewComment,
+  PullRequestStatusSummary
 } from './github-types'
 
 export const github = {
@@ -187,7 +190,59 @@ export const github = {
     repo: string
     setUpstream?: boolean
   }): Promise<IpcResponse<PushBranchResult>> => api.github.pushBranch(args),
-  openInBrowser: (url: string): Promise<IpcResponse<null>> => api.github.openInBrowser(url)
+  openInBrowser: (url: string): Promise<IpcResponse<null>> => api.github.openInBrowser(url),
+
+  // F2 — PR review threading.
+  listPullRequestReviewComments: (
+    owner: string,
+    repo: string,
+    number: number
+  ): Promise<IpcResponse<PullRequestReviewComment[]>> =>
+    (api.github as any).listPullRequestReviewComments({ owner, repo, number }),
+  createPullRequestReview: (args: {
+    owner: string
+    repo: string
+    number: number
+    body?: string
+    event?: 'APPROVE' | 'REQUEST_CHANGES' | 'COMMENT'
+    commitId?: string
+    comments?: Array<{
+      path: string
+      body: string
+      position?: number
+      line?: number
+      start_line?: number
+      side?: 'LEFT' | 'RIGHT'
+      start_side?: 'LEFT' | 'RIGHT'
+    }>
+  }): Promise<IpcResponse<{ id: number; state: string; htmlUrl: string; submittedAt: string | null }>> =>
+    (api.github as any).createPullRequestReview(args),
+  replyToReviewComment: (args: {
+    owner: string
+    repo: string
+    number: number
+    commentId: number
+    body: string
+  }): Promise<IpcResponse<PullRequestReviewComment>> =>
+    (api.github as any).replyToReviewComment(args),
+  resolveReviewThread: (
+    threadId: string
+  ): Promise<IpcResponse<{ resolved: boolean }>> =>
+    (api.github as any).resolveReviewThread({ threadId }),
+
+  // F3 — issues + status checks.
+  listIssues: (
+    owner: string,
+    repo: string,
+    opts?: { state?: 'open' | 'closed' | 'all'; per_page?: number; labels?: string }
+  ): Promise<IpcResponse<GitHubIssue[]>> =>
+    (api.github as any).listIssues({ owner, repo, ...(opts ?? {}) }),
+  getPullRequestStatus: (
+    owner: string,
+    repo: string,
+    number: number
+  ): Promise<IpcResponse<PullRequestStatusSummary>> =>
+    (api.github as any).getPullRequestStatus({ owner, repo, number })
 }
 
 export const artifact = {
