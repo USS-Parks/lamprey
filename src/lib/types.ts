@@ -182,6 +182,50 @@ export interface AppSettings {
   agenticCodingMode: boolean
   agenticCodingSkills: string[]
   agenticCodingComposer: AgenticCodingComposerMode
+  // H5 — per-type file-router thresholds. Missing keys fall through to the
+  // file-handler's DEFAULT_ROUTING (tuned for DeepSeek/Gemma/Qwen pricing).
+  // Override via Settings → Context Routing for tighter caps on more
+  // expensive models, or to push harder into RAG sooner.
+  contextRouting?: ContextRoutingSettings
+}
+
+export interface ContextRoutingSettings {
+  proseInlineMaxBytes?: number
+  structuredInlineMaxBytes?: number
+  structuredInlineWarnMaxBytes?: number
+  codeInlineMaxBytes?: number
+  codeInlineWarnMaxBytes?: number
+}
+
+// Presets the Settings UI can apply with one click. The "DeepSeek" preset
+// is the default (no override needed); included here so the UI can show
+// what the default actually is. "Claude" tightens the caps because Claude
+// tokens are ~50× more expensive than DeepSeek's.
+export const CONTEXT_ROUTING_PRESETS: Record<
+  'deepseek' | 'claude' | 'local',
+  Required<ContextRoutingSettings>
+> = {
+  deepseek: {
+    proseInlineMaxBytes: 50 * 1024,
+    structuredInlineMaxBytes: 10 * 1024 * 1024,
+    structuredInlineWarnMaxBytes: 50 * 1024 * 1024,
+    codeInlineMaxBytes: 2 * 1024 * 1024,
+    codeInlineWarnMaxBytes: 5 * 1024 * 1024
+  },
+  claude: {
+    proseInlineMaxBytes: 25 * 1024,
+    structuredInlineMaxBytes: 2 * 1024 * 1024,
+    structuredInlineWarnMaxBytes: 10 * 1024 * 1024,
+    codeInlineMaxBytes: 500 * 1024,
+    codeInlineWarnMaxBytes: 2 * 1024 * 1024
+  },
+  local: {
+    proseInlineMaxBytes: 10 * 1024,
+    structuredInlineMaxBytes: 500 * 1024,
+    structuredInlineWarnMaxBytes: 2 * 1024 * 1024,
+    codeInlineMaxBytes: 100 * 1024,
+    codeInlineWarnMaxBytes: 500 * 1024
+  }
 }
 
 export const DEFAULT_AGENTIC_CODING_SKILLS: string[] = [
@@ -453,6 +497,9 @@ export interface ProcessedFile {
   content: string
   previewText: string
   error?: string
+  /** Non-blocking warning from the router — e.g. "inlining will use ~25K
+   *  tokens." Surfaced as a toast on attach; does not prevent the send. */
+  warning?: string
   /** Absolute path on disk. Set on `kind: 'rag-pending'` so the renderer
    *  can hand the path to window.api.rag.autoAttach. */
   sourcePath?: string

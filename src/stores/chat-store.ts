@@ -387,6 +387,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     set((state) => ({ pendingAttachments: [...state.pendingAttachments, ...seeded] }))
     for (const f of files) {
       if (f.error) toast.warning(`${f.name}: ${f.error}`)
+      else if (f.warning) toast.warning(`${f.name}: ${f.warning}`)
     }
 
     // Route oversized files through the RAG ingest pipeline. Fired async —

@@ -2,12 +2,44 @@ import { ipcMain, dialog, BrowserWindow, shell } from 'electron'
 import { spawn } from 'child_process'
 import * as path from 'path'
 import * as fs from 'fs/promises'
-import { processFiles } from '../services/file-handler'
+import { processFiles, type RoutingThresholds } from '../services/file-handler'
+import { readSettings } from '../services/settings-helper'
 import {
   clearActiveWorkspace,
   getActiveWorkspace,
   setActiveWorkspace
 } from '../services/workspace-state'
+
+// Pull the contextRouting block out of settings.json — the Settings UI
+// stores arbitrary keys, so we sanity-check each numeric field before
+// handing it to the file router. Missing/invalid keys fall back to the
+// router's defaults (resolveThresholds handles the merge).
+function loadRoutingFromSettings(): Partial<RoutingThresholds> | null {
+  try {
+    const settings = readSettings() as { contextRouting?: Record<string, unknown> }
+    const cr = settings.contextRouting
+    if (!cr || typeof cr !== 'object') return null
+    const partial: Partial<RoutingThresholds> = {}
+    if (typeof cr.proseInlineMaxBytes === 'number' && cr.proseInlineMaxBytes > 0) {
+      partial.proseInlineMaxBytes = cr.proseInlineMaxBytes
+    }
+    if (typeof cr.structuredInlineMaxBytes === 'number' && cr.structuredInlineMaxBytes > 0) {
+      partial.structuredInlineMaxBytes = cr.structuredInlineMaxBytes
+    }
+    if (typeof cr.structuredInlineWarnMaxBytes === 'number' && cr.structuredInlineWarnMaxBytes > 0) {
+      partial.structuredInlineWarnMaxBytes = cr.structuredInlineWarnMaxBytes
+    }
+    if (typeof cr.codeInlineMaxBytes === 'number' && cr.codeInlineMaxBytes > 0) {
+      partial.codeInlineMaxBytes = cr.codeInlineMaxBytes
+    }
+    if (typeof cr.codeInlineWarnMaxBytes === 'number' && cr.codeInlineWarnMaxBytes > 0) {
+      partial.codeInlineWarnMaxBytes = cr.codeInlineWarnMaxBytes
+    }
+    return partial
+  } catch {
+    return null
+  }
+}
 
 // ----------------------------------------------------------------------------
 // Pure helpers (exported for unit tests). SEC-6: every spawn that follows a
@@ -193,7 +225,7 @@ export function registerFilesHandlers(): void {
   ipcMain.handle('files:process', async (_event, paths: string[]) => {
     try {
       if (!Array.isArray(paths)) return { success: false, error: 'paths must be an array' }
-      const result = await processFiles(paths)
+      const result = await processFiles(paths, loadRoutingFromSettings())
       return { success: true, data: result }
     } catch (err: any) {
       return { success: false, error: err?.message ?? 'File processing failed' }
@@ -284,7 +316,7 @@ export function registerFilesHandlers(): void {
           })
         : await dialog.showOpenDialog({ properties: ['openFile', 'multiSelections'] })
       if (dlg.canceled) return { success: true, data: [] }
-      const processed = await processFiles(dlg.filePaths)
+      const processed = await processFiles(dlg.filePaths, loadRoutingFromSettings())
       return { success: true, data: processed }
     } catch (err: any) {
       return { success: false, error: err?.message ?? 'File picker failed' }
