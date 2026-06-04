@@ -1,12 +1,9 @@
 import { useEffect, useMemo, useRef } from 'react'
 import type { Message } from '@/lib/types'
-import type { ToolCallState } from '@/stores/chat-store'
 import { parseReasoning } from '@/lib/reasoning'
 import { useThemedIcon } from '@/lib/themed-icon'
 import { MessageBubble } from './MessageBubble'
 import { StreamingText } from './StreamingText'
-import { ToolUseCard } from './ToolUseCard'
-import { MultiAgentRunCard } from './MultiAgentRunCard'
 import { StreamStatusLine } from './StreamStatusLine'
 import { InlineApprovalChip } from './InlineApprovalChip'
 import { useInlineApprovalsStore } from '@/stores/inline-approvals-store'
@@ -28,7 +25,6 @@ interface MessageListProps {
   isStreaming: boolean
   streamingContent: string
   streamStartedAt: number | null
-  toolCalls: ToolCallState[]
   activeModel: string
 }
 
@@ -76,7 +72,6 @@ export function MessageList({
   isStreaming,
   streamingContent,
   streamStartedAt,
-  toolCalls,
   activeModel
 }: MessageListProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -110,7 +105,7 @@ export function MessageList({
     // Use scrollTop = scrollHeight directly so we don't trigger a smooth
     // animation that lags behind the stream.
     el.scrollTop = el.scrollHeight
-  }, [messages, streamingContent, toolCalls, isStreaming])
+  }, [messages, streamingContent, isStreaming])
 
   const thinkingIconUrl = useThemedIcon(thinkingLight, thinkingDark)
   const isReasoner = activeModel === 'deepseek-reasoner'
@@ -206,15 +201,13 @@ export function MessageList({
               onDismiss={() => dismissNotice(n.conversationId, n.id)}
             />
           ))}
-          {toolCalls
-            .filter((tc) => !tc.transcriptHidden)
-            .map((tc) =>
-              tc.toolName === 'multi_agent_run' ? (
-                <MultiAgentRunCard key={tc.callId} toolCall={tc} />
-              ) : (
-                <ToolUseCard key={tc.callId} toolCall={tc} />
-              )
-            )}
+          {/* Tool-call cards do NOT render inside the transcript anymore —
+              they live behind the ToolActivityChip in the input pill row.
+              The chat panel stays clean during exploration bursts; the
+              chip materializes when work is happening and disappears
+              when there is none. InlineApprovalQueue below still renders
+              inline because approval chips are user-actionable, not
+              historical noise. */}
           {/* Fluidity J5 — inline approval chips for previously-approved,
               non-destructive (server, tool) pairs. The first chip in the
               queue auto-focuses so 1/2/3 keystrokes land without a click. */}

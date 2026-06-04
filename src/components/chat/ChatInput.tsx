@@ -9,6 +9,7 @@ import { useThemedIcon } from '@/lib/themed-icon'
 import { ApiKeyModal } from '@/components/settings/ApiKeyModal'
 import { SlashCommandPalette } from './SlashCommandPalette'
 import { AtFileMention } from './AtFileMention'
+import { ToolActivityChip } from './ToolActivityChip'
 import { useSlashCommandsStore } from '@/stores/slash-commands-store'
 import { usePlanStore } from '@/stores/plan-store'
 import { detectAtMention } from '@/lib/file-rank'
@@ -570,6 +571,12 @@ function ContextChipRow({ onAddFile }: ContextChipRowProps) {
         title="Attach a file to your prompt"
         onClick={onAddFile}
       />
+      {/* Right-aligned tool-activity consolidator. The cards used to live
+          inline in the transcript and stack into a wall of rows during
+          exploration bursts; they now hide behind this chip so the chat
+          panel stays clean. The chip itself returns null when the turn
+          has no tool calls, so idle turns show nothing here. */}
+      <ToolActivityChip />
     </div>
   )
 }

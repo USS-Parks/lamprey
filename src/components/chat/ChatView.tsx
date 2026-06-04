@@ -42,7 +42,6 @@ export function ChatView({ rightInset = 0 }: ChatViewProps = {}) {
     activeConversationId,
     sendMessage,
     cancelStream,
-    toolCalls,
     activeModel
   } = useChatStore()
   const activeSkillIds = useSkillsStore((s) => s.activeSkillIds)
@@ -81,7 +80,6 @@ export function ChatView({ rightInset = 0 }: ChatViewProps = {}) {
             isStreaming={isStreaming}
             streamingContent={streamingContent}
             streamStartedAt={streamStartedAt}
-            toolCalls={toolCalls}
             activeModel={activeModel}
           />
         )}
