@@ -32,6 +32,9 @@ export interface ToolCallState {
   risks?: ToolRisk[]
   providerKind?: ToolProviderKind
   startedAt?: number
+  // True when MessageList must skip rendering a ToolUseCard for this call —
+  // see LampreyToolDescriptor.transcriptHidden.
+  transcriptHidden?: boolean
 }
 
 interface ChatState {
@@ -355,7 +358,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
           title: event.title,
           risks: event.risks,
           providerKind: event.providerKind,
-          startedAt: event.startedAt
+          startedAt: event.startedAt,
+          transcriptHidden: event.transcriptHidden
         }
       ]
     }))

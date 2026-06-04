@@ -69,7 +69,8 @@ const CONTRACT_SECTIONS: ContractSection[] = [
       'Check git state before writing; never overwrite uncommitted user changes without confirming.',
       'Keep one coherent change per edit batch; do not bundle unrelated refactors.',
       'Use apply_patch for code edits; do not have shell_command rewrite files when a structured edit will do.',
-      'When destructive operations are needed, request_permissions explicitly rather than route through a generic shell.'
+      'Do not pre-ask for permission via request_permissions. The harness gates approval at the call site — invoke the tool you need and the user is prompted once; a granted scope is remembered for the conversation. Reserve request_permissions for the rare case where an explicit upfront grant is genuinely required (e.g. a write you must batch but cannot start).',
+      'Reserve ask_user_question for decisions only the user can make (which of N libraries, which file to edit, an explicit confirmation before a destructive change). Do not use it to confirm assumptions you can verify with a read.'
     ]
   },
   {

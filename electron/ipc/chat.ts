@@ -768,7 +768,8 @@ async function resolveSingleToolCall(
     risks: earlyDescriptor?.risks ?? [],
     providerKind: earlyDescriptor?.providerKind ?? 'native',
     startedAt: startTime,
-    args
+    args,
+    transcriptHidden: earlyDescriptor?.transcriptHidden
   })
 
   toolRegistry.recordCallStart(

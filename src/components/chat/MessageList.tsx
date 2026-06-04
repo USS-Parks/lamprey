@@ -206,13 +206,15 @@ export function MessageList({
               onDismiss={() => dismissNotice(n.conversationId, n.id)}
             />
           ))}
-          {toolCalls.map((tc) =>
-            tc.toolName === 'multi_agent_run' ? (
-              <MultiAgentRunCard key={tc.callId} toolCall={tc} />
-            ) : (
-              <ToolUseCard key={tc.callId} toolCall={tc} />
-            )
-          )}
+          {toolCalls
+            .filter((tc) => !tc.transcriptHidden)
+            .map((tc) =>
+              tc.toolName === 'multi_agent_run' ? (
+                <MultiAgentRunCard key={tc.callId} toolCall={tc} />
+              ) : (
+                <ToolUseCard key={tc.callId} toolCall={tc} />
+              )
+            )}
           {/* Fluidity J5 — inline approval chips for previously-approved,
               non-destructive (server, tool) pairs. The first chip in the
               queue auto-focuses so 1/2/3 keystrokes land without a click. */}

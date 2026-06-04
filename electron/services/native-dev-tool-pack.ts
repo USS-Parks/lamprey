@@ -146,7 +146,8 @@ toolRegistry.registerNative(
     risks: ['secret'],
     requiresApproval: false,
     selfApproves: true,
-    enabled: true
+    enabled: true,
+    transcriptHidden: true
   },
   async (args, ctx) =>
     executeRequestPermissions(args as unknown as RequestPermissionsArgs, ctx)

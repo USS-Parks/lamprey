@@ -48,6 +48,12 @@ export interface ChatToolCallPayload {
   providerKind: ToolProviderKind
   startedAt: number
   args: Record<string, unknown>
+  // Mirrors LampreyToolDescriptor.transcriptHidden so MessageList can skip
+  // rendering a tool-card row for UX-shim tools (request_permissions,
+  // ask_user_question, mark_chapter, enter/exit_plan_mode) whose side effect
+  // already shows up elsewhere in the UI. Optional because MCP/legacy tools
+  // never set it.
+  transcriptHidden?: boolean
 }
 
 export type ChatToolCallResultStatus = 'success' | 'error' | 'denied'

@@ -329,6 +329,11 @@ export interface ToolCallEvent {
   risks?: ToolRisk[]
   providerKind?: ToolProviderKind
   startedAt?: number
+  // True when MessageList must skip the ToolUseCard for this invocation —
+  // UX-shim tools whose side effect already shows up elsewhere (approval
+  // modal, chapter divider, plan-mode banner). The event still fires for
+  // the audit log and event timeline.
+  transcriptHidden?: boolean
 }
 
 export type ToolCallResultStatus = 'success' | 'error' | 'denied'
@@ -382,6 +387,11 @@ export interface LampreyToolDescriptor {
    *  mutating tools while plan mode is on for the conversation; the
    *  PlanModeBanner exposes a one-click exit. */
   mutates: boolean
+  /** When true, MessageList suppresses the ToolUseCard for invocations of
+   *  this tool — the side effect (approval modal, chapter divider, plan
+   *  banner) IS the user-facing surface. The IPC event still fires for
+   *  the audit log. */
+  transcriptHidden?: boolean
 }
 
 /** Track 2 / C1 — stub shape returned by `window.api.tools.list()`.

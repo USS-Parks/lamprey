@@ -160,3 +160,33 @@ describe('tool-registry lazy schemas (C1)', () => {
     }
   })
 })
+
+// UX-shim tools must carry transcriptHidden so MessageList skips their
+// ToolUseCard. Their side effect (modal, banner, divider) already shows
+// up elsewhere in the UI — leaving a card on top reads as transcript noise
+// and was the root cause of the wall-of-cards bloat after Fluidity J5/J6.
+describe('tool-registry transcriptHidden flag on UX-shim tools', () => {
+  it('flags the four UX-shim tools registered inline in tool-registry.ts', async () => {
+    const { toolRegistry } = await import('./tool-registry')
+    for (const id of [
+      'enter_plan_mode',
+      'exit_plan_mode',
+      'mark_chapter',
+      'ask_user_question'
+    ]) {
+      const desc = toolRegistry.getById(id)
+      expect(desc, `${id} must be registered`).toBeDefined()
+      expect(desc?.transcriptHidden, `${id} must set transcriptHidden`).toBe(true)
+    }
+    // request_permissions lives in native-dev-tool-pack.ts which transitively
+    // imports electron's `app` at module load — not available in the node test
+    // env. tsc already proves the field is present on its descriptor; the
+    // runtime presence is exercised by the production app boot path.
+  })
+
+  it('does NOT flag real work tools (shell_command, memory_add)', async () => {
+    const { toolRegistry } = await import('./tool-registry')
+    expect(toolRegistry.getById('shell_command')?.transcriptHidden).toBeFalsy()
+    expect(toolRegistry.getById('memory_add')?.transcriptHidden).toBeFalsy()
+  })
+})

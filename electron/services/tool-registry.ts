@@ -67,6 +67,18 @@ export interface LampreyToolDescriptor {
    */
   selfApproves?: boolean
   /**
+   * When true, the renderer must NOT render a ToolUseCard for invocations of
+   * this tool. The tool's side effect IS its visible UI: `request_permissions`
+   * pops the approval modal, `ask_user_question` pops the AskUser modal,
+   * `mark_chapter` drops a chapter divider, and `enter_plan_mode` /
+   * `exit_plan_mode` flip the plan-mode banner. Leaving a leftover tool-card
+   * for each of these reads as transcript noise — every Codex / Claude Code
+   * equivalent surfaces only the side effect. The IPC event still fires
+   * (audit log, event timeline, telemetry stay intact); the renderer just
+   * skips the card row in MessageList.
+   */
+  transcriptHidden?: boolean
+  /**
    * Derived tag list computed from `providerKind`, `risks`, `requiresApproval`,
    * `parallelizable`, `lazy`, and `mutates`. Used by `tools:search` for
    * keyword ranking and by the renderer for filter chips. See
@@ -697,7 +709,8 @@ toolRegistry.registerNative({
   risks: [],
   requiresApproval: false,
   enabled: true,
-  mutates: false
+  mutates: false,
+  transcriptHidden: true
 })
 
 toolRegistry.registerNative({
@@ -716,7 +729,8 @@ toolRegistry.registerNative({
   risks: [],
   requiresApproval: false,
   enabled: true,
-  mutates: false
+  mutates: false,
+  transcriptHidden: true
 })
 
 // Track 2 / E1 — mark_chapter. Anchors a chapter title (and optional
@@ -752,7 +766,8 @@ toolRegistry.registerNative({
   risks: [],
   requiresApproval: false,
   enabled: true,
-  mutates: false
+  mutates: false,
+  transcriptHidden: true
 })
 
 // Integration / H6 — ask_user_question. Pauses the calling agent / workflow
@@ -807,7 +822,8 @@ toolRegistry.registerNative({
   risks: [],
   requiresApproval: false,
   enabled: true,
-  mutates: false
+  mutates: false,
+  transcriptHidden: true
 })
 
 // Tool packs are loaded by electron/services/tool-packs.ts (imported from
