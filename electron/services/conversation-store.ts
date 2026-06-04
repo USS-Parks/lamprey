@@ -25,6 +25,7 @@ export interface MessageRow {
   tool_call_id: string | null
   tool_calls: string | null
   draft: string | null
+  reasoning: string | null
   created_at: number
   /** Track 2 / E5 — when this message was folded into a summary by the
    *  context compressor, this is the id of the summary message. NULL
@@ -455,12 +456,13 @@ export function saveMessage(msg: {
   toolCallId?: string
   toolCalls?: StoredToolCall[]
   draft?: string
+  reasoning?: string
 }) {
   const db = getDb()
   const now = Date.now()
   const toolCallsJson = msg.toolCalls && msg.toolCalls.length > 0 ? JSON.stringify(msg.toolCalls) : null
   db.prepare(
-    'INSERT INTO messages (id, conversation_id, role, content, model, tool_call_id, tool_calls, draft, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    'INSERT INTO messages (id, conversation_id, role, content, model, tool_call_id, tool_calls, draft, reasoning, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
   ).run(
     msg.id,
     msg.conversationId,
@@ -470,6 +472,7 @@ export function saveMessage(msg: {
     msg.toolCallId || null,
     toolCallsJson,
     msg.draft || null,
+    msg.reasoning || null,
     now
   )
   touchConversation(msg.conversationId)
@@ -488,7 +491,8 @@ export function saveMessage(msg: {
     model: msg.model,
     toolCallId: msg.toolCallId,
     toolCalls: msg.toolCalls,
-    draft: msg.draft
+    draft: msg.draft,
+    reasoning: msg.reasoning
   }
 }
 
@@ -519,7 +523,8 @@ export function getMessages(conversationId: string) {
       // Track 2 / E5 — passed through to the renderer so the chat view
       // can show a CompressedRegionPill where originals were folded.
       compressedInto: row.compressed_into ?? undefined,
-      toolCalls
+      toolCalls,
+      reasoning: row.reasoning ?? undefined
     }
   })
 }

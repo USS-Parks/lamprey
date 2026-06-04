@@ -20,6 +20,16 @@ export interface ChatChunkPayload {
   content: string
 }
 
+/** Reasoning-channel delta. DeepSeek's reasoner / V4-Flash thinking mode
+ *  streams chain-of-thought on `delta.reasoning_content`; OpenRouter aliases
+ *  it to `delta.reasoning`. The provider layer forwards either to the chat
+ *  loop, which broadcasts it here as a separate channel from the visible body
+ *  so the renderer can drive a live "thinking…" block alongside the answer. */
+export interface ChatReasoningPayload {
+  conversationId: string
+  content: string
+}
+
 export interface ChatDonePayload {
   conversationId: string
   // The persisted assistant Message. Shape lives in conversation-store /
@@ -160,6 +170,7 @@ export interface TaskSpawnedPayload {
 
 export interface ChatEventMap {
   'chat:chunk': ChatChunkPayload
+  'chat:reasoning': ChatReasoningPayload
   'chat:done': ChatDonePayload
   'chat:error': ChatErrorPayload
   'chat:phase': ChatPhasePayload

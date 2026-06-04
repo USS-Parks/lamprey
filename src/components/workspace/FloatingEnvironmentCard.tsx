@@ -4,6 +4,8 @@ import { useAgentStore } from '@/stores/agent-store'
 import { useEnvironment } from '@/hooks/useEnvironment'
 import { useSources } from '@/hooks/useSources'
 import { usePrefersReducedMotion } from '@/hooks/usePrefersReducedMotion'
+import { usePlanStore } from '@/stores/plan-store'
+import type { PlanStepStatus } from '@/lib/types'
 import { toast } from '@/stores/toast-store'
 import { WorkModePopover } from './WorkModePopover'
 import { BranchPickerPopover } from './BranchPickerPopover'
@@ -26,6 +28,14 @@ export const ENV_CARD_TRANSITION_MS = 220
 // during entry. Larger value = more visible "retreating toward the
 // rail" motion. Was 12 — bumped to 20 for clearer handoff.
 const ENV_CARD_TRANSLATE_PX = 20
+
+// Codex-style auto-retract for the Progress section: once every plan
+// step lands at `done`, hold the completed list for this many ms so the
+// user can see the final state, then collapse the section back to zero
+// height. Any new step / status flip cancels the timer and pops the
+// section back into view.
+const PROGRESS_RETRACT_DELAY_MS = 8000
+const PROGRESS_RETRACT_DURATION_MS = 320
 
 type CardState = 'hidden' | 'entering' | 'visible' | 'exiting'
 
@@ -176,6 +186,60 @@ function BranchGlyph(): React.ReactElement {
   )
 }
 
+function PlanStatusGlyph({ status }: { status: PlanStepStatus }): React.ReactElement {
+  // Matches the Codex Environment-card pattern: outlined circle for pending,
+  // half-filled disc (semicircle accent) for in-progress with a subtle pulse,
+  // and a filled check for done. Sized down to 13 px so a long checklist
+  // tracks vertically without dominating the card.
+  if (status === 'done') {
+    return (
+      <svg
+        width="13"
+        height="13"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        className="text-[var(--success)]"
+        aria-label="done"
+      >
+        <circle cx="12" cy="12" r="10" />
+        <polyline points="8 12.5 11 15.5 16 9.5" />
+      </svg>
+    )
+  }
+  if (status === 'in_progress') {
+    return (
+      <svg
+        width="13"
+        height="13"
+        viewBox="0 0 24 24"
+        className="animate-pulse text-[var(--accent)]"
+        aria-label="in progress"
+      >
+        <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" strokeWidth="2" />
+        <path d="M12 2 a10 10 0 0 1 0 20 z" fill="currentColor" />
+      </svg>
+    )
+  }
+  return (
+    <svg
+      width="13"
+      height="13"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      className="text-[var(--text-muted)]"
+      aria-label="pending"
+    >
+      <circle cx="12" cy="12" r="10" />
+    </svg>
+  )
+}
+
 function CommitGlyph(): React.ReactElement {
   return (
     <svg
@@ -262,6 +326,76 @@ export function FloatingEnvironmentCard({
   const { snapshot, refresh } = useEnvironment()
   const { sources, groups } = useSources()
   const reduced = usePrefersReducedMotion()
+
+  // Codex-style task progress. Pulled from the active conversation's plan
+  // snapshot — the model writes via the `update_plan` native tool, chat.ts
+  // broadcasts plan:updated, and useChat wires the plan store. The section
+  // is omitted entirely when there are no steps, so casual short turns don't
+  // grow the card vertically.
+  const planSnapshot = usePlanStore((s) => s.snapshot)
+  const planConversationId = usePlanStore((s) => s.conversationId)
+  const planSteps = planSnapshot?.steps ?? []
+  const planTotals = planSnapshot?.totals
+  const hasPlan = planSteps.length > 0
+  const allDone =
+    !!planTotals && planTotals.total > 0 && planTotals.done === planTotals.total
+
+  // Auto-retract: once all steps land on done, hold the completed list for
+  // PROGRESS_RETRACT_DELAY_MS, then animate it away (max-height 0 + opacity 0).
+  // Any subsequent change that breaks the all-done invariant (a new step
+  // appears, or an existing one flips back to in_progress / pending) cancels
+  // the timer and pops the section back into view. The plan data itself
+  // stays in the store — only the visual surface retracts. Resets on
+  // conversation switch so loading an old conversation never starts the
+  // hold-timer mid-air.
+  const [progressRetracted, setProgressRetracted] = useState(false)
+  const retractTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    // Reset retraction whenever the active conversation changes — switching
+    // to a different conversation should always show its plan freshly.
+    setProgressRetracted(false)
+    if (retractTimerRef.current) {
+      clearTimeout(retractTimerRef.current)
+      retractTimerRef.current = null
+    }
+  }, [planConversationId])
+
+  useEffect(() => {
+    if (!allDone) {
+      // Plan is back in flight — bail any pending hide and re-show.
+      if (retractTimerRef.current) {
+        clearTimeout(retractTimerRef.current)
+        retractTimerRef.current = null
+      }
+      setProgressRetracted(false)
+      return
+    }
+    // All done. If reduced motion is on, retract instantly so users with
+    // animation off don't see the section linger and then snap. Otherwise
+    // give them PROGRESS_RETRACT_DELAY_MS to read the final state.
+    if (reduced) {
+      setProgressRetracted(true)
+      return
+    }
+    if (retractTimerRef.current) clearTimeout(retractTimerRef.current)
+    retractTimerRef.current = setTimeout(() => {
+      retractTimerRef.current = null
+      setProgressRetracted(true)
+    }, PROGRESS_RETRACT_DELAY_MS)
+    return () => {
+      if (retractTimerRef.current) {
+        clearTimeout(retractTimerRef.current)
+        retractTimerRef.current = null
+      }
+    }
+    // Re-run when allDone flips OR when totals change shape (new step count
+    // mid-completion should also cancel + restart). The steps array identity
+    // changes on every snapshot apply, so depending on it is overkill —
+    // totals.{done,total} is the right granularity.
+  }, [allDone, planTotals?.done, planTotals?.total, reduced])
+
+  const showProgress = hasPlan && !progressRetracted
 
   const containerRef = useRef<HTMLDivElement>(null)
   const workModeRef = useRef<HTMLButtonElement>(null)
@@ -401,6 +535,14 @@ export function FloatingEnvironmentCard({
               <span className="text-red-500">-{snapshot.deletions}</span>
             </span>
           )}
+          {headerCollapsed && showProgress && planTotals && (
+            <span
+              className="font-mono text-[11px] text-[var(--text-muted)]"
+              title={`Progress: ${planTotals.done} of ${planTotals.total} done`}
+            >
+              {planTotals.done}/{planTotals.total}
+            </span>
+          )}
           <button
             type="button"
             onClick={() => openSettings()}
@@ -450,6 +592,68 @@ export function FloatingEnvironmentCard({
               onClick={() => void handleCommitOrPush()}
               disabled={commitDisabled || committing}
             />
+
+            {hasPlan && (
+              <div
+                aria-hidden={!showProgress}
+                style={{
+                  // 320 px is generous: max-h on the inner list caps at 220, plus
+                  // header (~26 px) + divider + padding still fits. The transition
+                  // animates from this value down to 0 when the section retracts
+                  // 8 s after completion; the inner overflow-y-auto stays
+                  // unaffected during normal use.
+                  maxHeight: showProgress ? 320 : 0,
+                  opacity: showProgress ? 1 : 0,
+                  overflow: 'hidden',
+                  transition: reduced
+                    ? undefined
+                    : `max-height ${PROGRESS_RETRACT_DURATION_MS}ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity ${PROGRESS_RETRACT_DURATION_MS}ms cubic-bezier(0.2, 0.8, 0.2, 1)`
+                }}
+              >
+                <div className="my-2 border-t border-[var(--border)]" aria-hidden />
+
+                <div className="flex items-center justify-between px-2.5 pb-1 pt-1 text-[12px] font-medium text-[var(--text-secondary)]">
+                  <span>Progress</span>
+                  {planTotals && (
+                    <span
+                      className={
+                        allDone
+                          ? 'font-mono text-[10px] text-[var(--success)]'
+                          : 'font-mono text-[10px] text-[var(--text-muted)]'
+                      }
+                    >
+                      {planTotals.done}/{planTotals.total}
+                    </span>
+                  )}
+                </div>
+                <ul
+                  className="max-h-[220px] space-y-0.5 overflow-y-auto px-2.5 pb-1.5"
+                  aria-label="Plan progress"
+                >
+                  {planSteps.map((step) => (
+                    <li
+                      key={step.id}
+                      className="flex items-start gap-2.5 py-1 text-[12px] leading-snug"
+                    >
+                      <span className="mt-[2px] flex-none">
+                        <PlanStatusGlyph status={step.status} />
+                      </span>
+                      <span
+                        className={
+                          step.status === 'done'
+                            ? 'flex-1 text-[var(--text-muted)]'
+                            : step.status === 'in_progress'
+                            ? 'flex-1 text-[var(--text-primary)]'
+                            : 'flex-1 text-[var(--text-secondary)]'
+                        }
+                      >
+                        {step.text}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
 
             <div className="my-2 border-t border-[var(--border)]" aria-hidden />
 

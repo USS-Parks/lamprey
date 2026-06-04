@@ -43,6 +43,10 @@ interface ChatState {
   messages: Message[]
   isStreaming: boolean
   streamingContent: string
+  /** Live chain-of-thought captured off the provider's reasoning channel
+   *  (DeepSeek `delta.reasoning_content`, OpenRouter `delta.reasoning`).
+   *  Reset when a new stream starts; cleared on finishStream/streamError. */
+  streamingReasoning: string
   streamStartedAt: number | null
   activeModel: string
   toolCalls: ToolCallState[]
@@ -61,6 +65,7 @@ interface ChatState {
   cancelStream: () => void
   setModel: (model: string) => Promise<void>
   appendStreamChunk: (content: string) => void
+  appendReasoningChunk: (content: string) => void
   finishStream: (message: Message) => void
   streamError: (error: string) => void
   addToolCall: (event: ToolCallEvent) => void
@@ -134,6 +139,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   messages: [],
   isStreaming: false,
   streamingContent: '',
+  streamingReasoning: '',
   streamStartedAt: null,
   activeModel: 'deepseek-v4-pro',
   toolCalls: [],
@@ -247,6 +253,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       messages: [...s.messages, userMessage],
       isStreaming: true,
       streamingContent: '',
+      streamingReasoning: '',
       streamStartedAt: Date.now(),
       toolCalls: [],
       runPhase: 'understanding',
@@ -330,11 +337,18 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }))
   },
 
+  appendReasoningChunk: (content: string) => {
+    set((state) => ({
+      streamingReasoning: state.streamingReasoning + content
+    }))
+  },
+
   finishStream: (message: Message) => {
     set((state) => ({
       messages: [...state.messages, message],
       isStreaming: false,
       streamingContent: '',
+      streamingReasoning: '',
       streamStartedAt: null,
       runPhase: null
     }))
@@ -342,7 +356,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   streamError: (_error: string) => {
-    set({ isStreaming: false, streamingContent: '', streamStartedAt: null, runPhase: null })
+    set({
+      isStreaming: false,
+      streamingContent: '',
+      streamingReasoning: '',
+      streamStartedAt: null,
+      runPhase: null
+    })
   },
 
   addToolCall: (event: ToolCallEvent) => {

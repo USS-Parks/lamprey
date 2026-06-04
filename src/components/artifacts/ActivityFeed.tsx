@@ -38,6 +38,7 @@ function summarizeArgs(args: Record<string, unknown>): string {
 export function ActivityFeed() {
   const isStreaming = useChatStore((s) => s.isStreaming)
   const streamingContent = useChatStore((s) => s.streamingContent)
+  const streamingReasoning = useChatStore((s) => s.streamingReasoning)
   const streamStartedAt = useChatStore((s) => s.streamStartedAt)
   const toolCalls = useChatStore((s) => s.toolCalls)
   const activeModel = useChatStore((s) => s.activeModel)
@@ -49,10 +50,14 @@ export function ActivityFeed() {
     return () => clearInterval(id)
   }, [isStreaming])
 
+  // Prefer the live reasoning channel; fall back to legacy inline <think>
+  // parsing for any reasoner that streams thinking inside the body.
   const isReasoner = activeModel === 'deepseek-reasoner'
-  const parsed = isReasoner
-    ? parseReasoning(streamingContent)
-    : { reasoning: null as string | null, body: streamingContent, isThinking: false }
+  const parsed = streamingReasoning
+    ? { reasoning: streamingReasoning, body: streamingContent, isThinking: !streamingContent }
+    : isReasoner
+      ? parseReasoning(streamingContent)
+      : { reasoning: null as string | null, body: streamingContent, isThinking: false }
 
   const elapsed = streamStartedAt ? formatElapsed(now - streamStartedAt) : null
   const reasoningChars = parsed.reasoning?.length ?? 0

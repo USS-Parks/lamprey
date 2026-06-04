@@ -33,12 +33,25 @@ export function MessageBubble({ message }: MessageBubbleProps) {
 
   if (isTool) return null
 
-  const isReasoner = message.model === 'deepseek-reasoner'
   const wakeup = isUser && message.content.startsWith(WAKEUP_PREFIX)
   const wakeupParts = wakeup ? parseWakeupContent(message.content) : null
-  const { reasoning, body } = isReasoner && !isUser
-    ? parseReasoning(message.content)
-    : { reasoning: null as string | null, body: wakeupParts?.body ?? message.content }
+
+  // Reasoning comes from one of two places (in priority order):
+  // 1) The `reasoning` column — persisted from the provider's
+  //    `delta.reasoning_content` channel for any DeepSeek thinking model.
+  // 2) Legacy inline <think>…</think> tags in the body (older reasoner
+  //    behavior + any model that smuggles thinking into the visible stream).
+  let reasoning: string | null = null
+  let body: string = wakeupParts?.body ?? message.content
+  if (!isUser) {
+    if (message.reasoning && message.reasoning.length > 0) {
+      reasoning = message.reasoning
+    } else if (message.model === 'deepseek-reasoner') {
+      const parsed = parseReasoning(message.content)
+      reasoning = parsed.reasoning
+      body = parsed.body
+    }
+  }
 
   const handleRemember = async () => {
     if (saving) return

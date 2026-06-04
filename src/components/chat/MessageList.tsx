@@ -108,10 +108,26 @@ export function MessageList({
   }, [messages, streamingContent, isStreaming])
 
   const thinkingIconUrl = useThemedIcon(thinkingLight, thinkingDark)
+
+  // Live chain-of-thought streamed off the provider's reasoning channel
+  // (DeepSeek `delta.reasoning_content` / OpenRouter `delta.reasoning`).
+  // Distinct from the visible content stream so the ReasoningBlock can show
+  // up as soon as the FIRST thought arrives — even before any answer body
+  // does. Falls back to the legacy inline-<think> parse for reasoners that
+  // smuggle thinking into the visible content.
+  const streamingReasoning = useChatStore((s) => s.streamingReasoning)
   const isReasoner = activeModel === 'deepseek-reasoner'
-  const parsed = isReasoner
-    ? parseReasoning(streamingContent)
-    : { reasoning: null as string | null, body: streamingContent, isThinking: false }
+  const parsed = (() => {
+    if (streamingReasoning) {
+      return { reasoning: streamingReasoning, body: streamingContent, isThinking: true }
+    }
+    if (isReasoner) return parseReasoning(streamingContent)
+    return { reasoning: null as string | null, body: streamingContent, isThinking: false }
+  })()
+  // Show the streaming card the moment EITHER channel has activity, not just
+  // the body channel. Reasoning often lands first and runs for many seconds
+  // before the model commits to its first answer token.
+  const hasStreamingActivity = !!streamingContent || !!streamingReasoning
 
   // Track 2 / E2 — chapters are anchored to a timestamp, not directly
   // to a message id. Build a map from "before message at index i" → list
@@ -213,11 +229,16 @@ export function MessageList({
               queue auto-focuses so 1/2/3 keystrokes land without a click. */}
           <InlineApprovalQueue />
 
-          {isStreaming && (streamingContent || streamStartedAt) && (
+          {isStreaming && (hasStreamingActivity || streamStartedAt) && (
             <div className="mb-3 flex justify-start">
               <div className="max-w-[80%] rounded-lg bg-[var(--bg-secondary)] px-4 py-3">
-                {streamingContent ? (
-                  <StreamingText content={streamingContent} model={activeModel} />
+                {hasStreamingActivity ? (
+                  <StreamingText
+                    content={streamingContent}
+                    reasoning={streamingReasoning || undefined}
+                    isThinking={!!streamingReasoning && !streamingContent}
+                    model={activeModel}
+                  />
                 ) : (
                   <div className="flex items-center text-[var(--text-muted)]">
                     <img
