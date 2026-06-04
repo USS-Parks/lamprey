@@ -91,6 +91,33 @@ type FsEntry = {
   size?: number
 }
 
+/**
+ * SEC-1: confine a renderer-supplied path to the file-browser root (the active
+ * workspace). Returns the resolved absolute path when `candidate` is the root
+ * itself or a descendant of it; returns null for `..` traversals, absolute
+ * paths that escape the root, and other-drive paths. The browser legitimately
+ * recurses descendants of the user-picked workdir, so the root and its
+ * children are allowed — but nothing above or beside it. Exported pure for
+ * unit tests.
+ */
+export function confineWithinRoot(root: string, candidate: string): string | null {
+  if (typeof candidate !== 'string' || candidate.trim() === '') return null
+  // Reject explicit `..` segments outright, even though path.relative would
+  // catch most escapes — an explicit traversal attempt is worth refusing loud.
+  const segments = candidate.replace(/\\/g, '/').split('/')
+  if (segments.some((s) => s === '..')) return null
+
+  const absRoot = path.resolve(root)
+  const target = path.isAbsolute(candidate)
+    ? path.resolve(candidate)
+    : path.resolve(absRoot, candidate)
+  const rel = path.relative(absRoot, target)
+  // rel === '' means `target` IS the root (allowed — listDir/walkProject start
+  // there). A leading '..' or an absolute rel means it escaped the root.
+  if (rel.startsWith('..') || path.isAbsolute(rel)) return null
+  return target
+}
+
 async function listDir(absPath: string): Promise<FsEntry[]> {
   const entries = await fs.readdir(absPath, { withFileTypes: true })
   const out: FsEntry[] = []
@@ -146,7 +173,11 @@ export function registerFilesHandlers(): void {
       if (typeof dirPath !== 'string' || !dirPath) {
         return { success: false, error: 'dirPath required' }
       }
-      const entries = await listDir(dirPath)
+      const abs = confineWithinRoot(getActiveWorkspace(), dirPath)
+      if (!abs) {
+        return { success: false, error: 'Path is outside the working folder.' }
+      }
+      const entries = await listDir(abs)
       return { success: true, data: entries }
     } catch (err: any) {
       return { success: false, error: err?.message ?? 'listDir failed' }
@@ -158,14 +189,18 @@ export function registerFilesHandlers(): void {
       if (typeof filePath !== 'string' || !filePath) {
         return { success: false, error: 'filePath required' }
       }
-      const st = await fs.stat(filePath)
+      const abs = confineWithinRoot(getActiveWorkspace(), filePath)
+      if (!abs) {
+        return { success: false, error: 'Path is outside the working folder.' }
+      }
+      const st = await fs.stat(abs)
       if (st.size > TEXT_READ_CAP) {
         return {
           success: false,
           error: `File too large (${(st.size / 1_000_000).toFixed(1)} MB). Cap is ${(TEXT_READ_CAP / 1_000_000).toFixed(1)} MB.`
         }
       }
-      const buf = await fs.readFile(filePath)
+      const buf = await fs.readFile(abs)
       // Crude binary sniff: presence of NUL byte in first 4 KB.
       const sample = buf.subarray(0, Math.min(buf.length, 4096))
       const isBinary = sample.includes(0)
@@ -183,7 +218,11 @@ export function registerFilesHandlers(): void {
       if (typeof rootPath !== 'string' || !rootPath) {
         return { success: false, error: 'rootPath required' }
       }
-      const files = await walkProject(rootPath)
+      const abs = confineWithinRoot(getActiveWorkspace(), rootPath)
+      if (!abs) {
+        return { success: false, error: 'Path is outside the working folder.' }
+      }
+      const files = await walkProject(abs)
       return { success: true, data: { files, truncated: files.length >= WALK_FILE_CAP } }
     } catch (err: any) {
       return { success: false, error: err?.message ?? 'walkProject failed' }

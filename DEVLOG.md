@@ -1,5 +1,40 @@
 # Lamprey Harness Dev Log
 
+## [Audit Remediation — Prompt 6] Renderer privilege hardening — 2026-06-04
+
+Closes SEC-1, SEC-7.
+
+- **SEC-1** (`electron/ipc/files.ts`) — the `files:readText` / `files:listDir` /
+  `files:walkProject` IPC handlers accepted any path; a compromised renderer
+  could read arbitrary disk. New exported pure helper `confineWithinRoot(root,
+  candidate)` resolves the path and returns it only when it IS the file-browser
+  root (the active workspace) or a descendant; `..` traversals, absolute
+  out-of-root paths, and other-drive paths return null → handlers reply "Path
+  is outside the working folder." The root itself stays allowed so the browser
+  can list/walk its own root.
+- **SEC-7** — two parts. (1) `main.ts` artifact CSP matcher was substring
+  `details.url.includes('lamprey-artifact')`, which would also catch
+  `https://example.com/lamprey-artifact-tracker`; tightened to
+  `startsWith('lamprey-artifact://')`. (2) **Audit correction:** the finding's
+  premise ("main renderer has no CSP") is stale — `src/index.html` already
+  ships a meta CSP (`default-src 'self'; script-src 'self'; style-src 'self'
+  'unsafe-inline'`), validated by the shipping v0.2.0 build (shiki/mermaid run
+  under it). Rather than risk a `script-src` change I can't exercise headlessly,
+  I *additively* hardened it with `object-src 'none'; base-uri 'self'` — pure
+  tightenings against vectors the renderer never uses (no `<object>`/`<embed>`,
+  no `<base>`). `frame-ancestors` is intentionally omitted: it's ignored in a
+  meta tag and a desktop top-level window is never framed by a remote origin.
+
+Tests: `electron/ipc/files.test.ts` extended with 7 SEC-1 confinement cases
+(root + descendants allowed; `../`, absolute-out, empty, and `..`-segment
+inputs rejected).
+
+Verify: tsc node ✓ · tsc web ✓ · lint 0 errors / 384 warnings (no new) ✓ ·
+vitest 1301 pass + 11 skip (+7) ✓ · smoke:bundle ✓ · smoke:renderer ✓ (built
+index.html carries the hardened CSP).
+
+---
+
 ## [Audit Remediation — Prompt 5] Test foundation (jsdom + stores) — 2026-06-04
 
 Closes TEST-1, TEST-2. No production code touched — test infra + new tests only.

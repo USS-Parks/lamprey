@@ -3,9 +3,18 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!--
+      SEC-7: the main renderer document is constrained by this CSP (script-src
+      'self' is validated by the shipping build — shiki/mermaid run under it).
+      Additively hardened with object-src/base-uri: the renderer uses no
+      <object>/<embed> and never sets <base>, so 'none'/'self' here can only
+      block injection vectors, not legitimate behaviour. (frame-ancestors is
+      omitted — it is ignored in a meta tag, and a desktop top-level window is
+      never framed by a remote origin.)
+    -->
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'self'"
     />
     <title>Lamprey</title>
   </head>

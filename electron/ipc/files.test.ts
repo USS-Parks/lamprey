@@ -13,7 +13,8 @@ vi.mock('electron', () => ({
   shell: { openPath: async () => '' }
 }))
 
-import { buildVSCodeLaunchPlan, parseProbeOutput } from './files'
+import { resolve } from 'path'
+import { buildVSCodeLaunchPlan, confineWithinRoot, parseProbeOutput } from './files'
 
 describe('parseProbeOutput', () => {
   it('returns null for empty output', () => {
@@ -82,5 +83,41 @@ describe('buildVSCodeLaunchPlan', () => {
     // Node ≥21.7 auto-escapes args when the target is a .cmd; the launch
     // plan itself doesn't pre-quote.
     expect(plan.options.shell).toBe(false)
+  })
+})
+
+describe('confineWithinRoot — SEC-1 path confinement', () => {
+  const ROOT = resolve('/tmp/lamprey-ws')
+
+  it('allows the root itself (listDir/walkProject start there)', () => {
+    expect(confineWithinRoot(ROOT, ROOT)).toBe(ROOT)
+  })
+
+  it('allows direct + deep descendants', () => {
+    expect(confineWithinRoot(ROOT, resolve(ROOT, 'src'))).toBe(resolve(ROOT, 'src'))
+    const deep = resolve(ROOT, 'src/lib/index.ts')
+    expect(confineWithinRoot(ROOT, deep)).toBe(deep)
+  })
+
+  it('allows a relative descendant path', () => {
+    expect(confineWithinRoot(ROOT, 'src/index.ts')).toBe(resolve(ROOT, 'src/index.ts'))
+  })
+
+  it('rejects an explicit ../ traversal', () => {
+    expect(confineWithinRoot(ROOT, '../etc/passwd')).toBeNull()
+    expect(confineWithinRoot(ROOT, resolve(ROOT, '../sibling/secret'))).toBeNull()
+  })
+
+  it('rejects an absolute path outside the root', () => {
+    expect(confineWithinRoot(ROOT, '/etc/passwd')).toBeNull()
+  })
+
+  it('rejects empty / whitespace input', () => {
+    expect(confineWithinRoot(ROOT, '')).toBeNull()
+    expect(confineWithinRoot(ROOT, '   ')).toBeNull()
+  })
+
+  it('rejects a .. segment even when it would re-enter the root', () => {
+    expect(confineWithinRoot(ROOT, 'src/../../escape')).toBeNull()
   })
 })

@@ -357,7 +357,11 @@ app.whenReady().then(() => {
   }
 
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
-    if (details.url.includes('lamprey-artifact')) {
+    // SEC-7: match the artifact scheme PRECISELY. The previous
+    // `.includes('lamprey-artifact')` would also match an unrelated
+    // `https://example.com/lamprey-artifact-tracker` and hand it the relaxed
+    // artifact CSP. Anchor on the exact scheme prefix instead.
+    if (details.url.startsWith('lamprey-artifact://')) {
       callback({
         responseHeaders: {
           ...details.responseHeaders,
