@@ -15,19 +15,20 @@
 
 ---
 
-## ⬇ Download v0.3.1
+## ⬇ Download v0.3.6
 
 Pick one — the `.exe` is the standard installer, the `.zip` is the portable bundle (unzip and run `Lamprey.exe` directly, no install required).
 
-| Format | File | Size | Direct link |
-|---|---|---:|---|
-| **NSIS installer** (Windows) | `Lamprey-0.3.1-x64.exe` | 230 MB | [Download .exe](https://github.com/USS-Parks/lamprey/releases/download/v0.3.1/Lamprey-0.3.1-x64.exe) |
-| **Portable ZIP** (Windows) | `Lamprey-0.3.1-x64.zip` | 299 MB | [Download .zip](https://github.com/USS-Parks/lamprey/releases/download/v0.3.1/Lamprey-0.3.1-x64.zip) |
-| **AppImage** (Linux) | `Lamprey-0.3.1-x86_64.AppImage` | 296 MB | [Download .AppImage](https://github.com/USS-Parks/lamprey/releases/download/v0.3.1/Lamprey-0.3.1-x86_64.AppImage) |
+| Format | File | Direct link |
+|---|---|---|
+| **NSIS installer** (Windows) | `Lamprey-0.3.6-x64.exe` | [Download .exe](https://github.com/USS-Parks/lamprey/releases/download/v0.3.6/Lamprey-0.3.6-x64.exe) |
+| **Portable ZIP** (Windows) | `Lamprey-0.3.6-x64.zip` | [Download .zip](https://github.com/USS-Parks/lamprey/releases/download/v0.3.6/Lamprey-0.3.6-x64.zip) |
 
 Or browse all releases → <https://github.com/USS-Parks/lamprey/releases>
 
-**Windows 10/11 x64** + **Linux x86_64 AppImage** (built by the `Build Lamprey` CI workflow on the tag push). macOS is buildable from source (`npm run build:mac`) but not bundled with this release.
+**New in v0.3.6 — Sandbox parity for `shell_command`:** thirteen-prompt phase brings the shell tool to functional parity with Claude Code's Bash tool — persistent cwd across calls, OS-level sandbox on macOS (sandbox-exec) and Linux (bubblewrap), explicit `dangerously_disable_sandbox` opt-out with one-shot approval, bash/powershell selector, monitor/list/stop/output aux tools, anti-polling sleep guard, 2-minute default timeout, richer model-facing description. See [the spec](PLANNING/LAMPREY_SANDBOX_PARITY_PLAN.md).
+
+**Windows 10/11 x64.** Linux and macOS are buildable from source (`npm run build:linux` / `npm run build:mac`).
 
 ---
 
@@ -170,7 +171,7 @@ User-defined JavaScript sandbox hooks that fire on lifecycle events:
 
 ## Quick start
 
-1. **Download** the [v0.3.1 installer](https://github.com/USS-Parks/lamprey/releases/download/v0.3.1/Lamprey-0.3.1-x64.exe) and run it.
+1. **Download** the [v0.3.6 installer](https://github.com/USS-Parks/lamprey/releases/download/v0.3.6/Lamprey-0.3.6-x64.exe) and run it.
 2. **Get a key.** Easiest: <https://platform.deepseek.com> → sign up → create key → load $5. Lamprey also accepts Google AI Studio (Gemma), Alibaba DashScope (Qwen), and OpenRouter keys.
 3. **Paste your key** in the first-run modal. It's stored with `safeStorage` (OS keychain) under `userData/keys.json`.
 4. **Type something.** That's it.
