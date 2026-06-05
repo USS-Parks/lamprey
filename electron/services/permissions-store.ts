@@ -57,14 +57,15 @@ export interface ToolApprovalResponse {
  * Outcome of resolving a tool-call approval. `source` tells the audit layer
  * how the decision was reached — `'policy:<id>'` references a persisted policy
  * row, `'modal'` is a user answer through the approval dialog, and
- * `'auto-deny-timeout'` is the 30s safety bail when the user never answers.
+ * `'no-window'` is the headless / shutdown fallback when no BrowserWindow
+ * exists to receive the request. There is intentionally no timeout source:
+ * an approval request stays pending until the user definitively answers
+ * (or the chat round explicitly calls cancelPending).
  */
 export interface ApprovalOutcome {
   decision: ApprovalDecision
   source: string
 }
-
-const APPROVAL_TIMEOUT_MS = 30_000
 
 // Risks that, even without descriptor.requiresApproval, cause chat.ts to route
 // through this service. Pure 'read' and 'write' alone do NOT gate (memory_add,
@@ -103,8 +104,10 @@ class PermissionsService {
   /**
    * Resolve approval for a tool call. Consults persisted policies first; if
    * none match, dispatches a request to the UI and persists the answer
-   * according to the user's chosen scope. Auto-denies after
-   * APPROVAL_TIMEOUT_MS — the user has 30 s to answer.
+   * according to the user's chosen scope. The request stays pending
+   * indefinitely until the user answers — there is no timeout. A run that
+   * needs to abandon a pending approval (chat round cancelled, app
+   * shutdown) calls {@link cancelPending} explicitly.
    *
    * Returns the decision only. Use {@link requestApprovalDetailed} when the
    * caller wants the audit `source` string alongside the decision.
@@ -218,15 +221,12 @@ class PermissionsService {
     if (!mainWindow) return { decision: 'deny', source: 'no-window' }
 
     return new Promise<ApprovalOutcome>((resolve) => {
-      const timer = setTimeout(() => {
-        if (this.pending.has(req.callId)) {
-          this.pending.delete(req.callId)
-          resolve({ decision: 'deny', source: 'auto-deny-timeout' })
-        }
-      }, APPROVAL_TIMEOUT_MS)
-
+      // No timeout. A pending approval stays pending until the user
+      // definitively answers (or cancelPending fires). The user's complaint
+      // was that a previous 30s auto-deny made the harness silently refuse
+      // tool calls when they were briefly away from the keyboard — that
+      // contract is now removed.
       this.pending.set(req.callId, (response) => {
-        clearTimeout(timer)
         const persistedId = this.persistAnswer(response, req, workspacePath)
         resolve({
           decision: response.decision,
@@ -349,13 +349,13 @@ export const permissionsService = new PermissionsService()
 
 /**
  * Mirror an approval outcome into the event spine. Every decision path is
- * recorded — policy match, modal answer, no-window default-deny, and the 30s
- * auto-deny timeout — so the audit timeline shows why a tool ran or didn't.
+ * recorded — policy match, modal answer, no-window default-deny — so the
+ * audit timeline shows why a tool ran or didn't.
  *
  * Actor mapping:
  *   - modal           → `user`   (a human pressed the button)
  *   - policy:<id>     → `system` (a persisted policy was the deciding voice)
- *   - auto-deny-timeout, no-window → `system`
+ *   - no-window       → `system` (no BrowserWindow to ask)
  *
  * Failures here are swallowed: the approval decision itself is the
  * load-bearing side-effect, and event-log already owns its memory fallback.

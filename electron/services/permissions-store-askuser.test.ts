@@ -30,7 +30,11 @@ vi.mock('electron', () => ({
   }
 }))
 
-import { permissionsService, type ToolApprovalRequest } from './permissions-store'
+import {
+  permissionsService,
+  type ApprovalDecision,
+  type ToolApprovalRequest
+} from './permissions-store'
 import {
   __forceMemoryFallback,
   __resetPolicyStore,
@@ -168,26 +172,40 @@ describe('askUser — modal round-trip', () => {
   })
 })
 
-describe('askUser — timeout and cancellation', () => {
-  it('auto-denies after the 30s timeout when the user never answers', async () => {
+describe('askUser — no timeout, explicit cancellation only', () => {
+  // The 30s auto-deny was removed: a pending approval must wait for the
+  // user to definitively answer. Verified by advancing fake timers well
+  // past the old limit and confirming the promise is still pending.
+  it('never auto-denies, no matter how long the user is away', async () => {
     vi.useFakeTimers()
     const req = makeReq()
-    const promise = permissionsService.requestApprovalDetailed(req)
-    vi.advanceTimersByTime(30_000)
-    const outcome = await promise
-    expect(outcome).toEqual({ decision: 'deny', source: 'auto-deny-timeout' })
+    let settled: { decision: ApprovalDecision; source: string } | 'pending' = 'pending'
+    const promise = permissionsService
+      .requestApprovalDetailed(req)
+      .then((o) => {
+        settled = o
+        return o
+      })
+    // Advance an hour — far past the old 30s timeout.
+    vi.advanceTimersByTime(60 * 60 * 1000)
+    // Yield to the microtask queue so any wrongly-scheduled resolves can fire.
+    await Promise.resolve()
+    expect(settled).toBe('pending')
+    // Confirm the request CAN still be answered after the long wait.
+    permissionsService.respond({ callId: req.callId, decision: 'allow', scope: 'once' })
+    const final = await promise
+    expect(final).toEqual({ decision: 'allow', source: 'modal' })
+    expect(settled).toEqual({ decision: 'allow', source: 'modal' })
   })
 
-  it('a response after the timeout is a no-op (already resolved)', async () => {
+  it('a late response (well after the old 30s window) still lands cleanly', async () => {
     vi.useFakeTimers()
     const req = makeReq()
     const promise = permissionsService.requestApprovalDetailed(req)
-    vi.advanceTimersByTime(30_000)
-    await promise
-    // Late reply must not throw or double-resolve.
-    expect(() =>
-      permissionsService.respond({ callId: req.callId, decision: 'allow', scope: 'once' })
-    ).not.toThrow()
+    vi.advanceTimersByTime(5 * 60 * 1000)
+    permissionsService.respond({ callId: req.callId, decision: 'deny', scope: 'once' })
+    const outcome = await promise
+    expect(outcome).toEqual({ decision: 'deny', source: 'modal' })
   })
 
   it('cancelPending resolves the pending request as a one-time deny', async () => {

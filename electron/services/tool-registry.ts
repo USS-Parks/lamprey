@@ -203,8 +203,8 @@ export interface LampreyToolCall {
  * (no other producer covered it); when false, the permissions service already
  * recorded the decision and we skip the event to avoid duplicates.
  *
- *   'modal' / 'policy:*' / 'auto-deny-timeout' / 'no-window' → gate emitted; skip.
- *   undefined / 'none' / 'self'                              → self-deny; emit.
+ *   'modal' / 'policy:*' / 'no-window'  → gate emitted; skip.
+ *   undefined / 'none' / 'self'         → self-deny; emit.
  */
 export function isSelfDenialSource(source: string | undefined): boolean {
   if (!source) return true
@@ -546,9 +546,9 @@ class ToolRegistry {
     //   error  → tool.call.failed
     //   denied → tool.call.denied, but ONLY when the deny did NOT come from
     //            the permissions gate (it owns those events). approvalSource
-    //            values 'modal' / 'policy:*' / 'auto-deny-timeout' / 'no-window'
-    //            mean the gate already emitted; 'none' / 'self' / undefined
-    //            mean the tool denied itself and we should record it here.
+    //            values 'modal' / 'policy:*' / 'no-window' mean the gate
+    //            already emitted; 'none' / 'self' / undefined mean the tool
+    //            denied itself and we should record it here.
     // pending / approved / running are intermediate transitions — no event.
     try {
       const lifecycleType: EventType | null =

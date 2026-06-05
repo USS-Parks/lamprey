@@ -1,5 +1,44 @@
 # Lamprey Harness Dev Log
 
+## [v0.3.4 — Tool approval no longer auto-denies after 30s] — 2026-06-05
+
+**Symptom (user report):** "The Tool Call seems to time out if the user is
+occupied and doesn't click a response within some far-too short window.
+There shouldn't be a time-out scenario at all in that context. It should
+remain waiting for the user to return and definitively decide an option
+before proceeding. This needs to happen without fail."
+
+**Cause:** `electron/services/permissions-store.ts` armed a 30-second
+`setTimeout` inside `askUser` that auto-resolved any pending approval with
+`{ decision: 'deny', source: 'auto-deny-timeout' }`. If the user stepped
+away from the keyboard for half a minute, the modal silently denied behind
+their back and the agent run continued under that decision — exactly the
+"the tool call just refused itself while I was AFK" failure mode reported.
+
+**Fix:**
+- Removed `APPROVAL_TIMEOUT_MS` and the `setTimeout`/`clearTimeout` block
+  in `askUser`. A pending approval now stays pending until the user
+  definitively answers (or the chat round explicitly calls `cancelPending`,
+  which remains available as the proper abort path).
+- Updated three docstrings + two comments in `permissions-store.ts` and
+  `tool-registry.ts` so the "decision sources" documentation matches
+  reality (`auto-deny-timeout` is no longer a producible source).
+- Rewrote the two timeout tests in `permissions-store-askuser.test.ts`:
+  - "never auto-denies, no matter how long the user is away" — advances
+    fake timers a full hour, asserts the promise is still pending, then
+    resolves manually and verifies the `modal` source label.
+  - "a late response (well after the old 30s window) still lands cleanly"
+    — 5 min wait then a real answer.
+  - The `cancelPending` test is untouched (explicit-cancel still works).
+
+**Verify:**
+- `npx tsc --noEmit -p tsconfig.node.json` — clean.
+- `npx tsc --noEmit -p tsconfig.web.json` — clean.
+- `npx vitest run electron/services/permissions-store-askuser.test.ts
+   electron/services/permissions-store.test.ts` — 30/30 pass.
+- `npx vitest run electron/services/tool-registry.test.ts
+   electron/services/tool-audit-events.test.ts` — 30/30 pass.
+
 ## [v0.3.3 — Chapter chip moves to upper-left] — 2026-06-05
 
 Tiny visual move requested while testing the v0.3.2 reasoning fix in a live
