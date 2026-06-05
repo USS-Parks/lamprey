@@ -1,5 +1,97 @@
 # Lamprey Harness Dev Log
 
+## [v0.3.5 — create_document reliability + right-side Documents panel] — 2026-06-05
+
+User report: "I really need this feature to work every single time without
+fail: provide the documents (docx, md, py, etc) to be presented as cards at
+the end of the turn. It needs to also be listed as a downloadable artifact in
+the right sidebar. This is a non-negotiable feature in Lamprey that must be
+successfully and seamlessly implemented." The v0.2.9 `create_document` tool
+already drew a card under the streaming bubble, but two reliability holes
+remained: (1) no surface in the right-side workspace panel — once the turn
+ended and the user moved on, finding a past deliverable required scrolling
+back through chat, and (2) the model would sometimes paste a multi-line code
+block with a clear filename hint into its reply instead of calling the tool,
+leaving the user without any card at all.
+
+Three reinforcing layers shipped:
+
+1. **Per-conversation Documents store + IPC**
+   - `electron/services/conversation-store.ts` — new
+     `listDocumentsForConversation(id)` aggregates every
+     `DocumentAttachment` JSON across the conversation's message rows in one
+     SQL scan, annotated with the owning message id so a future "Reveal in
+     chat" can scroll to it. New `ConversationDocument` row type.
+   - `electron/ipc/documents.ts` — new `documents:list` IPC.
+   - `electron/preload.ts` — `window.api.documents.list(conversationId)`.
+   - `src/lib/types.ts` — renderer-side `ConversationDocument` mirror.
+   - `src/stores/documents-store.ts` — Zustand store with `load(convId)` (one
+     SQL fetch, cached), `appendLive(convId, doc)` for streaming updates,
+     `clear`, `reset`.
+
+2. **Documents view in the right-side Artifacts panel**
+   - `src/components/workspace/ArtifactsPanel.tsx` — when the active
+     conversation has any documents, render a "Documents N files" header
+     above the activity feed and list every doc using the existing
+     `DocumentCardRow` (icon · name · kind/ext/size · "Open in" menu with
+     Artifact panel / Copy / Download). When activity is also live, cap the
+     docs region at 50% height so the in-flight feed stays visible. Empty
+     state explains both surfaces.
+
+3. **Auto-surface on first deliverable of a turn**
+   - `src/hooks/useChat.ts` — `chat:document-created` now routes into the
+     documents store regardless of focus, and for the active conversation
+     also calls `useUiStore.autoOpenRightPanel` + `setActiveTool('artifacts')`
+     so the right panel pops to the Documents list the moment a deliverable
+     lands. Respects the existing per-conv dismiss bookkeeping so it won't
+     re-pop after the user closes it for the same trigger.
+
+Reliability: hardened model contract + post-stream safety net:
+
+- `electron/services/system-prompt-builder.ts` — `Standalone deliverables`
+  section rewritten with explicit mandatory triggers (user asked for a file
+  / code ≥10 lines / plan ≥6 items or ≥150 words / named extension hint /
+  "give me / draft / write / generate / create / produce / build me / make a
+  / export"), explicit anti-patterns (fence-block deliverable in reply,
+  duplicate body + card, single call for multiple files, generic filenames),
+  and a final pre-send self-check the model runs before emitting its visible
+  reply.
+- `electron/services/document-extractor.ts` — new conservative heuristic:
+  scans the final assistant body for fenced blocks with an unambiguous
+  filename hint (fence-line `​```lang:foo.py`, heading-above `## foo.py`, or
+  first-line comment `# foo.py` / `// src/foo.ts`) of ≥15 lines and an
+  extension that maps to a known MIME type. Returns `StoredDocument`s the
+  caller can attach. Diff blocks rejected. Bareword files (Dockerfile,
+  Makefile, etc.) supported.
+- `electron/ipc/chat.ts` — after the model's `create_document` buffer is
+  drained for the turn AND if zero documents were emitted, the safety net
+  runs and any synthesized fallback docs are attached to the row +
+  broadcast as `chat:document-created` so all three surfaces (chat card,
+  right-panel list, streaming view) see them. Applied to both `onDone` and
+  `onError(partial)` save paths. Additive only — never strips body content.
+
+**Files changed:**
+- `electron/ipc/chat.ts` (+30 / -2)
+- `electron/ipc/documents.ts` (new, +16)
+- `electron/ipc/index.ts` (+2)
+- `electron/preload.ts` (+9)
+- `electron/services/conversation-store.ts` (+45)
+- `electron/services/document-extractor.ts` (new, +209)
+- `electron/services/document-extractor.test.ts` (new, +89)
+- `electron/services/system-prompt-builder.ts` (deliverables section rewrite)
+- `src/components/workspace/ArtifactsPanel.tsx` (rewrite — Documents on top)
+- `src/hooks/useChat.ts` (+24 / -3)
+- `src/lib/types.ts` (+8)
+- `src/stores/documents-store.ts` (new, +95)
+- `package.json` — version bump to 0.3.5.
+
+**Verify:**
+- `npx tsc --noEmit -p tsconfig.node.json` — clean.
+- `npx tsc --noEmit -p tsconfig.web.json` — clean.
+- `npx vitest run` — 1310 pass / 16 skipped (pre-existing). New
+  `document-extractor.test.ts` 10/10.
+- `npm run build:win` — installer + zip artifacts produced.
+
 ## [v0.3.3 — Chapter chip moves to upper-left] — 2026-06-05
 
 Tiny visual move requested while testing the v0.3.2 reasoning fix in a live
