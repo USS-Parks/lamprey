@@ -1,5 +1,21 @@
 # Lamprey Harness Dev Log
 
+## [Sandbox Parity — Prompt S8] Monitor / list / stop / output aux tools — 2026-06-05
+
+**Files changed:**
+- `electron/services/native-aux-tools.ts` — four new executors: `executeShellMonitor`, `executeShellList`, `executeShellStop`, `executeShellOutput`, plus arg-type exports (`ShellMonitorArgs`, `ShellStopArgs`, `ShellOutputArgs`).
+- `electron/services/tool-registry.ts` — four new `registerNative()` descriptor pairs immediately after the existing `shell_command` registration. `shell_stop` carries `risks: ['write']` + `requiresApproval: true`; the other three are read-only / no-approval / parallelizable.
+- `electron/services/native-aux-tools.test.ts` (new) — 14 cases driving `executeShellCommandInBackground` to spawn a real bg shell, then exercising list / monitor / output / stop including the invalid-processId branch.
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- vitest `native-aux-tools.test.ts` + `tool-registry.test.ts` ✓ 31/31
+
+**Notes:** No `run_in_background` flag added to `shell_command` itself — that's a separate prompt. S8 only exposes the management surface on top of the existing `executeShellCommandInBackground` path. The four tools align with Claude Code's Monitor / TaskList / TaskStop / TaskOutput.
+
+**Commit:** S8
+
 ## [Sandbox Parity — Prompt S5] Linux bubblewrap profile — 2026-06-05
 
 **Files changed:**
@@ -14,7 +30,7 @@
 
 **Notes:** bwrap has no domain-level filtering, so `{ allowDomains: [...] }` leaves the network open and emits a `note` on the SandboxOutput describing the limitation. The dispatcher's pass-through `note` already mentions "bwrap missing?" so when both layers fail the caller gets a useful breadcrumb trail.
 
-**Commit:** S5
+**Commit:** `127bc08`
 
 ## [Sandbox Parity — Prompt S4] macOS sandbox-exec profile — 2026-06-05
 

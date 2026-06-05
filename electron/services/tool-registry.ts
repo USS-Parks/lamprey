@@ -18,6 +18,15 @@ import {
   formatShellResultForModel,
   type ShellArgs
 } from './shell-tool'
+import {
+  executeShellList,
+  executeShellMonitor,
+  executeShellOutput,
+  executeShellStop,
+  type ShellMonitorArgs,
+  type ShellOutputArgs,
+  type ShellStopArgs
+} from './native-aux-tools'
 import type { AuditStatus } from './tool-result-status'
 import {
   computeToolTags,
@@ -688,6 +697,143 @@ toolRegistry.registerNative(
     const failed = r.error !== undefined || (r.exitCode !== null && r.exitCode !== 0) || r.timedOut
     return { result, status: failed ? 'error' : 'done' }
   }
+)
+
+// ────────────────────────────────────────────────────────────────────────
+// S8 — shell_monitor / shell_list / shell_stop / shell_output
+//
+// Thin native wrappers around monitor-service.ts + the background-shell
+// registry inside shell-tool.ts. They pair with `shell_command` once a
+// future call adds `run_in_background: true`; today they manage background
+// shells already started by the dev-server, monitor service, verify-
+// workspace, or workspace-bootstrap subsystems. Executors live in
+// native-aux-tools.ts; descriptors stay here next to shell_command for
+// discoverability.
+// ────────────────────────────────────────────────────────────────────────
+
+toolRegistry.registerNative(
+  {
+    id: 'shell_monitor',
+    name: 'shell_monitor',
+    title: 'Shell: monitor background process',
+    description:
+      'Start a line-by-line monitor on a running background shell and (optionally) auto-stop when a regex pattern matches a stdout/stderr line. Pairs with shell_command once it grows a run_in_background flag; today it watches any background shell started by the dev-server / monitor / verify-workspace subsystems. Returns the monitor handle (id, status, line count, bytes captured, matched line, timestamps).',
+    providerKind: 'native',
+    providerId: 'internal',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        processId: {
+          type: 'string',
+          description:
+            'Background shell id (returned by shell_list or by the background-shell launcher). Required.'
+        },
+        untilPattern: {
+          type: 'string',
+          description:
+            'Optional JavaScript regex source. When a buffered line matches, the monitor auto-stops and emits monitor:matched. Omit to tail until the process exits.'
+        }
+      },
+      required: ['processId'],
+      additionalProperties: false
+    },
+    risks: [],
+    requiresApproval: false,
+    enabled: true,
+    parallelizable: true,
+    mutates: false
+  },
+  async (args) => executeShellMonitor(args as unknown as ShellMonitorArgs)
+)
+
+toolRegistry.registerNative(
+  {
+    id: 'shell_list',
+    name: 'shell_list',
+    title: 'Shell: list background processes',
+    description:
+      'List every background shell (running or recently exited) plus every active monitor. Use before shell_monitor / shell_stop / shell_output to discover process ids. Pairs with shell_command once it grows a run_in_background flag.',
+    providerKind: 'native',
+    providerId: 'internal',
+    inputSchema: {
+      type: 'object',
+      properties: {},
+      additionalProperties: false
+    },
+    risks: [],
+    requiresApproval: false,
+    enabled: true,
+    parallelizable: true,
+    mutates: false
+  },
+  async () => executeShellList()
+)
+
+toolRegistry.registerNative(
+  {
+    id: 'shell_stop',
+    name: 'shell_stop',
+    title: 'Shell: stop background process',
+    description:
+      'Stop a running background shell. Sends SIGTERM by default (SIGKILL on request). Returns a JSON envelope { stopped, processId, signal } so the model can branch. Pairs with shell_command once it grows a run_in_background flag.',
+    providerKind: 'native',
+    providerId: 'internal',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        processId: {
+          type: 'string',
+          description: 'Background shell id to terminate. Required.'
+        },
+        signal: {
+          type: 'string',
+          enum: ['SIGTERM', 'SIGKILL'],
+          description:
+            'POSIX signal to deliver. SIGTERM gives the process a chance to clean up; SIGKILL is unconditional. Default SIGTERM.'
+        }
+      },
+      required: ['processId'],
+      additionalProperties: false
+    },
+    risks: ['write'],
+    requiresApproval: true,
+    enabled: true
+  },
+  async (args) => executeShellStop(args as unknown as ShellStopArgs)
+)
+
+toolRegistry.registerNative(
+  {
+    id: 'shell_output',
+    name: 'shell_output',
+    title: 'Shell: read background output',
+    description:
+      'Read the captured stdout/stderr of a background shell. When `since` is supplied AND an active monitor exists for the same processId, returns only lines after that seq cursor (incremental tail); otherwise returns the full bounded buffer (capped at 30 KB per stream). Pairs with shell_command once it grows a run_in_background flag.',
+    providerKind: 'native',
+    providerId: 'internal',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        processId: {
+          type: 'string',
+          description: 'Background shell id whose output to return. Required.'
+        },
+        since: {
+          type: 'number',
+          description:
+            'Optional monitor cursor (returned by shell_monitor / previous shell_output). When set, returns only lines with seq > since via the most-recent monitor on this processId. Omit for the full bounded buffer.'
+        }
+      },
+      required: ['processId'],
+      additionalProperties: false
+    },
+    risks: [],
+    requiresApproval: false,
+    enabled: true,
+    parallelizable: true,
+    mutates: false
+  },
+  async (args) => executeShellOutput(args as unknown as ShellOutputArgs)
 )
 
 // Track 2 / C3 — plan-mode toggles. These tools flip a per-conversation

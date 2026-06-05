@@ -7,6 +7,20 @@ import { randomUUID } from 'crypto'
 import { permissionsService } from './permissions-store'
 import { ptyGetBuffer, ptyListSessions, PTY_READ_CAP } from './pty-manager'
 import { resolveWorkspaceRelative } from './path-utils'
+import {
+  startMonitor,
+  readMonitor,
+  listMonitors,
+  type MonitorHandle
+} from './monitor-service'
+import {
+  getBackgroundShell,
+  killBackgroundShell,
+  listBackgroundShells,
+  STDOUT_CAP,
+  STDERR_CAP,
+  type ShellBackgroundHandle
+} from './shell-tool'
 import type { ToolExecutionContext } from './tool-registry'
 import type { ToolRisk } from './tool-registry'
 
@@ -15,9 +29,13 @@ import type { ToolRisk } from './tool-registry'
 //   - read_thread_terminal
 //   - load_workspace_dependencies
 //   - request_permissions
+//   - shell_monitor / shell_list / shell_stop / shell_output (S8)
 //
-// Registry registration lives in native-dev-tool-pack.ts so these executors
-// stay testable without booting the registry/MCP layers.
+// Registry registration lives in native-dev-tool-pack.ts (view_image,
+// read_thread_terminal, load_workspace_dependencies, request_permissions)
+// and tool-registry.ts (the shell_* aux tools, registered next to
+// shell_command). These executors stay testable without booting the
+// registry/MCP layers.
 
 // ──────────────────────────── view_image ────────────────────────────
 
@@ -255,4 +273,204 @@ export async function executeRequestPermissions(
   }
 
   return decision === 'allow' ? `Approved (scope=${args.scope})` : `Denied (scope=${args.scope})`
+}
+
+// ─────────────────────── shell_monitor / shell_list ─────────────────────
+// ─────────────────────── shell_stop  / shell_output ─────────────────────
+//
+// S8 — model-facing wrappers around monitor-service.ts and the background
+// shell registry. These pair with `shell_command` when a future call adds
+// `run_in_background: true`; today they let the model inspect / stop any
+// background shell already started by the dev-server, monitor service,
+// verify-workspace, or workspace-bootstrap subsystems.
+//
+// All four are thin formatters. The underlying state lives in
+// monitor-service.ts and shell-tool.ts; this module only renders the
+// model-facing string.
+
+export interface ShellMonitorArgs {
+  processId?: string
+  untilPattern?: string
+}
+
+function formatMonitorHandle(h: MonitorHandle): string {
+  return [
+    `Monitor: ${h.id}`,
+    `Process: ${h.processId}`,
+    `Status: ${h.status}`,
+    `Until: ${h.untilPattern ?? '(none)'}`,
+    `Lines buffered: ${h.lineCount}`,
+    `Bytes captured: ${h.bytesWritten}`,
+    `Matched line: ${h.matchedLine ?? '(none)'}`,
+    `Started: ${new Date(h.startedAt).toISOString()}`,
+    h.finishedAt ? `Finished: ${new Date(h.finishedAt).toISOString()}` : 'Finished: (still active)'
+  ].join('\n')
+}
+
+export function executeShellMonitor(args: ShellMonitorArgs): string {
+  if (!args || typeof args.processId !== 'string' || args.processId.trim() === '') {
+    return 'shell_monitor: "processId" is required and must be a non-empty string.'
+  }
+  // Verify the background shell exists before starting a monitor — the
+  // monitor would otherwise sit dormant waiting for a process that never
+  // emits anything, which is a confusing UX for the model.
+  const shell = getBackgroundShell(args.processId)
+  if (!shell) {
+    return `shell_monitor: no background shell with processId "${args.processId}". Call shell_list to see active ids.`
+  }
+  if (args.untilPattern !== undefined && typeof args.untilPattern !== 'string') {
+    return 'shell_monitor: "untilPattern" must be a string (regex source) when provided.'
+  }
+  try {
+    const handle = startMonitor({
+      processId: args.processId,
+      untilPattern: args.untilPattern
+    })
+    return formatMonitorHandle(handle)
+  } catch (err: any) {
+    return `shell_monitor: ${err?.message ?? 'failed to start monitor'}`
+  }
+}
+
+// ────────────────────────────── shell_list ──────────────────────────────
+
+function summarizeBgShell(s: ShellBackgroundHandle): {
+  id: string
+  command: string
+  status: string
+  exitCode: number | null
+  durationMs: number
+  pid: number | null
+} {
+  return {
+    id: s.id,
+    command: s.command,
+    status: s.status,
+    exitCode: s.exitCode,
+    durationMs: Date.now() - s.startedAt,
+    pid: s.pid
+  }
+}
+
+export function executeShellList(): string {
+  const shells = listBackgroundShells()
+  const monitors = listMonitors()
+  if (shells.length === 0 && monitors.length === 0) {
+    return 'shell_list: no background shells or monitors active.'
+  }
+  const body = {
+    shells: shells.map(summarizeBgShell),
+    monitors: monitors.map((m) => ({
+      id: m.id,
+      processId: m.processId,
+      status: m.status,
+      lineCount: m.lineCount,
+      untilPattern: m.untilPattern
+    }))
+  }
+  return JSON.stringify(body, null, 2)
+}
+
+// ────────────────────────────── shell_stop ──────────────────────────────
+
+export interface ShellStopArgs {
+  processId?: string
+  signal?: 'SIGTERM' | 'SIGKILL'
+}
+
+export function executeShellStop(args: ShellStopArgs): string {
+  if (!args || typeof args.processId !== 'string' || args.processId.trim() === '') {
+    return JSON.stringify({
+      stopped: false,
+      processId: args?.processId ?? null,
+      error: '"processId" is required and must be a non-empty string'
+    })
+  }
+  const shell = getBackgroundShell(args.processId)
+  if (!shell) {
+    return JSON.stringify({
+      stopped: false,
+      processId: args.processId,
+      error: `no background shell with processId "${args.processId}"`
+    })
+  }
+  if (shell.status !== 'running') {
+    return JSON.stringify({
+      stopped: false,
+      processId: args.processId,
+      status: shell.status,
+      error: `shell is already ${shell.status}; nothing to stop`
+    })
+  }
+  const sig: NodeJS.Signals = args.signal === 'SIGKILL' ? 'SIGKILL' : 'SIGTERM'
+  const ok = killBackgroundShell(args.processId, sig)
+  return JSON.stringify({
+    stopped: ok,
+    processId: args.processId,
+    signal: sig
+  })
+}
+
+// ────────────────────────────── shell_output ────────────────────────────
+
+export interface ShellOutputArgs {
+  processId?: string
+  since?: number
+}
+
+function formatBgHeader(s: ShellBackgroundHandle): string {
+  const statusLabel =
+    s.status === 'running'
+      ? 'running'
+      : s.exitCode === null
+        ? `${s.status}${s.signal ? ` (signal ${s.signal})` : ''}`
+        : `${s.status} (exit ${s.exitCode})`
+  return [
+    `Process: ${s.id}`,
+    `Command: ${s.command}`,
+    `Cwd: ${s.cwd}`,
+    `Status: ${statusLabel}`,
+    `Duration: ${Date.now() - s.startedAt}ms`,
+    `Bytes captured: ${s.bytesWritten}`
+  ].join('\n')
+}
+
+export function executeShellOutput(args: ShellOutputArgs): string {
+  if (!args || typeof args.processId !== 'string' || args.processId.trim() === '') {
+    return 'shell_output: "processId" is required and must be a non-empty string.'
+  }
+  const shell = getBackgroundShell(args.processId)
+  if (!shell) {
+    return `shell_output: no background shell with processId "${args.processId}". Call shell_list to see active ids.`
+  }
+
+  // If a `since` cursor + an active monitor for this processId, drain the
+  // monitor's incremental buffer — gives the model the chunk of new lines
+  // since its last read instead of the full bounded stdout copy.
+  if (typeof args.since === 'number') {
+    const monitors = listMonitors().filter((m) => m.processId === args.processId)
+    if (monitors.length > 0) {
+      const monitor = monitors[monitors.length - 1] // most recent
+      try {
+        const out = readMonitor(monitor.id, args.since)
+        const lines = out.lines
+          .map((l) => `[${l.stream}] ${l.line}`)
+          .join('\n')
+        const header = `${formatBgHeader(shell)}\nMonitor: ${out.handle.id} · status ${out.handle.status} · cursor ${out.cursor}`
+        return `${header}\n--- new lines (since=${args.since}) ---\n${lines.length > 0 ? lines : '(no new lines)'}`
+      } catch (err: any) {
+        return `shell_output: monitor read failed: ${err?.message ?? 'unknown error'}`
+      }
+    }
+    // fall through to the full-buffer view when no monitor is attached
+  }
+
+  const parts: string[] = [formatBgHeader(shell)]
+  parts.push('--- stdout ---')
+  parts.push(shell.stdout.length > 0 ? shell.stdout : '(empty)')
+  if (shell.bytesWritten > STDOUT_CAP) parts.push(`[stdout truncated at ${STDOUT_CAP} chars]`)
+  parts.push('--- stderr ---')
+  parts.push(shell.stderr.length > 0 ? shell.stderr : '(empty)')
+  if (shell.bytesWritten > STDERR_CAP) parts.push(`[stderr truncated at ${STDERR_CAP} chars]`)
+  return parts.join('\n')
 }
