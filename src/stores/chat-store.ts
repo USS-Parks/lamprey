@@ -141,6 +141,57 @@ function buildAttachmentBlock(file: ProcessedFile): string {
   return ''
 }
 
+// Walk a freshly-loaded message list and synthesize ToolCallState entries
+// for every recorded tool invocation, pairing each assistant tool_call with
+// its matching tool-role result message. Used by selectConversation so the
+// ToolActivityChip re-populates on conversation reopen — without this the
+// chip stays empty until a new live event arrives, hiding every prior turn's
+// work from the user. Descriptor metadata (title, risks, providerKind) is
+// not persisted, so historical entries leave those undefined; the cards
+// gracefully fall back to toolName + args.
+function hydrateToolCallsFromHistory(messages: Message[]): ToolCallState[] {
+  const resultsByCallId = new Map<
+    string,
+    { result: string; timestamp: number }
+  >()
+  for (const m of messages) {
+    if (m.role === 'tool' && m.toolCallId) {
+      resultsByCallId.set(m.toolCallId, {
+        result: m.content,
+        timestamp: m.timestamp
+      })
+    }
+  }
+  const out: ToolCallState[] = []
+  for (const m of messages) {
+    if (m.role !== 'assistant' || !m.toolCalls) continue
+    for (const tc of m.toolCalls) {
+      let args: Record<string, unknown> = {}
+      try {
+        const parsed = JSON.parse(tc.function.arguments)
+        if (parsed && typeof parsed === 'object') args = parsed as Record<string, unknown>
+      } catch {
+        // Arguments string isn't valid JSON — leave args empty. ToolUseCard
+        // renders the raw arguments string as a fallback when args is empty.
+      }
+      const r = resultsByCallId.get(tc.id)
+      out.push({
+        callId: tc.id,
+        // Descriptor data isn't persisted; 'history' is a neutral marker that
+        // tells the renderer this entry came from a reopen, not a live run.
+        serverId: 'history',
+        toolName: tc.function.name,
+        args,
+        status: r ? 'success' : 'error',
+        result: r?.result,
+        startedAt: m.timestamp,
+        duration: r ? Math.max(0, r.timestamp - m.timestamp) : undefined
+      })
+    }
+  }
+  return out
+}
+
 export const useChatStore = create<ChatState>((set, get) => ({
   conversations: [],
   activeConversationId: null,
@@ -169,7 +220,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
     set({ activeConversationId: id, toolCalls: [], runPhase: null })
     const result = await window.api.conversation.getMessages(id)
     if (result.success) {
-      set({ messages: result.data })
+      set({
+        messages: result.data,
+        // Rehydrate the tool-activity chip from history so reopening a
+        // previously-finished conversation still shows what work the model
+        // did, not an empty chip. Live events from a new turn will append
+        // to this list via addToolCall.
+        toolCalls: hydrateToolCallsFromHistory(result.data)
+      })
     }
     const conv = get().conversations.find((c) => c.id === id)
     if (conv) {

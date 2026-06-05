@@ -67,7 +67,7 @@ export function AgentRunBanner() {
   // surface for that path.
   if (mode === 'multi' && activeRun.length > 0) {
     return (
-      <div className="pointer-events-auto mb-2 flex w-full max-w-3xl items-center gap-3 rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)] px-3 py-2 text-[13px]">
+      <div className="pointer-events-auto mb-2 flex w-full items-center gap-3 rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)] px-3 py-2 text-[13px]">
         <span className="font-mono uppercase tracking-wider text-[var(--text-muted)]">Pipeline</span>
         <div className="flex flex-1 items-center gap-2">
           {ROLE_ORDER.map((role, idx) => {

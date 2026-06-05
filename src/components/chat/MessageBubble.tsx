@@ -69,13 +69,24 @@ export function MessageBubble({ message }: MessageBubbleProps) {
   }
 
   return (
-    <div className={`group flex flex-col ${isUser ? 'items-end' : 'items-start'} mb-8`}>
+    <div className={`group flex flex-col ${isUser ? 'items-end' : 'items-stretch'} mb-8`}>
       <div
-        className={`max-w-[80%] rounded-lg px-4 py-3 ${
+        className={
+          // Claude.ai pattern: only the USER prompt sits in a bubble — the
+          // assistant response flows as plain text on the chat background,
+          // which makes the back-and-forth feel like a transcript rather
+          // than a chain of equal-weight cards. User keeps the 80% cap +
+          // accent-dim fill + padding so it stays narrow + visibly right-
+          // aligned with the input pill's right edge. Assistant gets no
+          // background, no border, no padding — just the column-wide text
+          // surface so reasoning card, body, pipeline pill, and input pill
+          // share the same edges. ReasoningBlock keeps its own card inside
+          // the unstyled assistant container because it IS a distinct
+          // surface (collapsible thinking trace, not the answer body).
           isUser
-            ? 'bg-[var(--accent-dim)] text-[var(--text-primary)]'
-            : 'bg-[var(--bg-secondary)] text-[var(--text-primary)]'
-        }`}
+            ? 'max-w-[80%] rounded-lg bg-[var(--accent-dim)] px-4 py-3 text-[var(--text-primary)]'
+            : 'w-full text-[var(--text-primary)]'
+        }
       >
         {wakeupParts && <WakeupPill reason={wakeupParts.reason} />}
         {isUser ? (

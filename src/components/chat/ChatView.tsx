@@ -85,7 +85,14 @@ export function ChatView({ rightInset = 0 }: ChatViewProps = {}) {
         )}
       </div>
 
-      <div className="flex justify-center bg-[var(--bg-primary)] pt-3 pb-4">
+      {/* Input area mirrors the messages column's scrollbar gutter so both
+          columns center on the same axis — without `pr-[6px]` here the
+          messages list (which has scrollbar-gutter: stable) sits 3 px to
+          the left of the input pill at any chat-column width, which reads
+          as a permanent half-step misalignment between the pipeline pill /
+          input pill and the message bubbles above. The 6 px matches the
+          ::-webkit-scrollbar width set in src/styles/index.css. */}
+      <div className="flex justify-center bg-[var(--bg-primary)] pt-3 pb-4 pr-[6px]">
         <div className={CHAT_COLUMN_CLASS}>
           <PlanGoalsPanel conversationId={activeConversationId} />
           <AgentRunBanner />
