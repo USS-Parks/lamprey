@@ -1,5 +1,21 @@
 # Lamprey Harness Dev Log
 
+## [Deep Research — Prompt D8] Multi-source corroboration  —  2026-06-05
+
+**Files changed:**
+- `electron/services/research/corroborator.ts` (new) — `corroborate(claims, sources, embeddings)` embeds every claim once via the injected `EmbeddingProvider` (RAG embeddings service in production; test fixtures inject deterministic vectors), then greedy-clusters by cosine ≥ 0.78. Each cluster's support is counted by **unique registrable domain** (from `CuratedSource.registrableDomain`) so two sibling sub-domains of the same publisher count once. ≥ 2 domains → `accepted`; 1 domain → `singleSource`. Dispute detection (`buildOppositionCandidates`) pairs clusters with token-overlap ≥ 0.15, sorts by overlap descending, caps at `maxOppositionPairs` (default 12), and asks a small LLM "do these contradict?" via `OPPOSITION_SYSTEM_PROMPT`. Contradicting pairs move both clusters to the `disputed` bucket and remove them from accepted/single-source. Embedding-failure path: fall back to all-claims-single-source rather than throw, so a worker crash doesn't kill the pipeline. `corroborateWithOpposition` is the orchestrator-facing convenience wrapper that injects `chatOnce` as the LLM caller. `parseOppositionOutput` is exported for direct testing.
+- `electron/services/research/corroborator.test.ts` (new) — 20 tests across cosine/normalize math, token-overlap math, clustering (same label → same cluster, eTLD+1 independence accounting, ≥2 domains required for accepted, empty input, embedding failure → fallback, count mismatch → fallback, deterministic across runs), dispute detection (opposing clusters move to disputed, no-overlap pairs skipped without LLM call, cap respected, non-contradicting verdicts leave clusters alone), opposition parser (clean JSON, malformed, safe defaults), and candidate pair selection.
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- vitest electron/services/research/corroborator.test.ts ✓ (20/20)
+- vitest full suite ✓ (1575 passed | 18 skipped — +20 from D7's 1555)
+
+**Notes:** First pass of `buildOppositionCandidates` had an upper bound on token overlap ("don't ask about paraphrases — they should have already clustered together"). But the clustering step is the upstream filter — two clusters in different buckets MEANS their embeddings disagreed regardless of how many tokens they share. So the upper bound was throwing away exactly the strongest contradiction candidates (e.g. "X has been demonstrated" vs "X is purely theoretical" — high token overlap, opposite meaning). Removed the upper bound; lower bound (0.15) still keeps us from asking about unrelated topics. The opposition pass is opt-in via `callLlm` so unit-test callers can avoid network/LLM cost; `corroborateWithOpposition` is the convenience entry-point for the orchestrator.
+
+**Commit:** _pending_
+
 ## [Deep Research — Prompt D7] Claim extraction (per source)  —  2026-06-05
 
 **Files changed:**
@@ -14,7 +30,7 @@
 
 **Notes:** Mirrored the planner/intent-classifier shape exactly (test-injectable LLM caller, prose-tolerant parser, capped output, no-throw failure path) so the next stages (D8 corroborator, D9 synthesiser) can read the codebase as one consistent module pattern. The per-claim text/span caps protect downstream context budget — a malformed model that emits a 50KB "claim" can't blow up the corroborator's clustering step.
 
-**Commit:** _pending_
+**Commit:** `cf5154a`
 
 ## [Deep Research — Prompt D6] Readable-text extractor  —  2026-06-05
 
