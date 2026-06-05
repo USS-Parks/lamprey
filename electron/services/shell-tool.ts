@@ -4,6 +4,7 @@ import { randomUUID } from 'crypto'
 import { existsSync, statSync } from 'fs'
 import { delimiter, resolve, relative, isAbsolute } from 'path'
 import { resolveWorkspaceRelative } from './path-utils'
+import { applyProfile, type SandboxTier } from './sandbox'
 
 // Native shell_command tool. One-shot command execution with cwd / timeout /
 // env merge, captured stdout / stderr with caps, platform-appropriate shell
@@ -39,6 +40,16 @@ export interface ShellResult {
   durationMs: number
   timedOut: boolean
   error?: string
+  /**
+   * Which sandbox tier wrapped this call. `'darwin-sbx'` / `'linux-bwrap'`
+   * are kernel-level; `'none'` means the call ran on the host with no
+   * isolation (Windows hosts; macOS/Linux hosts missing the required
+   * binary). `'bypassed'` is reserved for explicit
+   * `dangerously_disable_sandbox: true` calls (S7).
+   */
+  sandboxTier?: SandboxTier
+  /** Human-readable note that pairs with `sandboxTier` (e.g. "bwrap missing"). */
+  sandboxNote?: string
 }
 
 export const DEFAULT_TIMEOUT_MS = 30_000
@@ -305,11 +316,27 @@ export function executeShellCommand(
         stderrTruncated: false,
         durationMs: Date.now() - startedAt,
         timedOut: false,
-        error: invocation.error
+        error: invocation.error,
+        sandboxTier: 'none'
       })
       return
     }
-    const { cmd, args: shellArgs } = invocation
+
+    // Wrap the shell invocation in a sandbox profile (S3 abstraction).
+    // On Windows this is a pass-through that surfaces tier 'none'; on
+    // darwin/linux it produces a sandbox-exec / bwrap wrapper around the
+    // shell. Always succeeds — the dispatcher falls back to pass-through
+    // when no per-platform impl is available.
+    const wrapped = applyProfile({
+      spawnCmd: invocation.cmd,
+      spawnArgs: invocation.args,
+      cwd,
+      opts: { workspaceRoot }
+    })
+    const cmd = wrapped.cmd
+    const shellArgs = wrapped.args
+    const sandboxTier = wrapped.sandboxTier
+    const sandboxNote = wrapped.note
 
     let proc: ReturnType<typeof spawn>
     try {
@@ -331,7 +358,9 @@ export function executeShellCommand(
         stderrTruncated: false,
         durationMs: Date.now() - startedAt,
         timedOut: false,
-        error: err?.message ?? 'spawn failed'
+        error: err?.message ?? 'spawn failed',
+        sandboxTier,
+        sandboxNote
       })
       return
     }
@@ -413,7 +442,9 @@ export function executeShellCommand(
         stderrTruncated,
         durationMs: Date.now() - startedAt,
         timedOut,
-        error: err
+        error: err,
+        sandboxTier,
+        sandboxNote
       })
     }
 
@@ -601,7 +632,15 @@ export function executeShellCommandInBackground(
     bgSessions.set(id, session)
     return snapshotBg(session)
   }
-  const { cmd, args: shellArgs } = invocation
+  // Wrap with the platform sandbox profile (S3). Pass-through on Windows.
+  const wrapped = applyProfile({
+    spawnCmd: invocation.cmd,
+    spawnArgs: invocation.args,
+    cwd,
+    opts: { workspaceRoot }
+  })
+  const cmd = wrapped.cmd
+  const shellArgs = wrapped.args
 
   // We force `stdio: ['ignore', 'pipe', 'pipe']` so stdin is null but
   // both stdout + stderr are real Readable streams. The narrower
@@ -760,6 +799,10 @@ export function formatShellResultForModel(r: ShellResult): string {
   const timedOutLabel = r.timedOut ? ' · TIMED OUT' : ''
   parts.push(`Exit: ${exitLabel}${sigLabel} · Duration: ${r.durationMs}ms${timedOutLabel}`)
   parts.push(`cwd: ${r.cwd}`)
+  if (r.sandboxTier) {
+    const tierLabel = r.sandboxNote ? `${r.sandboxTier} — ${r.sandboxNote}` : r.sandboxTier
+    parts.push(`Sandbox: ${tierLabel}`)
+  }
   parts.push('--- stdout ---')
   parts.push(r.stdout.length > 0 ? r.stdout : '(empty)')
   if (r.stdoutTruncated) parts.push(`[stdout truncated at ${STDOUT_CAP} chars]`)

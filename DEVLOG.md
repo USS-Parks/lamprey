@@ -1,5 +1,24 @@
 # Lamprey Harness Dev Log
 
+## [Sandbox Parity — Prompt S6] Windows fallback + sandboxTier on ShellResult — 2026-06-05
+
+**Files changed:**
+- `electron/services/sandbox/win32.ts` — now returns an explicit `SandboxOutput` with `sandboxTier: 'none'` and a note "Sandbox: none (windows host) — no kernel-level isolation available on this platform." (previously the stub returned null and relied on the dispatcher's fallback). This guarantees the tier + note are stable even if the dispatcher changes.
+- `electron/services/shell-tool.ts` — imports `applyProfile` + `SandboxTier`; threads `sandboxTier?` and `sandboxNote?` into the `ShellResult` shape; foreground and background executors both wrap `(invocation.cmd, invocation.args)` with `applyProfile()` before spawning so the wrapper applies on darwin/linux (pass-through on win32). `formatShellResultForModel` now renders a `Sandbox: <tier> — <note>` line when present.
+- `electron/services/permissions-store.ts` — `ToolApprovalRequest` gains an optional `sandboxTier?: SandboxTier` field so renderers can show a tier chip on the approval modal. Population lands in S7's bypass-aware chat dispatch.
+- `electron/services/shell-tool.test.ts` — 4 new cases: tier present on a real run, win32-gated note check, banner rendering in the format helper, banner absent when tier is undefined.
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- vitest `shell-tool.test.ts` + `sandbox/` ✓ 78 pass, 2 platform-gated skips
+- vitest `monitor-service.test.ts` + `dev-server-manager.test.ts` + `native-aux-tools.test.ts` + `tool-registry.test.ts` ✓ 45 pass (downstream consumers of the background shell)
+- vitest `permissions-store*.test.ts` ✓ 30 pass
+
+**Notes:** The `sandboxTier` field on `ToolApprovalRequest` is exposed by type for S6; the chat dispatcher will populate it as part of S7's bypass-aware flow. The Windows fallback is documented as "weakest tier" both in the result body and (when S7 lands) in the approval modal.
+
+**Commit:** S6
+
 ## [Sandbox Parity — Prompt S8] Monitor / list / stop / output aux tools — 2026-06-05
 
 **Files changed:**
@@ -14,7 +33,7 @@
 
 **Notes:** No `run_in_background` flag added to `shell_command` itself — that's a separate prompt. S8 only exposes the management surface on top of the existing `executeShellCommandInBackground` path. The four tools align with Claude Code's Monitor / TaskList / TaskStop / TaskOutput.
 
-**Commit:** S8
+**Commit:** `4897dbe`
 
 ## [Sandbox Parity — Prompt S5] Linux bubblewrap profile — 2026-06-05
 

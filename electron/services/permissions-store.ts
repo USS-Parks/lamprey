@@ -1,5 +1,6 @@
 import { BrowserWindow } from 'electron'
 import type { LampreyToolDescriptor, ToolRisk } from './tool-registry'
+import type { SandboxTier } from './sandbox'
 import {
   clearPoliciesForConversation,
   deletePolicy,
@@ -45,6 +46,14 @@ export interface ToolApprovalRequest {
    * tool / agent rows.
    */
   correlationId?: string
+  /**
+   * Predicted sandbox tier for the call's execution context. Populated
+   * for shell tools so the approval modal can render a tier badge (amber
+   * for `'none'` on Windows, green for kernel-level wrappers). Population
+   * lands fully in S7 — for S6 the field is type-exposed so renderers
+   * can opt in once it starts arriving.
+   */
+  sandboxTier?: SandboxTier
 }
 
 export interface ToolApprovalResponse {

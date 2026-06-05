@@ -324,7 +324,59 @@ describe('persistent session cwd', () => {
   })
 })
 
+describe('sandbox tier on ShellResult (S6)', () => {
+  it('threads sandboxTier into the result of a successful run', async () => {
+    const result = await executeShellCommand({ command: ECHO_HELLO }, process.cwd())
+    expect(result.sandboxTier).toBeDefined()
+    // On Windows the win32 profile returns 'none'; on darwin/linux it
+    // returns the kernel tier when the binary exists, else falls back
+    // to 'none' via the dispatcher.
+    expect(['darwin-sbx', 'linux-bwrap', 'none']).toContain(result.sandboxTier)
+  })
+
+  it('includes sandboxNote on win32 (no kernel isolation)', async () => {
+    if (process.platform !== 'win32') return
+    const result = await executeShellCommand({ command: ECHO_HELLO }, process.cwd())
+    expect(result.sandboxTier).toBe('none')
+    expect(result.sandboxNote).toMatch(/windows host/i)
+  })
+})
+
 describe('formatShellResultForModel', () => {
+  it('renders the Sandbox tier banner when present', () => {
+    const text = formatShellResultForModel({
+      command: 'echo hi',
+      cwd: '/tmp/wk',
+      exitCode: 0,
+      signal: null,
+      stdout: 'hi\n',
+      stderr: '',
+      stdoutTruncated: false,
+      stderrTruncated: false,
+      durationMs: 5,
+      timedOut: false,
+      sandboxTier: 'none',
+      sandboxNote: 'windows host: no kernel sandbox'
+    })
+    expect(text).toMatch(/Sandbox: none — windows host/)
+  })
+
+  it('omits the Sandbox banner when tier is absent', () => {
+    const text = formatShellResultForModel({
+      command: 'echo hi',
+      cwd: '/tmp/wk',
+      exitCode: 0,
+      signal: null,
+      stdout: 'hi\n',
+      stderr: '',
+      stdoutTruncated: false,
+      stderrTruncated: false,
+      durationMs: 5,
+      timedOut: false
+    })
+    expect(text).not.toMatch(/Sandbox:/)
+  })
+
   it('produces a compact header + cwd + stdout/stderr blocks', () => {
     const text = formatShellResultForModel({
       command: 'echo hi',
