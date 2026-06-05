@@ -15,19 +15,20 @@
 
 ---
 
-## ⬇ Download v0.3.1
+## ⬇ Download v0.3.6
 
 Pick one — the `.exe` is the standard installer, the `.zip` is the portable bundle (unzip and run `Lamprey.exe` directly, no install required).
 
-| Format | File | Size | Direct link |
-|---|---|---:|---|
-| **NSIS installer** (Windows) | `Lamprey-0.3.1-x64.exe` | 230 MB | [Download .exe](https://github.com/USS-Parks/lamprey/releases/download/v0.3.1/Lamprey-0.3.1-x64.exe) |
-| **Portable ZIP** (Windows) | `Lamprey-0.3.1-x64.zip` | 299 MB | [Download .zip](https://github.com/USS-Parks/lamprey/releases/download/v0.3.1/Lamprey-0.3.1-x64.zip) |
-| **AppImage** (Linux) | `Lamprey-0.3.1-x86_64.AppImage` | 296 MB | [Download .AppImage](https://github.com/USS-Parks/lamprey/releases/download/v0.3.1/Lamprey-0.3.1-x86_64.AppImage) |
+| Format | File | Direct link |
+|---|---|---|
+| **NSIS installer** (Windows) | `Lamprey-0.3.6-x64.exe` | [Download .exe](https://github.com/USS-Parks/lamprey/releases/download/v0.3.6/Lamprey-0.3.6-x64.exe) |
+| **Portable ZIP** (Windows) | `Lamprey-0.3.6-x64.zip` | [Download .zip](https://github.com/USS-Parks/lamprey/releases/download/v0.3.6/Lamprey-0.3.6-x64.zip) |
 
 Or browse all releases → <https://github.com/USS-Parks/lamprey/releases>
 
-**Windows 10/11 x64** + **Linux x86_64 AppImage** (built by the `Build Lamprey` CI workflow on the tag push). macOS is buildable from source (`npm run build:mac`) but not bundled with this release.
+**New in v0.3.6 — Sandbox parity for `shell_command`:** thirteen-prompt phase brings the shell tool to functional parity with Claude Code's Bash tool — persistent cwd across calls, OS-level sandbox on macOS (sandbox-exec) and Linux (bubblewrap), explicit `dangerously_disable_sandbox` opt-out with one-shot approval, bash/powershell selector, monitor/list/stop/output aux tools, anti-polling sleep guard, 2-minute default timeout, richer model-facing description. See [the spec](PLANNING/LAMPREY_SANDBOX_PARITY_PLAN.md).
+
+**Windows 10/11 x64.** Linux and macOS are buildable from source (`npm run build:linux` / `npm run build:mac`).
 
 ---
 
@@ -84,6 +85,25 @@ Eleven micro-interactions that close the "feel" gap with Claude Code:
 - **Notification consolidation**: async background events for the active conversation surface as inline `TranscriptNotice` rows; toasts are reserved for off-conversation events and errors.
 - **`path:line` autolinking**: bare `src/foo.ts:42` references in assistant prose render as clickable, dotted-underline spans that open the file panel at the right line.
 - **Right panel default-collapsed**: new conversations start with the chat full-width; the panel auto-opens on artifact emit or tool launch, per-trigger and per-conversation, so a single dismiss sticks for that trigger until a different one fires.
+
+### Sandbox parity layer (shell_command)
+
+Thirteen prompts that bring `shell_command` to functional parity with Claude Code's Bash tool:
+
+- **Persistent cwd**: `cd <path>` / `Set-Location <path>` carries forward to the next call within the same conversation. Workspace boundary still enforced — escapes are silently dropped.
+- **Shell selector**: `shell: "auto" | "bash" | "powershell"`. On Windows, `"bash"` resolves to Git Bash → WSL → clean error; on POSIX, `"powershell"` resolves to `pwsh` if installed.
+- **Per-platform OS sandbox**:
+  - macOS → `sandbox-exec` SBPL profile (deny default, workspace + tmpdir writable, configurable network egress).
+  - Linux → `bubblewrap` (read-only system mounts, workspace + tmpdir rw, `--unshare-net` for `deny`).
+  - Windows → no kernel sandbox; the result reports `Sandbox: none (windows host)` so the model and the user both see the weaker tier.
+- **`dangerously_disable_sandbox: true`** opt-out for the rare case the sandbox blocks legitimate work. Forces the approval modal every call (no "always allow" applies), and tags the audit trail with `+sandbox-bypass`.
+- **Monitor / list / stop / output aux tools** mirroring Claude Code's Monitor / TaskList / TaskStop / TaskOutput surface — drives the existing background-shell bus.
+- **2-minute default timeout** (up from 30s) matching Claude Code; ceiling stays 10 minutes.
+- **Anti-polling sleep guard**: solo `sleep N > 30s` outside a loop is rejected with a remediation hint pointing at `shell_monitor` + `untilPattern`. Override with `dangerously_disable_sandbox: true`.
+- **Richer tool description** with PowerShell 5.1 quirks, HEREDOC patterns, no-interactive-command rule, "prefer dedicated tools" guidance, and `gh` for GitHub work.
+- **`'sandboxBypass'` risk tag** in the permission vocabulary so audit rows and renderers can isolate bypass approvals from regular `tool:approval` events.
+
+Spec: [PLANNING/LAMPREY_SANDBOX_PARITY_PLAN.md](PLANNING/LAMPREY_SANDBOX_PARITY_PLAN.md). Build entries: see DEVLOG (the "Sandbox Parity" entries from 2026-06-05).
 
 ### Chat surface
 
@@ -151,7 +171,7 @@ User-defined JavaScript sandbox hooks that fire on lifecycle events:
 
 ## Quick start
 
-1. **Download** the [v0.3.1 installer](https://github.com/USS-Parks/lamprey/releases/download/v0.3.1/Lamprey-0.3.1-x64.exe) and run it.
+1. **Download** the [v0.3.6 installer](https://github.com/USS-Parks/lamprey/releases/download/v0.3.6/Lamprey-0.3.6-x64.exe) and run it.
 2. **Get a key.** Easiest: <https://platform.deepseek.com> → sign up → create key → load $5. Lamprey also accepts Google AI Studio (Gemma), Alibaba DashScope (Qwen), and OpenRouter keys.
 3. **Paste your key** in the first-run modal. It's stored with `safeStorage` (OS keychain) under `userData/keys.json`.
 4. **Type something.** That's it.

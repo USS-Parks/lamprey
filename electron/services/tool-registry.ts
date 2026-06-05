@@ -18,6 +18,15 @@ import {
   formatShellResultForModel,
   type ShellArgs
 } from './shell-tool'
+import {
+  executeShellList,
+  executeShellMonitor,
+  executeShellOutput,
+  executeShellStop,
+  type ShellMonitorArgs,
+  type ShellOutputArgs,
+  type ShellStopArgs
+} from './native-aux-tools'
 import type { AuditStatus } from './tool-result-status'
 import {
   computeToolTags,
@@ -32,7 +41,19 @@ import {
 
 export type ToolProviderKind = 'native' | 'mcp' | 'plugin'
 
-export type ToolRisk = 'read' | 'write' | 'network' | 'destructive' | 'secret'
+export type ToolRisk =
+  | 'read'
+  | 'write'
+  | 'network'
+  | 'destructive'
+  | 'secret'
+  /**
+   * S12 — a call carrying `'sandboxBypass'` is one that's running outside
+   * the platform sandbox wrapper (`dangerously_disable_sandbox: true`).
+   * It always re-prompts: no persisted "always allow" policy applies.
+   * The permissions service treats this risk as a hard gate.
+   */
+  | 'sandboxBypass'
 
 export interface LampreyToolDescriptor {
   id: string
@@ -635,14 +656,55 @@ toolRegistry.registerNative({
 
 // shell_command — PowerShell on Windows, bash elsewhere. The workspace
 // boundary is also enforced inside the handler so a missing approval gate
-// cannot escape the tree (defense in depth).
+// cannot escape the tree (defense in depth). S3-S7 added platform sandbox
+// wrapping (sandbox-exec / bwrap), a shell selector, persistent cwd, and
+// an explicit bypass flag.
 toolRegistry.registerNative(
   {
     id: 'shell_command',
     name: 'shell_command',
     title: 'Shell command',
-    description:
-      'Run a one-shot shell command inside the Lamprey workspace. PowerShell on Windows, bash on macOS/Linux. Returns exit code, stdout (≤30 KB), stderr (≤30 KB), and duration. Default timeout 30s (max 600s). cwd defaults to the workspace root and must stay within it.',
+    description: [
+      'Run a one-shot shell command inside the Lamprey workspace.',
+      '',
+      'PLATFORM SHELL:',
+      ' - Windows → PowerShell (powershell.exe) by default. Set `shell: "bash"` to use Git Bash / WSL when complex POSIX scripts are needed.',
+      ' - macOS / Linux → $SHELL (or /bin/bash). Set `shell: "powershell"` to use `pwsh` (PowerShell Core) when installed.',
+      '',
+      'SANDBOXING (automatic, per-platform):',
+      ' - macOS → sandbox-exec profile (deny default, workspace + tmpdir writable, network policy honoured).',
+      ' - Linux → bubblewrap when available (read-only system mounts, workspace + tmpdir rw, --unshare-net for `deny`).',
+      ' - Windows → no kernel sandbox; the call runs on the host. The result reports `Sandbox: none (windows host)`.',
+      '',
+      'PERSISTENT CWD: when this conversation is the caller, `cd <path>` / `Set-Location <path>` carries forward to the next shell_command call. Workspace boundary still applies — escapes are rejected and do not update the session cwd.',
+      '',
+      'BACKGROUND PROCESSES: this tool is one-shot. To start a long-running process, use the background variant — wired via `shell_list` / `shell_monitor` / `shell_output` / `shell_stop` for visibility.',
+      '',
+      'POWERSHELL 5.1 QUIRKS (Windows default shell):',
+      ' - `&&` / `||` are NOT pipeline operators here. Chain with `; if ($?) { B }` for "B only if A succeeded", or just `;` for unconditional.',
+      ' - Ternary (`?:`), null-coalescing (`??`), null-conditional (`?.`) are not available — use if/else and explicit `$null -eq` checks.',
+      ' - Default file encoding is UTF-16 LE with BOM; pass `-Encoding utf8` to `Out-File`/`Set-Content` for tools that read the file later.',
+      ' - Do NOT pipe a native exe through `2>&1` inside PowerShell — it wraps stderr in NativeCommandError and reports `$?` = false even when the exe returned 0.',
+      '',
+      'NEVER USE INTERACTIVE COMMANDS:',
+      ' - `Read-Host`, `Get-Credential`, `pause`, `git rebase -i`, `git add -i`, any prompt that waits on a TTY — they hang forever (this tool runs `-NonInteractive`).',
+      ' - Destructive cmdlets that auto-prompt (`Remove-Item`, `Stop-Process`, `Clear-Content`) need `-Confirm:$false` to proceed without a prompt.',
+      '',
+      'PREFER DEDICATED TOOLS when one fits:',
+      ' - File search → `tools:search`, native file_glob (NOT `find` / `Get-ChildItem -Recurse`).',
+      ' - Content search → native grep (NOT shell `grep` / `Select-String`).',
+      ' - Read files → `view_image` or `read_thread_terminal` (NOT `Get-Content` / `cat`).',
+      ' - Edit files → `apply_patch` (NOT `sed` / `Set-Content` / inline rewrites).',
+      ' - GitHub work → `gh` CLI (clones, PRs, issues, releases).',
+      '',
+      'HEREDOC PATTERN (multi-line strings to native exes):',
+      ' - PowerShell: use single-quoted here-strings — `@\'\\n…content…\\n\'@`. The closing `\'@` MUST be at column 0. Single-quoted prevents `$` interpolation.',
+      ' - bash: `git commit -m "$(cat <<\'EOF\' \\n…\\nEOF\\n)"`.',
+      '',
+      'DEFAULTS: timeout 120s (raise via `timeout_ms`, ceiling 600s). stdout/stderr capped at 30 KB each. cwd defaults to the persisted session cwd (workspace root if none).',
+      '',
+      'SANDBOX BYPASS: pass `dangerously_disable_sandbox: true` to skip the platform wrapper for one call. The approval modal will re-prompt every time and the result will report `Sandbox: bypassed`. Use sparingly — only when the sandbox demonstrably blocks legitimate work.'
+    ].join('\n'),
     providerKind: 'native',
     providerId: 'internal',
     inputSchema: {
@@ -655,17 +717,28 @@ toolRegistry.registerNative(
         cwd: {
           type: 'string',
           description:
-            'Optional working directory. Absolute paths must resolve inside the workspace root; relative paths resolve against it.'
+            'Optional working directory. Absolute paths must resolve inside the workspace root; relative paths resolve against it. When omitted, defaults to the persisted session cwd (or the workspace root).'
         },
         timeout_ms: {
           type: 'number',
-          description: 'Optional timeout in milliseconds. Default 30000, ceiling 600000.'
+          description: 'Optional timeout in milliseconds. Default 120000, ceiling 600000.'
         },
         env: {
           type: 'object',
           additionalProperties: { type: 'string' },
           description:
             'Optional environment-variable overlay merged on top of the inherited process env.'
+        },
+        shell: {
+          type: 'string',
+          enum: ['auto', 'bash', 'powershell'],
+          description:
+            'Pick an explicit shell flavour. `"auto"` (default) → PowerShell on Windows, $SHELL elsewhere. `"bash"` on Windows resolves to Git Bash → WSL → clean error. `"powershell"` on POSIX resolves to `pwsh` if installed, else clean error.'
+        },
+        dangerously_disable_sandbox: {
+          type: 'boolean',
+          description:
+            'Opt out of the platform sandbox wrapper for this single call. When true, any persisted "always allow" policy is bypassed and the modal re-prompts; the result reports `Sandbox: bypassed`. Use only when the sandbox blocks legitimate work (rare).'
         }
       },
       required: ['command']
@@ -676,7 +749,11 @@ toolRegistry.registerNative(
   },
   async (args, ctx) => {
     const workspaceRoot = ctx.workspacePath ?? process.cwd()
-    const r = await executeShellCommand(args as unknown as ShellArgs, workspaceRoot)
+    const r = await executeShellCommand(
+      args as unknown as ShellArgs,
+      workspaceRoot,
+      ctx.conversationId
+    )
     const result = formatShellResultForModel(r)
     // A spawn-time failure (no exit code) and any non-zero exit are
     // failures even though the body still renders normally — return the
@@ -684,6 +761,143 @@ toolRegistry.registerNative(
     const failed = r.error !== undefined || (r.exitCode !== null && r.exitCode !== 0) || r.timedOut
     return { result, status: failed ? 'error' : 'done' }
   }
+)
+
+// ────────────────────────────────────────────────────────────────────────
+// S8 — shell_monitor / shell_list / shell_stop / shell_output
+//
+// Thin native wrappers around monitor-service.ts + the background-shell
+// registry inside shell-tool.ts. They pair with `shell_command` once a
+// future call adds `run_in_background: true`; today they manage background
+// shells already started by the dev-server, monitor service, verify-
+// workspace, or workspace-bootstrap subsystems. Executors live in
+// native-aux-tools.ts; descriptors stay here next to shell_command for
+// discoverability.
+// ────────────────────────────────────────────────────────────────────────
+
+toolRegistry.registerNative(
+  {
+    id: 'shell_monitor',
+    name: 'shell_monitor',
+    title: 'Shell: monitor background process',
+    description:
+      'Start a line-by-line monitor on a running background shell and (optionally) auto-stop when a regex pattern matches a stdout/stderr line. Pairs with shell_command once it grows a run_in_background flag; today it watches any background shell started by the dev-server / monitor / verify-workspace subsystems. Returns the monitor handle (id, status, line count, bytes captured, matched line, timestamps).',
+    providerKind: 'native',
+    providerId: 'internal',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        processId: {
+          type: 'string',
+          description:
+            'Background shell id (returned by shell_list or by the background-shell launcher). Required.'
+        },
+        untilPattern: {
+          type: 'string',
+          description:
+            'Optional JavaScript regex source. When a buffered line matches, the monitor auto-stops and emits monitor:matched. Omit to tail until the process exits.'
+        }
+      },
+      required: ['processId'],
+      additionalProperties: false
+    },
+    risks: [],
+    requiresApproval: false,
+    enabled: true,
+    parallelizable: true,
+    mutates: false
+  },
+  async (args) => executeShellMonitor(args as unknown as ShellMonitorArgs)
+)
+
+toolRegistry.registerNative(
+  {
+    id: 'shell_list',
+    name: 'shell_list',
+    title: 'Shell: list background processes',
+    description:
+      'List every background shell (running or recently exited) plus every active monitor. Use before shell_monitor / shell_stop / shell_output to discover process ids. Pairs with shell_command once it grows a run_in_background flag.',
+    providerKind: 'native',
+    providerId: 'internal',
+    inputSchema: {
+      type: 'object',
+      properties: {},
+      additionalProperties: false
+    },
+    risks: [],
+    requiresApproval: false,
+    enabled: true,
+    parallelizable: true,
+    mutates: false
+  },
+  async () => executeShellList()
+)
+
+toolRegistry.registerNative(
+  {
+    id: 'shell_stop',
+    name: 'shell_stop',
+    title: 'Shell: stop background process',
+    description:
+      'Stop a running background shell. Sends SIGTERM by default (SIGKILL on request). Returns a JSON envelope { stopped, processId, signal } so the model can branch. Pairs with shell_command once it grows a run_in_background flag.',
+    providerKind: 'native',
+    providerId: 'internal',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        processId: {
+          type: 'string',
+          description: 'Background shell id to terminate. Required.'
+        },
+        signal: {
+          type: 'string',
+          enum: ['SIGTERM', 'SIGKILL'],
+          description:
+            'POSIX signal to deliver. SIGTERM gives the process a chance to clean up; SIGKILL is unconditional. Default SIGTERM.'
+        }
+      },
+      required: ['processId'],
+      additionalProperties: false
+    },
+    risks: ['write'],
+    requiresApproval: true,
+    enabled: true
+  },
+  async (args) => executeShellStop(args as unknown as ShellStopArgs)
+)
+
+toolRegistry.registerNative(
+  {
+    id: 'shell_output',
+    name: 'shell_output',
+    title: 'Shell: read background output',
+    description:
+      'Read the captured stdout/stderr of a background shell. When `since` is supplied AND an active monitor exists for the same processId, returns only lines after that seq cursor (incremental tail); otherwise returns the full bounded buffer (capped at 30 KB per stream). Pairs with shell_command once it grows a run_in_background flag.',
+    providerKind: 'native',
+    providerId: 'internal',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        processId: {
+          type: 'string',
+          description: 'Background shell id whose output to return. Required.'
+        },
+        since: {
+          type: 'number',
+          description:
+            'Optional monitor cursor (returned by shell_monitor / previous shell_output). When set, returns only lines with seq > since via the most-recent monitor on this processId. Omit for the full bounded buffer.'
+        }
+      },
+      required: ['processId'],
+      additionalProperties: false
+    },
+    risks: [],
+    requiresApproval: false,
+    enabled: true,
+    parallelizable: true,
+    mutates: false
+  },
+  async (args) => executeShellOutput(args as unknown as ShellOutputArgs)
 )
 
 // Track 2 / C3 — plan-mode toggles. These tools flip a per-conversation

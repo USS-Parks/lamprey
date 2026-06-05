@@ -1,5 +1,235 @@
 # Lamprey Harness Dev Log
 
+## [Sandbox Parity Phase — COMPLETE] — 2026-06-05
+
+All thirteen prompts landed on `feat/sandbox-parity-phase`. Plan moved to reference-only. Brings `shell_command` to functional parity with Claude Code's Bash tool: per-platform OS sandbox (sandbox-exec / bwrap), explicit bypass flag, shell selector, persistent cwd, anti-polling guard, monitor/list/stop/output aux tools, richer tool description, 2-minute default timeout, `'sandboxBypass'` risk vocabulary.
+
+| Prompt | Title | Commit |
+|---|---|---|
+| S1 | Persistent cwd state across shell calls | `15340f0` |
+| S2 | Shell selector (bash \| powershell \| auto) | `1c2cd53` |
+| S3 | Sandbox profile abstraction layer | `331cfac` |
+| S4 | macOS sandbox-exec profile | `f891ddc` |
+| S5 | Linux bubblewrap profile | `127bc08` |
+| S6 | Windows fallback + sandboxTier on ShellResult | `68e2fc3` |
+| S7 | dangerously_disable_sandbox flag | `170a65a` |
+| S8 | Monitor / list / stop / output aux tools | `4897dbe` |
+| S9 | Rewritten shell_command description + schema | `93d36fc` |
+| S10 | Default timeout 30s → 120s | `e40f7a0` |
+| S11 | Anti-polling sleep guard | `6c90e22` |
+| S12 | sandboxBypass risk tag in vocabulary | `ff812a4` |
+| S13 | DEVLOG + README phase wrap | (this commit) |
+
+**User-verification needed (cross-platform):**
+- S4 integration test `applyDarwinProfile › spawns through real sandbox-exec` skips on Windows. Confirm on a darwin host.
+- S5 integration test `applyLinuxProfile › runs a real bwrap invocation` skips on Windows. Confirm on a Linux host with `bwrap` installed.
+
+**Known limitations carried into the next phase:**
+- `cwdSessions` map grows unbounded — wire a conversation-deletion hook in a follow-up.
+- The `cd` regex only captures the first hop of a chained `cd a && cd b` sequence; the shell still does the right thing in-process, but the session memo will track `a` instead of `b`.
+- bwrap can't enforce `{ allowDomains: [...] }`; that policy variant leaves the network open with a structured note. macOS SBPL has the same restriction.
+- The S11 sleep guard is a regex heuristic — a literal `echo "for fun"; sleep 600` is accepted because the `for` keyword precedes the sleep. Strict lexing is a future tightening.
+
+## [Sandbox Parity — Prompt S12] sandboxBypass risk tag — 2026-06-05
+
+**Files changed:**
+- `electron/services/tool-registry.ts` — `ToolRisk` union extended with `'sandboxBypass'`. Documented in a TSDoc block.
+- `electron/services/permissions-store.ts` — `GATING_RISKS` now includes `'sandboxBypass'`. New `risksCarrySandboxBypass(risks)` helper. `requestApprovalDetailed` now treats `dangerous === true` OR `risks` containing `'sandboxBypass'` as equivalent triggers for skipping persisted policies.
+- `electron/ipc/chat.ts` — when `dangerously_disable_sandbox: true`, per-call risks gain `'sandboxBypass'` (informational, surfaces in the modal payload + the audit row).
+- `electron/services/permissions-store-askuser.test.ts` — new case: `risks: ['sandboxBypass']` alone forces re-prompt, source tagged `+sandbox-bypass`.
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- vitest `permissions-store*.test.ts` + `permission-policies-store.test.ts` + `tool-registry.test.ts` ✓ 73/73
+
+**Notes:** The two trigger paths (`dangerous: true` boolean and `'sandboxBypass'` in risks) are equivalent at the permission gate. The boolean is more ergonomic at the dispatcher; the risk tag is more discoverable in audit rows + the descriptor model. Both arrive together for `shell_command` bypasses.
+
+**Commit:** `ff812a4`
+
+## [Sandbox Parity — Prompt S11] Anti-polling sleep guard — 2026-06-05
+
+**Files changed:**
+- `electron/services/shell-tool.ts` — new `screenLongSleep(command, platform?)` helper + `LONG_SLEEP_THRESHOLD_SECONDS` export. Catches POSIX `sleep N` and PowerShell `Start-Sleep -Seconds N` / `Start-Sleep N` (positional); rejects when N > 30 AND no `while`/`until`/`for`/`do` keyword precedes the call. `dangerously_disable_sandbox: true` bypasses screening entirely. Wired into both foreground and background executors.
+- `electron/services/shell-tool.test.ts` — 9 new cases: threshold constant, POSIX + PowerShell positive cases, short-sleep allowed, polling-loop allowed, non-sleep allowed, `-Milliseconds` not a false match, executor rejection observed, bypass flag observed.
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- vitest `shell-tool.test.ts` ✓ 53/53
+
+**Notes:** Heuristic is intentionally loose — a literal string `"for fun"; sleep 600` would be accepted because the `for` keyword precedes the sleep. The remediation hint in the rejection points the model at `shell_monitor` + `untilPattern` (S8), which is the right answer for "wait for a condition." A future tightening could lex shell tokens properly, but the simple regex catches the most common abuses (raw `sleep 600` polling) without false positives on legitimate scripts.
+
+**Commit:** `6c90e22`
+
+## [Sandbox Parity — Prompt S10] Timeout default 30s → 120s — 2026-06-05
+
+**Files changed:**
+- `electron/services/shell-tool.ts` — `DEFAULT_TIMEOUT_MS` raised from `30_000` to `120_000`. Matches Claude Code's Bash-tool default. Ceiling stays at `600_000`.
+- `electron/services/shell-tool.test.ts` — constants assertion updated.
+- `electron/services/tool-registry.ts` — description + schema doc strings updated to reflect 120s.
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- vitest `shell-tool.test.ts` + `tool-registry.test.ts` ✓ 60/60
+
+**Notes:** Existing callers that pass an explicit `timeout_ms` are unaffected.
+
+**Commit:** `e40f7a0`
+
+## [Sandbox Parity — Prompt S9] Tool description rewrite — 2026-06-05
+
+
+
+**Files changed:**
+- `electron/services/tool-registry.ts` — `shell_command` description expanded from a single paragraph to a structured multi-section block covering: platform shell selection, sandbox tiers per OS, persistent cwd behaviour, background-process tools, PowerShell 5.1 quirks (no `&&`/`||`, no ternary, UTF-16 default, `2>&1` corruption), interactive-command bans, "prefer dedicated tools" nudges (`tools:search`, native grep, `apply_patch`, `gh`), HEREDOC patterns, default caps, and the bypass flag. Input schema gains `shell` (enum) and `dangerously_disable_sandbox` (boolean) properties matching the executor.
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- vitest `tool-registry.test.ts` + `tool-search.test.ts` ✓ 37/37
+
+**Notes:** No snapshot test pinned the prior description, so the rewrite is a behavioural improvement only. The new description mirrors Claude Code's Bash-tool guidance closely for model parity.
+
+**Commit:** `93d36fc`
+
+## [Sandbox Parity — Prompt S7] dangerously_disable_sandbox flag — 2026-06-05
+
+**Files changed:**
+- `electron/services/shell-tool.ts` — adds `dangerously_disable_sandbox?: boolean` to `ShellArgs`. When true, both foreground and background executors skip `applyProfile` and set `sandboxTier: 'bypassed'` + `sandboxNote: 'sandbox bypass approved by user …'`.
+- `electron/services/permissions-store.ts` — `ToolApprovalRequest` gains `dangerous?: boolean`. `requestApprovalDetailed` skips `resolvePersistedDecision` entirely when `dangerous === true`, forcing a fresh modal every call; the resulting `ApprovalOutcome.source` is tagged `<source>+sandbox-bypass` so audit logs can isolate bypass approvals.
+- `electron/ipc/chat.ts` — for `shell_command` calls with `dangerously_disable_sandbox: true`, the dispatcher sets `dangerous: true` on the approval request. Other tools do not honour the flag.
+- `electron/services/shell-tool.test.ts` — 2 new cases: bypass tier on the result, bypass banner in the format helper.
+- `electron/services/permissions-store-askuser.test.ts` — 2 new cases: bypass overrides "always allow", denial source tagged `modal+sandbox-bypass`.
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- vitest `shell-tool.test.ts` + `permissions-store-askuser.test.ts` + `permissions-store.test.ts` ✓ 75/75
+
+**Notes:** Audit-event differentiation is achieved via the source-string tag (`+sandbox-bypass` suffix) on the existing `tool:approval` event, not a new event type. That keeps the event-log schema stable while giving downstream consumers a clean filter. A future S12 follow-up may introduce a separate `'sandboxBypass'` risk tag in the descriptor risks vocabulary.
+
+**Commit:** `170a65a`
+
+## [Sandbox Parity — Prompt S6] Windows fallback + sandboxTier on ShellResult — 2026-06-05
+
+**Files changed:**
+- `electron/services/sandbox/win32.ts` — now returns an explicit `SandboxOutput` with `sandboxTier: 'none'` and a note "Sandbox: none (windows host) — no kernel-level isolation available on this platform." (previously the stub returned null and relied on the dispatcher's fallback). This guarantees the tier + note are stable even if the dispatcher changes.
+- `electron/services/shell-tool.ts` — imports `applyProfile` + `SandboxTier`; threads `sandboxTier?` and `sandboxNote?` into the `ShellResult` shape; foreground and background executors both wrap `(invocation.cmd, invocation.args)` with `applyProfile()` before spawning so the wrapper applies on darwin/linux (pass-through on win32). `formatShellResultForModel` now renders a `Sandbox: <tier> — <note>` line when present.
+- `electron/services/permissions-store.ts` — `ToolApprovalRequest` gains an optional `sandboxTier?: SandboxTier` field so renderers can show a tier chip on the approval modal. Population lands in S7's bypass-aware chat dispatch.
+- `electron/services/shell-tool.test.ts` — 4 new cases: tier present on a real run, win32-gated note check, banner rendering in the format helper, banner absent when tier is undefined.
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- vitest `shell-tool.test.ts` + `sandbox/` ✓ 78 pass, 2 platform-gated skips
+- vitest `monitor-service.test.ts` + `dev-server-manager.test.ts` + `native-aux-tools.test.ts` + `tool-registry.test.ts` ✓ 45 pass (downstream consumers of the background shell)
+- vitest `permissions-store*.test.ts` ✓ 30 pass
+
+**Notes:** The `sandboxTier` field on `ToolApprovalRequest` is exposed by type for S6; the chat dispatcher will populate it as part of S7's bypass-aware flow. The Windows fallback is documented as "weakest tier" both in the result body and (when S7 lands) in the approval modal.
+
+**Commit:** `68e2fc3`
+
+## [Sandbox Parity — Prompt S8] Monitor / list / stop / output aux tools — 2026-06-05
+
+**Files changed:**
+- `electron/services/native-aux-tools.ts` — four new executors: `executeShellMonitor`, `executeShellList`, `executeShellStop`, `executeShellOutput`, plus arg-type exports (`ShellMonitorArgs`, `ShellStopArgs`, `ShellOutputArgs`).
+- `electron/services/tool-registry.ts` — four new `registerNative()` descriptor pairs immediately after the existing `shell_command` registration. `shell_stop` carries `risks: ['write']` + `requiresApproval: true`; the other three are read-only / no-approval / parallelizable.
+- `electron/services/native-aux-tools.test.ts` (new) — 14 cases driving `executeShellCommandInBackground` to spawn a real bg shell, then exercising list / monitor / output / stop including the invalid-processId branch.
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- vitest `native-aux-tools.test.ts` + `tool-registry.test.ts` ✓ 31/31
+
+**Notes:** No `run_in_background` flag added to `shell_command` itself — that's a separate prompt. S8 only exposes the management surface on top of the existing `executeShellCommandInBackground` path. The four tools align with Claude Code's Monitor / TaskList / TaskStop / TaskOutput.
+
+**Commit:** `4897dbe`
+
+## [Sandbox Parity — Prompt S5] Linux bubblewrap profile — 2026-06-05
+
+**Files changed:**
+- `electron/services/sandbox/linux.ts` — replaces the stub with `applyLinuxProfile` + exported pure `buildBwrapArgs` arg builder. Uses `findOnPath('bwrap')` from `shell-tool.ts` (no `which` shellout). DI seams (`pathExists`, `locateBwrap`, `tmpdir`) keep it unit-testable on Windows. Returns `null` when bwrap is missing so the dispatcher's pass-through fires.
+- `electron/services/sandbox/linux.test.ts` (new) — 16 cases: 15 unconditional (argv shape, ro-binds for /usr /bin /etc, conditional /lib /lib64 skips, workspace + tmpdir + extra fsWritePaths binds, --proc /proc, --dev /dev, --chdir, --unshare-net toggle by policy, allowDomains note, sandboxTier, null-on-missing) + 1 linux-gated integration.
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- vitest `electron/services/sandbox/` ✓ 53 pass, 2 skipped
+- **user-verification-needed:** confirm the gated integration test passes on a real Linux host with bwrap installed.
+
+**Notes:** bwrap has no domain-level filtering, so `{ allowDomains: [...] }` leaves the network open and emits a `note` on the SandboxOutput describing the limitation. The dispatcher's pass-through `note` already mentions "bwrap missing?" so when both layers fail the caller gets a useful breadcrumb trail.
+
+**Commit:** `127bc08`
+
+## [Sandbox Parity — Prompt S4] macOS sandbox-exec profile — 2026-06-05
+
+**Files changed:**
+- `electron/services/sandbox/darwin.ts` — replaces the stub with a real SBPL profile builder + dispatcher wrapper. Exposes `buildDarwinProfile(workspaceRoot, fsWritePaths?, networkPolicy?, tmp?)` as a pure helper for unconditional unit tests; `applyDarwinProfile()` returns `{ cmd: 'sandbox-exec', args: ['-p', profile, '--', ...], sandboxTier: 'darwin-sbx' }` or `null` when sandbox-exec is missing. `__setSandboxExecLocatorForTest` provides a test seam over the `findOnPath` lookup.
+- `electron/services/sandbox/darwin.test.ts` (new) — 17 cases: 16 unconditional (profile string structure, writable subpath allowlist, network policy variants, SBPL escaping, dispatcher null-on-missing) + 1 darwin-gated integration test that spawns real sandbox-exec.
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- vitest `electron/services/sandbox/` ✓ 37 pass, 2 skipped (darwin + linux integration gated on platform)
+- **user-verification-needed:** confirm the gated integration test (`spawns through real sandbox-exec and prints stdout`) passes on a real darwin host.
+
+**Notes:** SBPL has no granular domain-allowlist primitive — `{ allowDomains: [...] }` falls back behaviourally to `'open'` with an SBPL `;;` comment line documenting the intent. The limitation is called out in a top-of-file comment.
+
+**Commit:** `f891ddc`
+
+## [Sandbox Parity — Prompt S3] Sandbox profile abstraction layer — 2026-06-05
+
+**Files changed:**
+- `electron/services/sandbox/index.ts` (new) — `SandboxTier` / `NetworkPolicy` / `SandboxOptions` / `SandboxInput` / `SandboxOutput` types; `applyProfile()` dispatcher that delegates to `./darwin.ts` / `./linux.ts` / `./win32.ts` and falls back to a pass-through with `tier: 'none'` when a platform module returns `null`.
+- `electron/services/sandbox/darwin.ts` (new, stub returning null — S4 fills in).
+- `electron/services/sandbox/linux.ts` (new, stub — S5 fills in).
+- `electron/services/sandbox/win32.ts` (new, stub — S6 fills in).
+- `electron/services/sandbox/index.test.ts` (new) — 6 cases covering the dispatch shape, pass-through tier on every platform, note annotations, no input mutation.
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- vitest `sandbox/index.test.ts` ✓ 6/6
+
+**Notes:** Stubs structured so S4/S5/S6 can be implemented in parallel without merging the same line of `index.ts` — each fills in its own dedicated platform file; the dispatcher already routes correctly. No executor wiring yet — that happens in S6 when the result threads `sandboxTier` through `ShellResult`.
+
+**Commit:** `331cfac`
+
+## [Sandbox Parity — Prompt S2] Shell selector (bash / powershell / auto) — 2026-06-05
+
+**Files changed:**
+- `electron/services/shell-tool.ts` — new `ShellSelector` type + `shell?` field on `ShellArgs`; `findOnPath()` helper; `buildShellInvocation()` rewritten to accept selector + platform + PATH overrides and to return `{ cmd, args } | { error }` so the executor can short-circuit when bash/pwsh isn't installed.
+- `electron/services/shell-tool.ts` — foreground + background executors short-circuit cleanly on `{ error }` (background creates a `status: 'failed'` session with the error as stderr).
+- `electron/services/shell-tool.test.ts` — 6 `buildShellInvocation` cases + 2 `findOnPath` cases.
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- vitest `shell-tool.test.ts` ✓ 37/37
+
+**Notes:** On a Windows host where Git Bash IS installed at a standard path, the `'bash' + empty PATH` test takes the success branch rather than the error branch. Asserted with an `if (error)…else…` shape so both worlds pass. The selector defaults to `'auto'` so every existing caller is unaffected.
+
+**Commit:** `1c2cd53`
+
+## [Sandbox Parity — Prompt S1] Persistent cwd state across shell calls — 2026-06-05
+
+**Files changed:**
+- `electron/services/shell-tool.ts` — new `cwdSessions` Map keyed by `conversationId`; `extractCdTarget()` regex parser (POSIX + PowerShell variants); session-update branch on clean exit with workspace + isDirectory validation; new exports `getSessionCwd` / `clearSessionCwd` / `clearAllSessionCwds`.
+- `electron/services/tool-registry.ts` — `shell_command` handler now forwards `ctx.conversationId` to the executor.
+- `electron/services/shell-tool.test.ts` — 13 new cases: `extractCdTarget` (6) + persistent session (7).
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- vitest `shell-tool.test.ts` ✓ 29/29
+- vitest `tool-registry.test.ts` ✓ 17/17
+
+**Notes:** MVP only catches the first `cd …` token in the command; chains like `cd a && cd b` track to `a`, not `b`. The shell still does the right thing in-process; only the session-cwd memo drifts. Documented as a known limitation. `cwdSessions` grows unbounded — a follow-up should hook into conversation deletion to clear stale entries (not blocking for this phase).
+
+**Commit:** `15340f0`
+
 ## [v0.3.4 — Tool approval no longer auto-denies after 30s] — 2026-06-05
 
 **Symptom (user report):** "The Tool Call seems to time out if the user is

@@ -897,6 +897,15 @@ async function resolveSingleToolCall(
   const blockedByPlanMode = planModeActive && isMutatingDescriptor(descriptor)
 
   const needsApproval = !blockedByPlanMode && descriptorNeedsApproval(descriptor)
+  // S7 / S12 — shell_command + `dangerously_disable_sandbox: true` escalates
+  // the approval flow: per-call risks gain `'sandboxBypass'`, any persisted
+  // "always allow" is skipped, and the modal re-pops for every call. Other
+  // tools do not honour the flag.
+  const isDangerousShellBypass =
+    toolName === 'shell_command' && args?.dangerously_disable_sandbox === true
+  const callRisks = isDangerousShellBypass && descriptor
+    ? [...descriptor.risks, 'sandboxBypass' as const]
+    : descriptor?.risks
   const approvalOutcome =
     needsApproval && descriptor
       ? await permissionsService.requestApprovalDetailed({
@@ -905,10 +914,11 @@ async function resolveSingleToolCall(
           name: descriptor.name,
           serverId: descriptor.providerId,
           providerKind: descriptor.providerKind,
-          risks: descriptor.risks,
+          risks: callRisks ?? descriptor.risks,
           args,
           conversationId,
-          correlationId
+          correlationId,
+          dangerous: isDangerousShellBypass ? true : undefined
         })
       : { decision: 'allow' as const, source: 'none' }
   const approvalDecision = approvalOutcome.decision

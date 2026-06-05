@@ -172,6 +172,66 @@ describe('askUser — modal round-trip', () => {
   })
 })
 
+describe('dangerous: true (S7 sandbox bypass)', () => {
+  it('bypasses persisted "always allow" policies and re-prompts', async () => {
+    // Seed an "always allow" policy by approving once with that scope.
+    const seed = makeReq()
+    const p1 = permissionsService.requestApprovalDetailed(seed)
+    permissionsService.respond({ callId: seed.callId, decision: 'allow', scope: 'always' })
+    const seedOutcome = await p1
+    expect(seedOutcome.source).toMatch(/^policy:/)
+    expect(listPolicies()).toHaveLength(1)
+
+    // A normal next call resolves via the policy without prompting.
+    h.sent.length = 0
+    const normal = await permissionsService.requestApprovalDetailed(makeReq())
+    expect(normal.source).toMatch(/^policy:/)
+    expect(h.sent).toHaveLength(0)
+
+    // A `dangerous: true` call MUST re-prompt — the persisted policy
+    // does not cover sandbox bypass.
+    h.sent.length = 0
+    const dangerousReq = makeReq({ dangerous: true })
+    const promise = permissionsService.requestApprovalDetailed(dangerousReq)
+    const channels = h.sent.map((e) => e.channel)
+    expect(channels).toContain('tools:approvalRequired')
+
+    permissionsService.respond({ callId: dangerousReq.callId, decision: 'allow', scope: 'once' })
+    const outcome = await promise
+    expect(outcome.decision).toBe('allow')
+    // Source is tagged so audit logs can isolate bypasses.
+    expect(outcome.source).toMatch(/sandbox-bypass$/)
+  })
+
+  it('a denial on a dangerous: true request reports modal+sandbox-bypass', async () => {
+    const req = makeReq({ dangerous: true })
+    const promise = permissionsService.requestApprovalDetailed(req)
+    permissionsService.respond({ callId: req.callId, decision: 'deny', scope: 'once' })
+    const outcome = await promise
+    expect(outcome.decision).toBe('deny')
+    expect(outcome.source).toBe('modal+sandbox-bypass')
+  })
+
+  it("risks: ['sandboxBypass'] alone (S12) also forces re-prompt", async () => {
+    // Seed an "always allow" policy first.
+    const seed = makeReq()
+    const p1 = permissionsService.requestApprovalDetailed(seed)
+    permissionsService.respond({ callId: seed.callId, decision: 'allow', scope: 'always' })
+    await p1
+
+    // A call with sandboxBypass in risks (and no `dangerous` flag) still
+    // bypasses the persisted policy.
+    h.sent.length = 0
+    const byRisk = makeReq({ risks: ['write', 'network', 'sandboxBypass'] })
+    const promise = permissionsService.requestApprovalDetailed(byRisk)
+    const channels = h.sent.map((e) => e.channel)
+    expect(channels).toContain('tools:approvalRequired')
+    permissionsService.respond({ callId: byRisk.callId, decision: 'allow', scope: 'once' })
+    const outcome = await promise
+    expect(outcome.source).toMatch(/sandbox-bypass$/)
+  })
+})
+
 describe('askUser — no timeout, explicit cancellation only', () => {
   // The 30s auto-deny was removed: a pending approval must wait for the
   // user to definitively answer. Verified by advancing fake timers well

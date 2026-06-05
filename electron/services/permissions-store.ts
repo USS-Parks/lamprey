@@ -1,5 +1,6 @@
 import { BrowserWindow } from 'electron'
 import type { LampreyToolDescriptor, ToolRisk } from './tool-registry'
+import type { SandboxTier } from './sandbox'
 import {
   clearPoliciesForConversation,
   deletePolicy,
@@ -45,6 +46,19 @@ export interface ToolApprovalRequest {
    * tool / agent rows.
    */
   correlationId?: string
+  /**
+   * Predicted sandbox tier for the call's execution context. Populated
+   * for shell tools so the approval modal can render a tier badge (amber
+   * for `'none'` on Windows, green for kernel-level wrappers).
+   */
+  sandboxTier?: SandboxTier
+  /**
+   * S7 — the caller has opted into sandbox bypass for this single call.
+   * When true, {@link PermissionsService.requestApprovalDetailed} skips
+   * persisted "always allow" policies entirely and re-prompts the user.
+   * Approval events are tagged so audit logs can isolate bypasses.
+   */
+  dangerous?: boolean
 }
 
 export interface ToolApprovalResponse {
@@ -69,12 +83,21 @@ export interface ApprovalOutcome {
 
 // Risks that, even without descriptor.requiresApproval, cause chat.ts to route
 // through this service. Pure 'read' and 'write' alone do NOT gate (memory_add,
-// update_plan are local writes); 'network', 'destructive', and 'secret' do.
+// update_plan are local writes); 'network', 'destructive', 'secret', and
+// 'sandboxBypass' do. Sandbox-bypass calls additionally skip any persisted
+// "always allow" policy — see `requestApprovalDetailed`.
 export const GATING_RISKS: ReadonlySet<ToolRisk> = new Set([
   'network',
   'destructive',
-  'secret'
+  'secret',
+  'sandboxBypass'
 ])
+
+/** True when the per-call risks include `'sandboxBypass'`. Bypasses any
+ *  persisted policy and re-prompts every call. */
+export function risksCarrySandboxBypass(risks: ToolRisk[]): boolean {
+  return risks.includes('sandboxBypass')
+}
 
 /** True if a descriptor with these risks should pass through requestApproval. */
 export function shouldGateOnRisks(risks: ToolRisk[]): boolean {
@@ -125,24 +148,37 @@ class PermissionsService {
         return undefined
       }
     })()
-    const persisted = resolvePersistedDecision({
-      toolId: req.toolId,
-      risks: req.risks,
-      conversationId: req.conversationId,
-      workspacePath
-    })
-    if (persisted) {
-      const outcome: ApprovalOutcome = {
-        decision: persisted.decision,
-        source: `policy:${persisted.policyId}`
+
+    // S7 / S12 — when `dangerous: true` OR the per-call risks include
+    // `'sandboxBypass'`, skip any persisted "always allow" / "this
+    // workspace" / "this conversation" policy and force the modal every
+    // time. The bypass is one-shot by design: a user who said "always
+    // allow shell_command" did not consent to sandbox bypass.
+    const isBypass = req.dangerous === true || risksCarrySandboxBypass(req.risks)
+    if (!isBypass) {
+      const persisted = resolvePersistedDecision({
+        toolId: req.toolId,
+        risks: req.risks,
+        conversationId: req.conversationId,
+        workspacePath
+      })
+      if (persisted) {
+        const outcome: ApprovalOutcome = {
+          decision: persisted.decision,
+          source: `policy:${persisted.policyId}`
+        }
+        emitApprovalEvent(req, outcome, workspacePath, persisted.policyId)
+        return outcome
       }
-      emitApprovalEvent(req, outcome, workspacePath, persisted.policyId)
-      return outcome
     }
 
     const userOutcome = await this.askUser(req, workspacePath)
-    emitApprovalEvent(req, userOutcome, workspacePath)
-    return userOutcome
+    // Tag bypass outcomes distinctly so the audit log can filter them.
+    const finalOutcome: ApprovalOutcome = isBypass
+      ? { ...userOutcome, source: `${userOutcome.source}+sandbox-bypass` }
+      : userOutcome
+    emitApprovalEvent(req, finalOutcome, workspacePath)
+    return finalOutcome
   }
 
   /**
