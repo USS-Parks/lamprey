@@ -1,5 +1,66 @@
 # Lamprey Harness Dev Log
 
+## [Customize Phase Complete] — 2026-06-05
+
+All twelve prompts of the Customize Phase landed on `claude/determined-pasteur-033123`. The phase gave Lamprey a first-class **Customize** surface in the left sidebar — mirroring Claude Code's Customize panel — with three columns (Skills / Connectors / Plugins) and three bottom CTAs (Connect your apps / Create new skills / Browse plugins). Promoted the previously buried `SkillsManager` and `McpSettings` out of the Settings dialog and retired both tabs, then built the plugin system end-to-end from scratch.
+
+| Prompt | Title | Commit |
+|---|---|---|
+| C1 | Surface scaffolding + sidebar entry | `3dfa91a` |
+| C2 | Skills column promotion (retire 'skills' tab) | `cf9497a` |
+| C3 | Skill format upgrade (allowedTools/model/autoInvoke + directory-mode) | `4891ce7` |
+| C4 | New-skill wizard + IPC directory-mode scaffolding | `974f289` |
+| C5 | Connectors column promotion (retire 'mcp' tab) | `da6c2bf` |
+| C6 | Add-connector flow (curated catalog + JSON paste) | `3c6ce5a` |
+| C7 | Plugin manifest + loader (green field) | _C7 commit_ |
+| C8 | Plugin IPC + Zustand store | `29300c9` |
+| C9 | Plugins column UI + 3 bundled starter plugins | _C9 commit_ |
+| C10 | Plugin install flow (directory + manifest paste + bundled catalog) | `967a731` |
+| C11 | Plugin runtime hookup (skills + commands + connectors) | `0d42730` |
+| C12 | Polish + version bump + phase wrap | _this commit_ |
+
+**Architecture summary**
+- **Surface**: full-window panel (z-30) reachable from the sidebar's relabeled "Customize" button. The legacy `pluginsIcon` button no longer deep-links into `settings:mcp`.
+- **Skills**: live list + filter + per-row toggle/edit/delete + right-side EditDrawer; 3-step wizard for new skills; directory-mode (`<dir>/skill.md` + sibling files) with optional `reference.md` scaffold.
+- **Connectors**: live list with status dot + transport + auth badges + reconnect; embedded Google OAuth panel; AddConnectorFlow modal with Catalog (7 starter MCP servers) and JSON-paste tabs (accepts both single-object and `mcpServers` wrapper forms).
+- **Plugins (green field)**: `PluginManifest` JSON contract; `electron/services/plugin-loader.ts` with chokidar watcher + change-notification subscription; bootstrap `resources/plugins/` → `userData/plugins/` on first run; enabled-state persisted separately in `userData/plugins.json`.
+- **Plugin install paths**: directory picker (native), paste-manifest (with optional `files` map, path-traversal guarded), bundled-catalog re-install. URL/archive fetch deferred (no `tar`/`unzipper` in production deps; adding mid-execute would be fake polish).
+- **Runtime hookup**: skill-loader, slash-commands, and mcp-manager each subscribe to plugin enable/disable broadcasts. Plugin-sourced skills + commands get namespaced ids (`<pluginId>:<entryId>`). Plugin-owned MCP servers are transient — never written to `mcp-servers.json`, rebuilt from `connectors.json` on every enable/disable. The UI surfaces a "plugin: X" badge for both.
+- **Bundled content shipped**: `example-plugin`, `lamprey-git-tools`, `lamprey-research-helpers` (3 plugins) + `example-directory-skill` (1 bundled directory-mode skill).
+- **Retired surfaces**: `SkillsManager.tsx` and `McpSettings.tsx` deleted; `'skills'` and `'mcp'` removed from `SettingsTabId`. All flows live in Customize now.
+
+**Decisions noted up front (per LAMPREY_CUSTOMIZE_PLAN.md §2)**
+- Customize is a full-window panel, not a settings tab or modal — matches Claude Code's UX.
+- Settings → Skills and Settings → MCP Servers were hard-deleted in favor of the unified Customize surface.
+- Plugin manifest is JSON (not YAML) — structured config, zero-dep parse.
+- User-scope only this phase. Per-project plugins are a deliberate future addition.
+- Sidebar icon kept as the existing `pluginsIcon` asset (relabel only); no fake new-asset polish.
+
+**Test verification**
+- TSC node + TSC web → clean.
+- `electron-vite build` → clean (~6.66s final).
+- `vitest electron/services/system-prompt-builder.test.ts` → 24 / 24 (no regressions from the C3 `allowedTools` widening).
+- Full suite: the only failures are environment-only — `better-sqlite3` was compiled against `NODE_MODULE_VERSION 133` and the current Node is 137. The failures hit pre-existing tests (`snip/apply.test.ts`, `conversation-store.test.ts`) on the unchanged pre-Customize commit `52443c0` too, so they're not Customize-introduced. Resolution is `electron-rebuild` against the live Node, outside this phase's scope.
+
+**Version + release**
+- `package.json` bumped from `0.4.0` (Snip Phase) to `0.5.0`.
+- The user is the reviewer + pusher; this commit goes to `main` per the explicit "execute the plan stem to stern… commit and push to main" directive.
+
+## 2026-06-05 — Customize Phase / C12 — Polish + tip strip + version bump
+
+**Shipped**
+- `src/components/customize/CustomizeView.tsx` — first-run tip strip directly under the page heading: "New here? Try Create new skills to scaffold your first skill in three steps, or browse the bundled plugins below." Clicking the inline "Create new skills" link opens NewSkillWizard (same wiring as the bottom CTA).
+- `package.json` — version bumped `0.4.0` → `0.5.0`.
+- `CLAUDE.md` — Current State block extended with Snip + Customize lines.
+- `memory/MEMORY.md` — build-status one-liner refreshed to mention Customize Phase.
+- `memory/project_build_status.md` — new "Customize Phase — complete" section enumerating per-prompt commits + architecture.
+
+**Verify**
+- `npx tsc --noEmit -p tsconfig.web.json` → clean.
+- `npx tsc --noEmit -p tsconfig.node.json` → clean.
+- `npx electron-vite build` → built in 6.66s, no warnings.
+- `npx vitest run electron/services/system-prompt-builder.test.ts` → 24 / 24.
+
 ## 2026-06-05 — Customize Phase / C11 — Plugin runtime hookup
 
 Enabling a plugin now actually surfaces its skills, slash commands, and connectors in the rest of the app. Disabling hides them without touching files on disk.

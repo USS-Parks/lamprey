@@ -97,6 +97,16 @@ export function CustomizeView() {
         <p className="mt-1 text-[14px] text-[var(--text-secondary)]">
           Skills, connectors, and plugins shape how Lamprey works with you.
         </p>
+        <div className="mt-3 rounded-md border border-[var(--accent-dim)] bg-[var(--accent-dim)]/10 px-3 py-1.5 text-[12px] text-[var(--text-secondary)]">
+          New here? Try{' '}
+          <button
+            onClick={() => setWizardOpen(true)}
+            className="font-medium text-[var(--accent)] underline-offset-2 hover:underline"
+          >
+            Create new skills
+          </button>{' '}
+          to scaffold your first skill in three steps, or browse the bundled plugins below.
+        </div>
       </div>
 
       {/* Three-column body */}
