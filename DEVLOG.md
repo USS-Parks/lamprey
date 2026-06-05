@@ -1,5 +1,20 @@
 # Lamprey Harness Dev Log
 
+## [Snip — Prompt K3] YAML filter loader + schema + chokidar hot-reload  —  2026-06-05
+
+**Files changed:**
+- `electron/services/snip/filter-schema.ts` (new) — pure validator that walks a raw JS object (the result of `yaml.load`) into a typed `Filter`, returning a structured `{ ok, filter? , error? }`. Strict: partial fields fail loud. 11 action tags individually validated for required fields.
+- `electron/services/snip/filter-loader.ts` (new) — mirrors `skill-loader.ts` shape. Dual filter dirs: `resources/snip-filters/` (built-in, bundled with app) and `<userData>/snip/filters/` (user-extensible). First launch copies the built-in tree to `<userData>/snip/filters/built-in/` so users can fork. chokidar watch on the userData dir with `awaitWriteFinish` debounce. User filters at the root override built-ins by name (K2's first-match-wins consumes them ahead of built-ins). `listActiveFilters`, `listAllFilters` (dashboard metadata), `listLoadErrors`, `reloadAllFilters`, `subscribeFilterChanges` exposed.
+- `electron/services/snip/filter-loader.test.ts` (new) — 20 unit tests covering schema validator edge cases (missing fields, malformed actions, aggregate without counters, etc.), YAML→Filter round-trip, classifyPath for built-in-vs-user, and isYamlFile (rejects `*.draft.yaml` reserved for K12's discover stub).
+- `package.json`, `package-lock.json` — `@types/js-yaml` added as a devDep. `js-yaml` itself was already a transitive dep via `gray-matter`, so no new runtime bundle weight.
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- vitest electron/services/snip/ ✓ (67 tests including K1's 22 + K2's 25)
+
+**Notes:** the test file follows skill-loader.test.ts's pattern of `vi.mock('electron', …)` + `vi.mock('@electron-toolkit/utils', …)` at the top — required because filter-loader.ts pulls in electron APIs (app.getPath, BrowserWindow). The `__filterLoaderTest` test surface exposes the pure pipeline (string YAML → Filter | error) so we don't need chokidar in tests. `*.draft.yaml` files are explicitly skipped by isYamlFile because K12 will drop draft stubs there for the user to edit before they become live filters.
+
 ## [Snip — Prompt K2] Matcher: command parsing + filter selection  —  2026-06-05
 
 **Files changed:**
