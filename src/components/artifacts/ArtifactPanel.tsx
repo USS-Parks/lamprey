@@ -1,7 +1,5 @@
 ﻿import { useCallback, useEffect, useRef, useState } from 'react'
-import { useThemedIcon } from '@/lib/themed-icon'
-import codeWindowLight from '@assets/Lamprey Code Window Icon.png'
-import codeWindowDark from '@assets/Lamprey Code Window Icon Dark View.png'
+import codeWindowIconUrl from '@assets/Lamprey Code Window Icon.png'
 
 interface ArtifactPanelProps {
   artifactType: string | null
@@ -14,8 +12,6 @@ export function ArtifactPanel({ artifactType, artifactSource, onClose }: Artifac
   const [panelWidth, setPanelWidth] = useState(420)
   const dragging = useRef(false)
   const [copied, setCopied] = useState(false)
-  const codeWindowIconUrl = useThemedIcon(codeWindowLight, codeWindowDark)
-
   const reportBounds = useCallback(() => {
     if (!panelRef.current || !window.api) return
     const rect = panelRef.current.getBoundingClientRect()

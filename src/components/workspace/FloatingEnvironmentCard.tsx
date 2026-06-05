@@ -9,6 +9,10 @@ import type { PlanStepStatus } from '@/lib/types'
 import { toast } from '@/stores/toast-store'
 import { WorkModePopover } from './WorkModePopover'
 import { BranchPickerPopover } from './BranchPickerPopover'
+import changesIcon from '@assets/Lamprey Env Card Changes Icon.png'
+import pipelineIcon from '@assets/Lamprey Env Card Pipeline Icon.png'
+import mainIcon from '@assets/Lamprey Env Card main Icon.png'
+import commitIcon from '@assets/Lamprey Env Card Commit Icon Light View.png'
 
 // Card layout constants. The card is a true floating overlay anchored
 // to the viewport (position: fixed), NOT to the chat surround — so
@@ -126,64 +130,15 @@ function ChevronDownGlyph(): React.ReactElement {
 }
 
 function ChangesGlyph(): React.ReactElement {
-  return (
-    <svg
-      width="14"
-      height="14"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <rect x="3" y="3" width="18" height="18" rx="2" />
-      <line x1="12" y1="8" x2="12" y2="16" />
-      <line x1="8" y1="12" x2="16" y2="12" />
-    </svg>
-  )
+  return <img src={changesIcon} alt="" aria-hidden className="icon-asset h-9 w-9 object-contain" />
 }
 
 function MonitorGlyph(): React.ReactElement {
-  return (
-    <svg
-      width="14"
-      height="14"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <rect x="2" y="4" width="20" height="13" rx="2" />
-      <line x1="8" y1="21" x2="16" y2="21" />
-      <line x1="12" y1="17" x2="12" y2="21" />
-    </svg>
-  )
+  return <img src={pipelineIcon} alt="" aria-hidden className="icon-asset h-9 w-9 object-contain" />
 }
 
 function BranchGlyph(): React.ReactElement {
-  return (
-    <svg
-      width="14"
-      height="14"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <line x1="6" y1="3" x2="6" y2="15" />
-      <circle cx="18" cy="6" r="3" />
-      <circle cx="6" cy="18" r="3" />
-      <path d="M18 9a9 9 0 0 1-9 9" />
-    </svg>
-  )
+  return <img src={mainIcon} alt="" aria-hidden className="icon-asset h-9 w-9 object-contain" />
 }
 
 function PlanStatusGlyph({ status }: { status: PlanStepStatus }): React.ReactElement {
@@ -241,23 +196,7 @@ function PlanStatusGlyph({ status }: { status: PlanStepStatus }): React.ReactEle
 }
 
 function CommitGlyph(): React.ReactElement {
-  return (
-    <svg
-      width="14"
-      height="14"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <circle cx="12" cy="12" r="4" />
-      <line x1="2" y1="12" x2="8" y2="12" />
-      <line x1="16" y1="12" x2="22" y2="12" />
-    </svg>
-  )
+  return <img src={commitIcon} alt="" aria-hidden className="icon-asset h-9 w-9 object-contain" />
 }
 
 interface CardRowProps {
@@ -295,7 +234,7 @@ function CardRow({
           : 'text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]'
       }`}
     >
-      <span className="flex h-4 w-4 shrink-0 items-center justify-center">{leading}</span>
+      <span className="flex h-9 w-9 shrink-0 items-center justify-center">{leading}</span>
       <span className="flex-1 truncate">{label}</span>
       {trailing && <span className="shrink-0">{trailing}</span>}
     </button>

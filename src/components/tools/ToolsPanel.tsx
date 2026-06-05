@@ -1,11 +1,7 @@
 import { useUiStore, type ToolId } from '@/stores/ui-store'
-import { useThemedIcon } from '@/lib/themed-icon'
-import addFileLight from '@assets/Lamprey Add File Icon.png'
-import addFileDark from '@assets/Lamprey Add File Icon Dark View.png'
-import autoReviewLight from '@assets/Lamprey Auto-Review Icon.png'
-import autoReviewDark from '@assets/Lamprey Auto-Review Icon Dark View.png'
-import chatWindowLight from '@assets/Lamprey Chat Window Icon.png'
-import chatIconDark from '@assets/Lamprey Chat Icon Dark View.png'
+import filesIcon from '@assets/Lamprey Add File Icon.png'
+import reviewIcon from '@assets/Lamprey Auto-Review Icon.png'
+import chatIcon from '@assets/Lamprey Chat Window Icon.png'
 import { FilesPanel } from './panels/FilesPanel'
 import { SideChatPanel } from './panels/SideChatPanel'
 import { BrowserPanel } from './panels/BrowserPanel'
@@ -48,10 +44,6 @@ function TerminalGlyph(): React.ReactElement {
 }
 
 function ToolHeaderIcon({ tool }: { tool: ToolId }): React.ReactElement {
-  const filesIcon = useThemedIcon(addFileLight, addFileDark)
-  const reviewIcon = useThemedIcon(autoReviewLight, autoReviewDark)
-  const chatIcon = useThemedIcon(chatWindowLight, chatIconDark)
-
   switch (tool) {
     case 'files':
       return <img src={filesIcon} alt="" aria-hidden className="icon-asset h-7 w-7 object-contain" />

@@ -1,12 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { useUiStore, type ToolId } from '@/stores/ui-store'
-import { useThemedIcon } from '@/lib/themed-icon'
-import addFileLight from '@assets/Lamprey Add File Icon.png'
-import addFileDark from '@assets/Lamprey Add File Icon Dark View.png'
-import autoReviewLight from '@assets/Lamprey Auto-Review Icon.png'
-import autoReviewDark from '@assets/Lamprey Auto-Review Icon Dark View.png'
-import chatWindowLight from '@assets/Lamprey Chat Window Icon.png'
-import chatIconDark from '@assets/Lamprey Chat Icon Dark View.png'
+import addFileIcon from '@assets/Lamprey Add File Icon.png'
+import autoReviewIcon from '@assets/Lamprey Auto-Review Icon.png'
+import chatWindowIcon from '@assets/Lamprey Chat Window Icon.png'
 
 interface ToolMenuItem {
   id: ToolId
@@ -57,15 +53,11 @@ export function AddToolMenu({ variant = 'expanded' }: AddToolMenuProps) {
   const setActiveTool = useUiStore((s) => s.setActiveTool)
   const wrapperRef = useRef<HTMLDivElement>(null)
 
-  const filesIconUrl = useThemedIcon(addFileLight, addFileDark)
-  const reviewIconUrl = useThemedIcon(autoReviewLight, autoReviewDark)
-  const sideChatIconUrl = useThemedIcon(chatWindowLight, chatIconDark)
-
   const items: ToolMenuItem[] = [
-    { id: 'files', label: 'Files', shortcut: 'Ctrl+P', iconUrl: filesIconUrl },
-    { id: 'sidechat', label: 'Side chat', iconUrl: sideChatIconUrl },
+    { id: 'files', label: 'Files', shortcut: 'Ctrl+P', iconUrl: addFileIcon },
+    { id: 'sidechat', label: 'Side chat', iconUrl: chatWindowIcon },
     { id: 'browser', label: 'Browser', shortcut: 'Ctrl+T', Svg: BrowserGlyph },
-    { id: 'review', label: 'Review', shortcut: 'Ctrl+Shift+G', iconUrl: reviewIconUrl },
+    { id: 'review', label: 'Review', shortcut: 'Ctrl+Shift+G', iconUrl: autoReviewIcon },
     { id: 'terminal', label: 'Terminal', shortcut: 'Ctrl+`', Svg: TerminalGlyph }
   ]
 
@@ -131,7 +123,7 @@ export function AddToolMenu({ variant = 'expanded' }: AddToolMenuProps) {
             >
               <span className="flex h-5 w-5 shrink-0 items-center justify-center text-[var(--text-secondary)]">
                 {item.iconUrl ? (
-                  <img src={item.iconUrl} alt="" aria-hidden className="icon-asset h-5 w-5 object-contain" />
+                  <img src={item.iconUrl} alt="" aria-hidden className="icon-asset themed-variant-light h-5 w-5 object-contain" />
                 ) : item.Svg ? (
                   <item.Svg />
                 ) : null}

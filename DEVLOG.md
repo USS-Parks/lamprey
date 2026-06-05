@@ -1,5 +1,74 @@
 # Lamprey Harness Dev Log
 
+## [Release v0.2.8 Published] — 2026-06-04
+
+Patch on top of v0.2.7. The chat-pill stop button shipped in v0.2.7
+rendered as a solid white block in dark mode because the source PNG
+had a baked-flat opaque white interior — the same class of bug
+the v0.2.7 release fixed for Project History + the four Env Card
+icons. v0.2.8 runs `Lamprey Chat Pill Stop Icon Light View.png`
+through the same `scripts/make-wireframe.cjs` cleanup (93.1% of
+white pixels knocked transparent) and rebuilds the Windows
+installer + portable ZIP. No source changes — strictly an asset
+fix.
+
+**What changed:**
+- `ASSETS/Lamprey Chat Pill Stop Icon Light View.png` re-exported as a true wireframe (script's standard brightness>0.9 + saturation<0.08 transparency rule). The five PNGs already processed by v0.2.7 reconfirm 0% changed when re-run.
+- `scripts/make-wireframe.cjs` gained one more entry in its `FILES` list so future runs keep the stop icon flat. No algorithm change.
+
+**Artifacts built locally:**
+- `Lamprey-0.2.8-x64.exe` — NSIS installer
+- `Lamprey-0.2.8-x64.zip` — portable bundle
+- Both Windows-only, unsigned (same as v0.2.7).
+
+**Release ops:**
+- `package.json` 0.2.7 → 0.2.8. Local `npm run build:win` produced both artifacts.
+- README download table + Quick Start link + "Built and shipped" header bumped to v0.2.8.
+- `gh release create v0.2.8 --latest` (Windows-only, takes Latest from v0.2.7).
+- `memory/project_build_status.md` updated to mark v0.2.8 as Latest; v0.2.7 retained as prior-published since its assets stay attached and the lineage is correct.
+
+**Verify:**
+- tsc node ✓
+- tsc web ✓
+- electron-vite build ✓
+- electron-builder build ✓ (NSIS + ZIP + blockmap)
+
+## [Release v0.2.7 Published] — 2026-06-04
+
+Icon system overhaul. The whole desktop now follows a single rule —
+every `img.icon-asset` (and `icon-asset-crisp`) ships as a transparent
+wireframe PNG and the dark-mode whitening happens via one global CSS
+filter (`brightness(0) invert(1)`) instead of swapping to a separate
+cream-glow "dark view" PNG. Includes a new offline asset-cleanup script
+that knocks opaque white interiors transparent on icons that were
+baked-flat at export time.
+
+**What changed:**
+- **Global dark-mode rule.** `src/styles/index.css` — the `:root[data-theme-mode='dark'] img.icon-asset` selector applies the filter to every iconographic asset, no per-img class needed.
+- **Audit + conversion across 12 components.** App.tsx, AddToolMenu, Sidebar, Titlebar, ArtifactsPanel, RightPanelHome, ToolsPanel, ArtifactPanel, ChatInput, MessageList, MessageActions, StreamingText — each dropped its `useThemedIcon(light, dark)` JS swap and now imports a single light-wireframe PNG. The legacy dark-view PNGs sit unused on disk (referenced for reproducibility).
+- **Env Card wireframes.** `FloatingEnvironmentCard.tsx` — the Changes / Pipeline (work-mode) / main (branch) / Commit rows render the new Env Card PNGs at `h-9 w-9`. The four PNGs were re-exported wireframes via the cleanup script (89–93% of opaque white pixels knocked transparent).
+- **Sidebar icon swaps.** Left rail now uses dedicated PNGs for Sessions (`Pin As Chapter`), Automations (`Project History`), Files pill (`Worktree`), and each project / conversation row (`Auto-Review`). The inline `ClockIcon` + `SessionsIcon` SVGs were removed; the Automations PNG had its baked-white interior knocked transparent by the cleanup script.
+- **Chat input refinements.** Replaced the red-circle stop button with the new `Chat Pill Stop Icon` PNG at the same `h-[60px] w-[60px]` shape as the send pill; hover state goes red to preserve the stop affordance. Thinking + coding pulse indicators doubled (`h-12 w-12`); Reasoning chip icon doubled (`h-10 w-10`); Activity header thinking icon doubled.
+- **MessageActions enlarged.** Copy / thumbs / fork / pin buttons at `h-16 w-16` slots with `h-9 w-9` icons.
+- **Reusable cleanup script.** `scripts/make-wireframe.cjs` — pure-Node + `sharp`, idempotent. Reads each PNG, knocks high-brightness + low-saturation pixels transparent (so dark navy strokes and teal accents stay, baked white interiors disappear). Used today on Project History + four Env Card PNGs.
+
+**Artifacts built locally:**
+- `Lamprey-0.2.7-x64.exe` — 231 MB, NSIS installer
+- `Lamprey-0.2.7-x64.zip` — 300 MB, portable bundle
+- Both unsigned (no code-signing cert configured — same as prior releases)
+
+**Release ops:**
+- `package.json` 0.2.6 → 0.2.7. Local `npm run build:win` produced the NSIS + ZIP.
+- README download table + Quick Start link bumped to v0.2.7; AppImage row dropped (Linux not bundled this release — `npm run build:linux` still works for self-builders).
+- `gh release create v0.2.7 --latest` (Windows-only assets).
+- `memory/project_build_status.md` updated to mark v0.2.7 as Latest.
+
+**Verify:**
+- tsc node ✓
+- tsc web ✓
+- electron-vite build ✓ (renderer + main bundles, 5.17s)
+- electron-builder build ✓ locally (NSIS + ZIP + blockmap)
+
 ## [Release v0.2.2 Published] — 2026-06-04
 
 Maintenance build on the 0.2.x line — no behavioral changes versus v0.2.1.

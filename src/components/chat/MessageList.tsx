@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react'
 import type { Message } from '@/lib/types'
 import { parseReasoning } from '@/lib/reasoning'
-import { useThemedIcon } from '@/lib/themed-icon'
 import { MessageBubble } from './MessageBubble'
 import { StreamingText } from './StreamingText'
 import { StreamStatusLine } from './StreamStatusLine'
@@ -17,8 +16,7 @@ import {
   CompressedRegionPill,
   isCompressedSummaryMessage
 } from './CompressedRegionPill'
-import thinkingLight from '@assets/Lamprey Thinking Icon.png'
-import thinkingDark from '@assets/Lamprey Thinking Icon Dark View.png'
+import thinkingIconUrl from '@assets/Lamprey Thinking Icon.png'
 
 interface MessageListProps {
   messages: Message[]
@@ -106,8 +104,6 @@ export function MessageList({
     // animation that lags behind the stream.
     el.scrollTop = el.scrollHeight
   }, [messages, streamingContent, isStreaming])
-
-  const thinkingIconUrl = useThemedIcon(thinkingLight, thinkingDark)
 
   // Live chain-of-thought streamed off the provider's reasoning channel
   // (DeepSeek `delta.reasoning_content` / OpenRouter `delta.reasoning`).
@@ -244,7 +240,7 @@ export function MessageList({
                     <img
                       src={thinkingIconUrl}
                       alt="Thinking"
-                      className="icon-asset h-[31px] w-[31px] animate-pulse object-contain"
+                      className="icon-asset h-[62px] w-[62px] animate-pulse object-contain"
                     />
                   </div>
                 )}

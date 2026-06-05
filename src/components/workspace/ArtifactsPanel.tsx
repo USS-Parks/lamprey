@@ -1,9 +1,6 @@
 import { useChatStore } from '@/stores/chat-store'
-import { useThemedIcon } from '@/lib/themed-icon'
-import artifactsHeaderLight from '@assets/Lamprey Code Window Icon.png'
-import artifactsHeaderDark from '@assets/Lamprey Code Window Icon Dark View.png'
-import thinkingLight from '@assets/Lamprey Thinking Icon.png'
-import thinkingDark from '@assets/Lamprey Thinking Icon Dark View.png'
+import artifactsIconUrl from '@assets/Lamprey Code Window Icon.png'
+import thinkingIconUrl from '@assets/Lamprey Thinking Icon.png'
 import { ActivityFeed } from '@/components/artifacts/ActivityFeed'
 import { PanelEmptyState } from '@/components/ui/PanelEmptyState'
 
@@ -15,8 +12,6 @@ import { PanelEmptyState } from '@/components/ui/PanelEmptyState'
 export function ArtifactsPanel(): React.ReactElement {
   const isStreaming = useChatStore((s) => s.isStreaming)
   const toolCalls = useChatStore((s) => s.toolCalls)
-  const artifactsIconUrl = useThemedIcon(artifactsHeaderLight, artifactsHeaderDark)
-  const thinkingIconUrl = useThemedIcon(thinkingLight, thinkingDark)
   const showActivity = isStreaming || toolCalls.length > 0
 
   if (showActivity) {
@@ -27,7 +22,7 @@ export function ArtifactsPanel(): React.ReactElement {
             src={thinkingIconUrl}
             alt=""
             aria-hidden
-            className="icon-asset h-6 w-6 animate-pulse object-contain"
+            className="icon-asset h-12 w-12 animate-pulse object-contain"
           />
           Activity
         </div>

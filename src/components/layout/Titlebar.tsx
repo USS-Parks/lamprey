@@ -2,12 +2,10 @@ import { useEffect, useRef, useState } from 'react'
 import { useSettingsStore } from '@/stores/settings-store'
 import { useUiStore, type ToolId } from '@/stores/ui-store'
 import { useChatStore } from '@/stores/chat-store'
-import { useThemedIcon } from '@/lib/themed-icon'
 import { toast } from '@/stores/toast-store'
 import { THEME_PRESETS, getActiveTokens, getPreset } from '@/styles/theme-presets'
 import { ToolLauncherPopover } from '@/components/workspace/ToolLauncherPopover'
-import settingsLight from '@assets/Lamprey Settings Icon.png'
-import settingsDark from '@assets/Lamprey Settings Icon Dark View.png'
+import settingsIconUrl from '@assets/Lamprey Settings Icon.png'
 import lampreyLogo from '@assets/Lamprey Desktop Icon-1.png'
 
 const TOOL_TITLES: Record<ToolId, string> = {
@@ -453,7 +451,6 @@ export function SecondaryToolbar({ onSettingsClick }: SecondaryToolbarProps) {
   const activePreset = getPreset(settings.themePreset)
   const activeTokens = getActiveTokens(activePreset, settings.themeMode)
   const isDark = settings.themeMode === 'dark'
-  const settingsIconUrl = useThemedIcon(settingsLight, settingsDark)
 
   const launcherRef = useRef<HTMLButtonElement>(null)
   const [launcherOpen, setLauncherOpen] = useState(false)

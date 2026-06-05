@@ -34,9 +34,7 @@ import { SecurityBanner } from '@/components/ui/SecurityBanner'
 import { AsyncEventToast } from '@/components/chat/AsyncEventToast'
 import { StatusLine } from '@/components/layout/StatusLine'
 import { AskUserModal } from '@/components/chat/AskUserModal'
-import { useThemedIcon } from '@/lib/themed-icon'
-import artifactsPlaceholderLight from '@assets/Lamprey Code Window Icon.png'
-import artifactsPlaceholderDark from '@assets/Lamprey Code Window Icon Dark View.png'
+import artifactsPlaceholderUrl from '@assets/Lamprey Code Window Icon.png'
 import type { ToolApprovalRequest } from '@/lib/types'
 
 function App(): React.ReactElement {
@@ -63,7 +61,6 @@ function App(): React.ReactElement {
   const setRightPanelCollapsed = useUiStore((s) => s.setRightPanelCollapsed)
   const setRightPanelWidth = useUiStore((s) => s.setRightPanelWidth)
   const activeTool = useUiStore((s) => s.activeTool)
-  const artifactsPlaceholderUrl = useThemedIcon(artifactsPlaceholderLight, artifactsPlaceholderDark)
   const isNarrow = useMediaQuery(NARROW_VIEWPORT_QUERY)
 
   // Track the chat workspace column's measured width so the card can
@@ -409,7 +406,7 @@ function App(): React.ReactElement {
                 <polyline points="15 18 9 12 15 6" />
               </svg>
             </button>
-            <img src={artifactsPlaceholderUrl} alt="" aria-hidden className="icon-asset mt-2 h-[25px] w-[25px] object-contain opacity-60" />
+            <img src={artifactsPlaceholderUrl} alt="" aria-hidden className="icon-asset themed-variant-light mt-2 h-[25px] w-[25px] object-contain opacity-60" />
           </div>
         )}
         {!isNarrow && !rightPanelCollapsed && activeTool && (
