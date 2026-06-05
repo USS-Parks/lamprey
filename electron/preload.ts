@@ -813,6 +813,14 @@ const api = {
     deleteKey: (provider: string) => ipcRenderer.invoke('webTools:deleteKey', provider)
   },
 
+  research: {
+    start: (request: { question: string; depth?: 'quick' | 'standard' | 'exhaustive'; conversationId: string }) =>
+      ipcRenderer.invoke('research:start', request),
+    cancel: (runId: string) => ipcRenderer.invoke('research:cancel', runId),
+    status: (runId: string) => ipcRenderer.invoke('research:status', runId),
+    list: () => ipcRenderer.invoke('research:list')
+  },
+
   currentInfo: {
     setProvider: (kind: string, provider: string, opts: { apiKey?: string }) =>
       ipcRenderer.invoke('currentInfo:setProvider', kind, provider, opts),

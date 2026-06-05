@@ -1,5 +1,28 @@
 # Lamprey Harness Dev Log
 
+## [Deep Research — Prompt D10] Orchestrator + IPC + progress streaming  —  2026-06-05
+
+**Files changed:**
+- `electron/services/research/index.ts` — replaced the D3 stub with the real `runDeepResearch({question, depth, conversationId, correlationId, abortSignal, onProgress, deps?})`. Stages run in order: `planning → searching → reading → extracting-claims → corroborating → synthesizing → writing-artifact → done`. Every stage boundary emits a `ResearchProgress` snapshot via the injected `onProgress` callback. The `AbortSignal` is checked between stages (`checkAbort()`); abort during a stage throws `DeepResearchCancelledError`. `FabricatedCitationError` from D9 is re-raised through the orchestrator with a stage=failed event so the renderer can surface it explicitly (no silent fallback — quality bar). Empty source / empty pages / empty claims each throw with a clear message. Embeddings provider is lazy-loaded from the RAG service via dynamic import so unit tests don't pull in the worker_threads stack. An in-process active-run registry (`registerRun` / `cancelRun` / `getRunStatus` / `listActiveRuns` / `__resetActiveRuns`) is exported for the IPC layer.
+- `electron/ipc/research.ts` (new) — IPC handlers for `research:start` (kicks off the run async, returns `{runId}` immediately; progress streams through `chat-events` as `research:progress`, completion as `research:completed`, failure as `research:failed`), `research:cancel`, `research:status`, `research:list`.
+- `electron/ipc/index.ts` — registers `registerResearchHandlers()`.
+- `electron/preload.ts` — exposes `window.api.research.{start, cancel, status, list}`.
+- `electron/services/chat-events.ts` — extends `ChatEventMap` with `research:progress`, `research:completed`, `research:failed` payload types.
+- `electron/services/research/adapter-cascade.ts` — flips `DEFAULT_DEEP_RESEARCH_SETTINGS.autoTrigger` from `false` to `true` now that the orchestrator is real.
+- `electron/services/research/adapter-cascade.test.ts` — updates the "defaults when empty" test to expect `autoTrigger=true`.
+- `electron/ipc/chat.ts` — rewrites the D3 routing branch: creates an early `AbortController` (registered in `activeAbortControllers` so `chat:cancel` reaches the research run), calls `runDeepResearch` with the routed body + depth, and on success saves an assistant message containing the summary + sources line + clickable artifact link. On failure the error propagates to the outer catch (which already emits `chat:error`). Removed the D3 `isDeepResearchNotImplemented` fall-through — the pipeline is wired end-to-end now.
+- `electron/services/research/index.test.ts` (new) — 13 tests across happy-path (every stage runs, progress events in order, artifact writer called with a `.md` path), failure paths (empty sources / empty pages / empty claims → throw with clear message, FabricatedCitationError propagates), cancellation (pre-abort + mid-pipeline abort raise `DeepResearchCancelledError`), and the registry helpers (`listActiveRuns` cleans up after a run, `getRunStatus`/`cancelRun` return null/false for unknown ids).
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- vitest electron/services/research/index.test.ts ✓ (13/13)
+- vitest full suite ✓ (1608 passed | 18 skipped — +13 from D9's 1595; same 18 pre-existing Windows EPERM flakes)
+
+**Notes:** The IPC layer's `research:start` returns `{runId}` immediately by waiting one `setImmediate` tick for the first progress event to populate the runId (the orchestrator generates one internally). This keeps the renderer's `research:start` call cheap — the actual pipeline runs in the background. The chat-side path in `chat.ts` is synchronous-awaited so the assistant message lands as part of the same `chat:send` turn; both paths share the same underlying `runDeepResearch` and emit the same progress events. Lazy-loading the embeddings service via `await import(...)` lets tests stub the entire stage chain via the `deps` interface without ever touching `electron/services/rag/embeddings/service.ts`. Cascade-test updated to reflect the new `autoTrigger: true` default.
+
+**Commit:** _pending_
+
 ## [Deep Research — Prompt D9] Markdown synthesizer (strict-citation)  —  2026-06-05
 
 **Files changed:**
@@ -15,7 +38,7 @@
 
 **Notes:** Bibliography is built locally — the model is told NOT to emit a `## Sources` section, and if it does anyway we strip it before appending our own. That's the only way to guarantee the URLs in the final artifact correspond to the actual fetched sources rather than model-hallucinated variants. The retry path uses the same chat history with an additional explicit-correction message ("indices X are not in the pool; regenerate") so the model sees its own error before retrying. `FabricatedCitationError` carries the fabricated index list so the orchestrator (D10) can surface a clear failure message to the user — quality-bar over silent fallback.
 
-**Commit:** _pending_
+**Commit:** `ef336b0`
 
 ## [Deep Research — Prompt D8] Multi-source corroboration  —  2026-06-05
 

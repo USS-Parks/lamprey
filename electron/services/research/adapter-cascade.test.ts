@@ -58,7 +58,8 @@ describe('readDeepResearchSettings', () => {
   it('returns defaults when settings.json is empty', () => {
     const s = readDeepResearchSettings()
     expect(s.providerCascade).toEqual(DEFAULT_PROVIDER_CASCADE)
-    expect(s.autoTrigger).toBe(false)
+    // D10 flipped the default to true now that the orchestrator is wired.
+    expect(s.autoTrigger).toBe(true)
     expect(s.depthTier).toBe('auto')
   })
 

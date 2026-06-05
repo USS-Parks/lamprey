@@ -39,10 +39,11 @@ export interface DeepResearchSettings {
 
 const DEFAULT_DEEP_RESEARCH_SETTINGS: DeepResearchSettings = {
   providerCascade: DEFAULT_PROVIDER_CASCADE,
-  // D3 ships with auto-trigger off; D10 flips this to true once the real
-  // orchestrator is wired (until then the routing call would land in a
-  // not-yet-implemented stub).
-  autoTrigger: false,
+  // D10 — flipped to true now that the orchestrator is wired. Users can
+  // disable globally in settings.json or per-turn via the `--no-research`
+  // prompt prefix; the intent classifier short-circuits research-shaped
+  // routing for code-edit prompts and plan-mode anyway.
+  autoTrigger: true,
   depthTier: 'auto'
 }
 

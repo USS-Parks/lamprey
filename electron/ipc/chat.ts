@@ -46,7 +46,7 @@ import { dispatchNativeTool } from '../services/native-dispatch'
 import { emitChatEvent } from '../services/chat-events'
 import { readDeepResearchSettings } from '../services/research/adapter-cascade'
 import { routeChatTurn } from '../services/research/intent'
-import { runDeepResearch, isDeepResearchNotImplemented } from '../services/research'
+import { runDeepResearch, FabricatedCitationError, DeepResearchCancelledError } from '../services/research'
 import {
   composeFinalResponse,
   shouldComposeFinalResponse,
@@ -267,36 +267,44 @@ export function registerChatHandlers(): void {
       })
 
       // If routing chose the research pipeline, hand off to runDeepResearch
-      // and emit its outcome as the assistant message. D3 ships with a stub
-      // orchestrator that throws DeepResearchNotImplementedError; we catch
-      // that specific error and fall through to normal chat dispatch so
-      // pre-D10 settings flips don't dead-end the user. Any other error is
-      // re-thrown to the outer catch.
+      // and emit its outcome as the assistant message. Errors fall through
+      // to the outer catch which emits a chat:error event so the user
+      // sees the problem (no silent fallback — quality-bar invariant).
       if (researchRoute && researchRoute.kind === 'research') {
+        // Set up an abort controller early so chat:cancel can interrupt
+        // the in-flight research run. The normal-dispatch path below
+        // creates its own a few lines later; only one of the two ever
+        // runs per turn.
+        const researchAbort = new AbortController()
+        activeAbortControllers.set(conversationId, {
+          controller: researchAbort,
+          correlationId,
+          startedAt: Date.now()
+        })
         try {
           const outcome = await runDeepResearch({
             question: researchRoute.body,
             depth: researchRoute.depth,
             conversationId,
-            correlationId
+            correlationId,
+            abortSignal: researchAbort.signal
           })
-          // D10/D11 fill in artifact emission + chat message; for now this
-          // branch is unreachable in default settings. Surface a minimal
-          // assistant reply so the path is wired end-to-end.
+          // D11 will register the artifact with the renderer; D10's job
+          // is to drop the assistant message containing the executive
+          // summary and a clickable link to the on-disk markdown.
           convStore.saveMessage({
             id: randomUUID(),
             conversationId,
             role: 'assistant',
-            content: `${outcome.summary}\n\n**Sources:** ${outcome.sourceCount} (${outcome.acceptedCount} accepted, ${outcome.singleSourceCount} single-source, ${outcome.disputedCount} disputed)\n\n[Open full report](artifact://research/${outcome.filename})`,
+            content: `${outcome.summary}\n\n**Sources:** ${outcome.sourceCount} (${outcome.acceptedCount} accepted, ${outcome.singleSourceCount} single-source, ${outcome.disputedCount} disputed) · Providers: ${outcome.providersUsed.join(', ') || 'none'}\n\n[Open full report](artifact://research/${outcome.filename})`,
             model
           })
           return { success: true, data: { conversationId, correlationId } }
-        } catch (err) {
-          if (!isDeepResearchNotImplemented(err)) {
-            throw err
-          }
-          console.warn('[chat] deep research pipeline not yet implemented; falling back to normal dispatch.')
+        } finally {
+          activeAbortControllers.delete(conversationId)
         }
+        void FabricatedCitationError
+        void DeepResearchCancelledError
       }
 
       emitPhase(conversationId, 'understanding')
