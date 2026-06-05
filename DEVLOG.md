@@ -1,5 +1,23 @@
 # Lamprey Harness Dev Log
 
+## [Deep Research — Prompt D3] Intent classifier + auto-trigger routing  —  2026-06-05
+
+**Files changed:**
+- `electron/services/research/intent.ts` (new) — `parseResearchPrefix` strips `/research` (force) and `--no-research` (suppress) prefixes from the front of a prompt. `prefilterResearch` is a pure deterministic heuristic over the body: code-edit verbs (`fix`/`write`/`implement`/…), path-like tokens (mirrors the J10 autolink regex), code fences, plan-mode-active, very-short non-questions → `skip`. Research-loud phrases (`tell me about`, `compare`, `latest`, `history of`, etc.) → `allow` with depth scaled by word count. Everything else → `undecided`, deferring to the LLM. `classifyResearchIntent` calls the configured model (defaults to `deepseek-v4-flash`) with a strict-JSON system prompt and parses via `parseClassifierOutput` (tolerates surrounding prose, clamps confidence to [0,1], falls back to safe defaults on malformed JSON). `shouldEscalateToResearch` composes all four stages with per-session caching keyed by a cheap hash of the body. `routeChatTurn` is the public chat.ts entry point — it short-circuits to "normal" when `autoTrigger=false` so the cheap path is exercised on every chat turn regardless of routing setup.
+- `electron/services/research/index.ts` (new) — stub `runDeepResearch()` that throws a typed `DeepResearchNotImplementedError`. D10 replaces this with the real orchestrator; D11 extends it with artifact emission. The typed error lets `chat.ts` distinguish "pipeline not ready" from genuine pipeline failures.
+- `electron/ipc/chat.ts` — wires `routeChatTurn` between conversation creation and message persistence. The saved user message reflects the body with `/research` or `--no-research` already stripped, so downstream history, RAG, and skills see the clean text. When routing chooses research and the orchestrator stub throws `NotImplementedError`, we log a warning and fall through to normal dispatch.
+- `electron/services/research/intent.test.ts` (new) — 51 tests across prefix parsing (case-insensitive, position-anchored, bare-verb edge cases), prefilter REJECT fixtures (10 code-edit verbs + path tokens + code fences + plan-mode + short non-questions + empty input), prefilter ALLOW fixtures (6 research-loud phrases), prefilter UNDECIDED branch, `parseClassifierOutput` (clean JSON, embedded JSON, malformed input, confidence clamp, depth fallback), `classifyResearchIntent` (LLM error → null), `shouldEscalateToResearch` composition (prefix → no LLM, prefilter → no LLM, undecided → LLM, cache hit), `routeChatTurn` (forced, suppressed, autoTrigger-off path is cheap, prefilter-allow path, LLM-yes-confidence-met path, LLM-below-threshold falls back, plan-mode never escalates, LLM error falls back).
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- vitest electron/services/research/intent.test.ts ✓ (51/51)
+- vitest full suite ✓ (1477 passed | 18 skipped — +51 from D2's 1426)
+
+**Notes:** First draft of the prefilter checked "too short and not a question" *before* the research-loud phrase scan, which mis-rejected short-but-clearly-research prompts like `"history of the printing press"` and `"compare REST vs GraphQL for high-throughput APIs"`. Re-ordered so research-loud beats the length check. `EscalateOpts` originally extended `PrefilterInput` (which has required `content`) but `shouldEscalateToResearch` already takes the raw content as a positional arg, so the inheritance was producing redundant-required-field errors at every call site — flattened to its own interface. `routeChatTurn` is gated on `autoTrigger`: when off, only the cheap prefix + prefilter run (no LLM call on every chat turn). Settings default `autoTrigger=false`; D10 flips it.
+
+**Commit:** _pending_
+
 ## [Deep Research — Prompt D2] Adapter cascade + cross-provider dedup  —  2026-06-05
 
 **Files changed:**
@@ -15,7 +33,7 @@
 
 **Notes:** First test draft expected unconfigured providers to surface in `errors`; the implementation correctly filters them out *before* the cascade loop, so the test assertion was wrong, not the code. Settings parsing defaults `autoTrigger` to `false`; D10 flips this to `true` once `runDeepResearch()` exists. The cascade is intentionally provider-agnostic — every later stage that needs search reuses it without knowing or caring about Brave vs DDG vs SerpAPI.
 
-**Commit:** _pending_
+**Commit:** `6c89fe2`
 
 ## [Deep Research — Prompt D1] DuckDuckGo adapter (no-key default)  —  2026-06-05
 
