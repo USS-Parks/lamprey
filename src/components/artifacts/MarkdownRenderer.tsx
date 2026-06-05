@@ -125,12 +125,33 @@ export function MarkdownRenderer({ content }: MarkdownRendererProps) {
           a({ href, children }) {
             const handleClick = (e: React.MouseEvent) => {
               e.preventDefault()
-              if (href) {
-                if (window.api?.artifact?.openExternal) {
-                  window.api.artifact.openExternal(href)
-                } else {
-                  window.open(href, '_blank')
+              if (!href) return
+              // D11 — `artifact://research/<filename>` links route the
+              // markdown report into the right-panel via the standard
+              // artifact channel. Falls back to opening the URL externally
+              // if the research API is missing.
+              if (href.startsWith('artifact://research/')) {
+                const filename = href.replace(/^artifact:\/\/research\//, '')
+                const w = window as unknown as {
+                  api?: { research?: { read?: (f: string) => Promise<{ success: boolean; data?: { content: string } }> } }
+                  __openArtifact?: (type: string, source: string) => void
                 }
+                if (w.api?.research?.read && w.__openArtifact) {
+                  void w.api.research
+                    .read(filename)
+                    .then((r) => {
+                      if (r.success && r.data) {
+                        w.__openArtifact?.('markdown', r.data.content)
+                      }
+                    })
+                    .catch((err) => console.warn('[MarkdownRenderer] research:read failed', err))
+                  return
+                }
+              }
+              if (window.api?.artifact?.openExternal) {
+                window.api.artifact.openExternal(href)
+              } else {
+                window.open(href, '_blank')
               }
             }
             return (

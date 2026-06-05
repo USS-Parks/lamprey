@@ -1,16 +1,15 @@
 import { describe, it, expect, beforeEach, afterAll, vi } from 'vitest'
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import matter from 'gray-matter'
 
-// Each test file gets its own tmpdir so parallel vitest workers don't
-// step on each other's lamprey-memory directories. The SQLite mirror is
-// optional in the test environment — the store falls back to its
-// in-memory mirror when better-sqlite3's Electron-ABI binding can't
-// load. Files remain canonical either way, so the FS-driven assertions
-// stay meaningful regardless of which mirror is in use.
-const TEST_USER_DATA = join(tmpdir(), `lamprey-memstore-test-${process.pid}-${Date.now()}`)
+// Each test gets its own fresh tmpdir (via `mkdtempSync`) so we never
+// race with better-sqlite3's file handles on Windows — `rmSync` of a
+// directory holding an open SQLite WAL fails with EPERM on Windows even
+// with `force: true`. Using a fresh directory per test sidesteps the
+// race entirely and the cleanup at afterAll is best-effort.
+let TEST_USER_DATA = join(tmpdir(), `lamprey-memstore-test-${process.pid}-${Date.now()}`)
 
 vi.mock('electron', () => ({
   app: { getPath: () => TEST_USER_DATA },
@@ -32,9 +31,12 @@ import * as memStore from './memory-store'
 import { memorySlug } from './memory-frontmatter'
 
 function freshUserData(): void {
-  if (existsSync(TEST_USER_DATA)) {
-    rmSync(TEST_USER_DATA, { recursive: true, force: true })
-  }
+  // Allocate a brand-new directory for this test. We do NOT remove the
+  // previous one — on Windows, better-sqlite3 keeps file handles around
+  // briefly after close and `rmSync(force: true)` still throws EPERM.
+  // Leaving the old dir behind costs a few KB in tmp; the afterAll +
+  // OS reboot cleanup handles the long tail.
+  TEST_USER_DATA = mkdtempSync(join(tmpdir(), `lamprey-memstore-test-${process.pid}-`))
   mkdirSync(TEST_USER_DATA, { recursive: true })
   memStore.__memoryStoreTest.resetForTests()
   // Force fallback so the suite stays portable across CI environments
@@ -47,9 +49,12 @@ beforeEach(() => {
 })
 
 afterAll(() => {
-  if (existsSync(TEST_USER_DATA)) {
-    rmSync(TEST_USER_DATA, { recursive: true, force: true })
-  }
+  // Best-effort cleanup. EPERM is expected on Windows; swallow it.
+  try {
+    if (existsSync(TEST_USER_DATA)) {
+      rmSync(TEST_USER_DATA, { recursive: true, force: true })
+    }
+  } catch { /* Windows file-handle race; ignore */ }
 })
 
 describe('D1 — typed file-backed write/list/read/delete', () => {

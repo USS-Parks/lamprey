@@ -44,6 +44,9 @@ import { getActiveWorkspace } from '../services/workspace-state'
 import { classifyToolResult } from '../services/tool-result-status'
 import { dispatchNativeTool } from '../services/native-dispatch'
 import { emitChatEvent } from '../services/chat-events'
+import { readDeepResearchSettings } from '../services/research/adapter-cascade'
+import { routeChatTurn } from '../services/research/intent'
+import { runDeepResearch, FabricatedCitationError, DeepResearchCancelledError } from '../services/research'
 import {
   composeFinalResponse,
   shouldComposeFinalResponse,
@@ -213,7 +216,11 @@ export function registerChatHandlers(): void {
     if (!validation.ok) {
       return { success: false, error: validation.error }
     }
-    const { content, model, activeSkillIds, requestedAgentMode } = validation.value
+    const { content: rawContent, model, activeSkillIds, requestedAgentMode } = validation.value
+    // D3 — the prompt body the rest of the handler sees may have a
+    // /research or --no-research prefix stripped off it. The actual
+    // routing decision is made below before any model dispatch.
+    let content = rawContent
     let conversationId = validation.value.conversationId
 
     // Hoisted so the catch block can reference it when an exception fires
@@ -229,6 +236,28 @@ export function registerChatHandlers(): void {
         conversationId = conv.id
       }
 
+      // D3 — Deep research routing decision. Strips any /research or
+      // --no-research prefix from the prompt and, when auto-trigger is
+      // enabled in settings (defaults to off until D10 ships the real
+      // orchestrator), runs the intent classifier. The /research prefix
+      // forces the pipeline regardless of the auto-trigger setting.
+      const deepResearchSettings = readDeepResearchSettings()
+      let researchRoute: Awaited<ReturnType<typeof routeChatTurn>> | null = null
+      try {
+        researchRoute = await routeChatTurn(rawContent, {
+          autoTrigger: deepResearchSettings.autoTrigger,
+          planMode: isPlanModeActive(conversationId),
+          modelOverride: deepResearchSettings.classifierModel
+        })
+      } catch (err) {
+        console.warn('[chat] research routing decision threw; falling back to normal flow:', err)
+      }
+      if (researchRoute) {
+        // Use the cleaned body (prefix stripped) for the saved message and
+        // every downstream model call.
+        content = researchRoute.kind === 'research' ? researchRoute.body : researchRoute.content
+      }
+
       convStore.saveMessage({
         id: randomUUID(),
         conversationId,
@@ -236,6 +265,47 @@ export function registerChatHandlers(): void {
         content,
         model
       })
+
+      // If routing chose the research pipeline, hand off to runDeepResearch
+      // and emit its outcome as the assistant message. Errors fall through
+      // to the outer catch which emits a chat:error event so the user
+      // sees the problem (no silent fallback — quality-bar invariant).
+      if (researchRoute && researchRoute.kind === 'research') {
+        // Set up an abort controller early so chat:cancel can interrupt
+        // the in-flight research run. The normal-dispatch path below
+        // creates its own a few lines later; only one of the two ever
+        // runs per turn.
+        const researchAbort = new AbortController()
+        activeAbortControllers.set(conversationId, {
+          controller: researchAbort,
+          correlationId,
+          startedAt: Date.now()
+        })
+        try {
+          const outcome = await runDeepResearch({
+            question: researchRoute.body,
+            depth: researchRoute.depth,
+            conversationId,
+            correlationId,
+            abortSignal: researchAbort.signal
+          })
+          // D11 will register the artifact with the renderer; D10's job
+          // is to drop the assistant message containing the executive
+          // summary and a clickable link to the on-disk markdown.
+          convStore.saveMessage({
+            id: randomUUID(),
+            conversationId,
+            role: 'assistant',
+            content: `${outcome.summary}\n\n**Sources:** ${outcome.sourceCount} (${outcome.acceptedCount} accepted, ${outcome.singleSourceCount} single-source, ${outcome.disputedCount} disputed) · Providers: ${outcome.providersUsed.join(', ') || 'none'}\n\n[Open full report](artifact://research/${outcome.filename})`,
+            model
+          })
+          return { success: true, data: { conversationId, correlationId } }
+        } finally {
+          activeAbortControllers.delete(conversationId)
+        }
+        void FabricatedCitationError
+        void DeepResearchCancelledError
+      }
 
       emitPhase(conversationId, 'understanding')
 

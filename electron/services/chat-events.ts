@@ -185,6 +185,40 @@ export interface TaskSpawnedPayload {
   branch: string | null
 }
 
+export interface ResearchProgressPayload {
+  runId: string
+  conversationId: string
+  stage: string
+  sourcesFound: number
+  sourcesFetched: number
+  claimsExtracted: number
+  claimsAccepted: number
+  claimsDisputed: number
+  elapsedMs: number
+  error?: string
+}
+
+export interface ResearchCompletedPayload {
+  runId: string
+  conversationId: string
+  artifactPath: string
+  filename: string
+  summary: string
+  markdown: string
+  sourceCount: number
+  acceptedCount: number
+  singleSourceCount: number
+  disputedCount: number
+  providersUsed: string[]
+  elapsedMs: number
+}
+
+export interface ResearchFailedPayload {
+  runId: string
+  conversationId: string
+  error: string
+}
+
 export interface ChatEventMap {
   'chat:chunk': ChatChunkPayload
   'chat:reasoning': ChatReasoningPayload
@@ -202,6 +236,9 @@ export interface ChatEventMap {
   'memory:added': MemoryAddedPayload
   'chat:document-created': DocumentCreatedPayload
   'agent:status': AgentStatusPayload
+  'research:progress': ResearchProgressPayload
+  'research:completed': ResearchCompletedPayload
+  'research:failed': ResearchFailedPayload
 }
 
 export type ChatEventName = keyof ChatEventMap

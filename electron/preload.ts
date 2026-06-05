@@ -813,6 +813,31 @@ const api = {
     deleteKey: (provider: string) => ipcRenderer.invoke('webTools:deleteKey', provider)
   },
 
+  research: {
+    start: (request: { question: string; depth?: 'quick' | 'standard' | 'exhaustive'; conversationId: string }) =>
+      ipcRenderer.invoke('research:start', request),
+    cancel: (runId: string) => ipcRenderer.invoke('research:cancel', runId),
+    status: (runId: string) => ipcRenderer.invoke('research:status', runId),
+    list: () => ipcRenderer.invoke('research:list'),
+    read: (filename: string) => ipcRenderer.invoke('research:read', filename),
+    download: (filename: string) => ipcRenderer.invoke('research:download', filename),
+    onProgress: (cb: (e: unknown) => void): (() => void) => {
+      const handler = (_: unknown, e: unknown): void => cb(e)
+      ipcRenderer.on('research:progress', handler)
+      return () => ipcRenderer.removeListener('research:progress', handler)
+    },
+    onCompleted: (cb: (e: unknown) => void): (() => void) => {
+      const handler = (_: unknown, e: unknown): void => cb(e)
+      ipcRenderer.on('research:completed', handler)
+      return () => ipcRenderer.removeListener('research:completed', handler)
+    },
+    onFailed: (cb: (e: unknown) => void): (() => void) => {
+      const handler = (_: unknown, e: unknown): void => cb(e)
+      ipcRenderer.on('research:failed', handler)
+      return () => ipcRenderer.removeListener('research:failed', handler)
+    }
+  },
+
   currentInfo: {
     setProvider: (kind: string, provider: string, opts: { apiKey?: string }) =>
       ipcRenderer.invoke('currentInfo:setProvider', kind, provider, opts),

@@ -65,9 +65,14 @@ describe('keychain', () => {
   })
 
   afterEach(() => {
-    if (state.userDataDir && existsSync(state.userDataDir)) {
-      rmSync(state.userDataDir, { recursive: true, force: true })
-    }
+    // Best-effort cleanup. EPERM on Windows when a sibling fs handle is
+    // still being released by the runtime; suppress so subsequent tests
+    // (which use a fresh mkdtempSync) aren't poisoned by the exception.
+    try {
+      if (state.userDataDir && existsSync(state.userDataDir)) {
+        rmSync(state.userDataDir, { recursive: true, force: true })
+      }
+    } catch { /* Windows file-handle race; ignore */ }
   })
 
   describe('round-trip', () => {

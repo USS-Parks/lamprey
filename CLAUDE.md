@@ -15,7 +15,8 @@ Electron desktop **multi-agent coding harness** (React 19, TypeScript, electron-
 - **RAG add-on (R1–R14)**: complete, audited, hardened (see DEVLOG 2026-06-03 audit entry).
 - **Parity Phase (36 prompts + Integration H1–H6)**: complete — see `PLANNING/LAMPREY_PARITY_PLAN.md` and the H1–H6 wrap-up entry in `DEVLOG.md` (2026-06-04).
 - **Fluidity Phase (J1–J11)**: complete (2026-06-04) — micro-interaction parity with Claude Code. Merged to `main` as commit `2691730`. See `PLANNING/LAMPREY_FLUIDITY_PLAN.md` and the per-prompt + phase-complete entries in `DEVLOG.md`. Eleven prompts shipped on `feat/fluidity-phase`: ESC + ↑ history, Shift+Tab mode cycle, @file mention, # memory shortcut, inline approval chips, tool-card auto-collapse, inline subagents, status-line context%, notification consolidation, path:line autolinking, right-panel default-collapsed.
-- Read `DEVLOG.md` for detailed build history before making changes. Both parity + fluidity plans are now reference-only — there is no active plan at the moment.
+- **Deep Research Phase (D1–D12)**: complete (2026-06-05) — first-class research pipeline with auto-trigger, multi-source corroboration, strict-citation markdown reports + downloadable `.md` artifacts. See `PLANNING/LAMPREY_DEEP_RESEARCH_PLAN.md`. Twelve prompts shipped on `feat/deep-research-phase`: DuckDuckGo adapter, provider cascade, intent classifier + `/research` slash + `--no-research` opt-out, query planner, source collector (dedup + domain cap + trust rank), readable-text extractor (`node-html-parser`), claim extraction, multi-source corroboration (RAG embeddings + opposition LLM), strict-citation synthesizer (fabricated-ref guard), orchestrator + IPC + progress events, artifact emission + `ResearchArtifact` UI, `DeepResearchBanner` with live counts + cancel.
+- Read `DEVLOG.md` for detailed build history before making changes. Parity + Fluidity + Deep Research plans are now reference-only — there is no active plan at the moment.
 
 ## Build & Run
 ```bash
@@ -57,7 +58,7 @@ npx electron-vite build
 - `react-markdown` v10 requires `pre` passthrough override to prevent double-wrapping CodeBlock components
 
 ## Execution Rules
-1. **All shipped plans (`PLANNING/LAMPREY_HARNESS_FINAL.md`, the RAG roster, `LAMPREY_PARITY_PLAN.md`, and `LAMPREY_FLUIDITY_PLAN.md`) are reference-only.** When the user starts a new plan, treat its §0 (or equivalent) as the source of truth for verify gates + commit discipline.
+1. **All shipped plans (`PLANNING/LAMPREY_HARNESS_FINAL.md`, the RAG roster, `LAMPREY_PARITY_PLAN.md`, `LAMPREY_FLUIDITY_PLAN.md`, and `LAMPREY_DEEP_RESEARCH_PLAN.md`) are reference-only.** When the user starts a new plan, treat its §0 (or equivalent) as the source of truth for verify gates + commit discipline.
 2. Each prompt in any active plan must pass its verify gate (both tsc configs + relevant tests + smoke checks) before being marked `[x]` and committed.
 3. Log each prompt's work in `DEVLOG.md` per the format in the active plan's §0 Step 4.
 4. **Push policy:** the user is the reviewer + pusher. When they explicitly ask to push (any phrasing — "push", "push to main", "push it now"), execute on the first try; the request itself satisfies the review step (see `feedback_push_when_told` memory). Do NOT volunteer pushes the user didn't ask for, and never `--force` without an explicit force-push instruction.

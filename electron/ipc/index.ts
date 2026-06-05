@@ -41,6 +41,7 @@ import { registerNotificationsHandlers } from './notifications'
 import { registerSessionsMessagingHandlers } from './sessions-messaging'
 import { registerAskUserHandlers } from './ask-user'
 import { registerStatusLineHandlers } from './statusline'
+import { registerResearchHandlers } from './research'
 
 export function registerAllIpcHandlers(): void {
   registerChatHandlers()
@@ -81,4 +82,5 @@ export function registerAllIpcHandlers(): void {
   registerSessionsMessagingHandlers()
   registerAskUserHandlers()
   registerStatusLineHandlers()
+  registerResearchHandlers()
 }

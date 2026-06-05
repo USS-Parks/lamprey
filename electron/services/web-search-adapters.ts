@@ -48,15 +48,18 @@ export interface WebSearchAdapter {
   imageSearch?(query: string, opts?: ImageSearchOpts): Promise<ImageSearchResult[]>
 }
 
-export type WebSearchProviderId = 'brave' | 'tavily' | 'serpapi' | 'searxng'
+export type WebSearchProviderId = 'duckduckgo' | 'brave' | 'tavily' | 'serpapi' | 'searxng'
 
 export interface WebToolsSettings {
   searchProvider: WebSearchProviderId
   searxngEndpoint?: string
 }
 
+// New installs default to DuckDuckGo (no API key required). Existing users
+// who already saved a provider keep their choice — readWebToolsSettings()
+// reads settings.json first and only falls back to this default if absent.
 const DEFAULT_SETTINGS: WebToolsSettings = {
-  searchProvider: 'brave'
+  searchProvider: 'duckduckgo'
 }
 
 const REQUEST_TIMEOUT_MS = 15_000
@@ -91,6 +94,138 @@ async function fetchWithTimeout(
     return await safeFetch(url, { ...rest, signal: controller.signal })
   } finally {
     clearTimeout(timer)
+  }
+}
+
+// ----------------------------------------------------------------------------
+// DuckDuckGo adapter (no API key required)
+// ----------------------------------------------------------------------------
+//
+// Hits the lightweight HTML endpoint at html.duckduckgo.com, which returns a
+// static HTML SERP that we parse with a self-contained tag-extractor. No DOM
+// library is pulled in — the markup is simple enough that two-stage regex is
+// sufficient (and the parser is heavily unit-tested against pinned fixtures).
+//
+// Two selector strategies are tried in order so a single template change on
+// DDG's side doesn't fully break the adapter:
+//   1. The classic `result__a` / `result__snippet` / `result__url` blocks.
+//   2. A fallback that walks every `<a class="result__a">` and finds the
+//      nearest snippet text node.
+//
+// If both yield zero results, the adapter returns `[]` (downstream cascade
+// will fall through to the next configured provider). It never throws on
+// "empty SERP" — only on network errors or HTTP non-2xx.
+
+const DDG_HTML_ENDPOINT = 'https://html.duckduckgo.com/html/'
+
+function freshnessToDdg(f?: WebSearchOpts['freshness']): string | undefined {
+  switch (f) {
+    case 'day':
+      return 'd'
+    case 'week':
+      return 'w'
+    case 'month':
+      return 'm'
+    case 'year':
+      return 'y'
+    default:
+      return undefined
+  }
+}
+
+function decodeHtmlEntities(s: string): string {
+  return s
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&#x27;/g, "'")
+    .replace(/&#x2F;/g, '/')
+    .replace(/&#(\d+);/g, (_m, code: string) => String.fromCharCode(parseInt(code, 10)))
+}
+
+function stripTags(s: string): string {
+  return decodeHtmlEntities(s.replace(/<[^>]+>/g, '')).trim()
+}
+
+function unwrapDdgRedirect(href: string): string {
+  // DDG wraps result URLs as `//duckduckgo.com/l/?uddg=<encoded>&...` or
+  // `/l/?uddg=<encoded>&...`. Strip the wrapper if present.
+  try {
+    const trimmed = href.startsWith('//') ? `https:${href}` : href.startsWith('/l/') ? `https://duckduckgo.com${href}` : href
+    const url = new URL(trimmed)
+    if (url.hostname.endsWith('duckduckgo.com') && url.pathname === '/l/') {
+      const uddg = url.searchParams.get('uddg')
+      if (uddg) return decodeURIComponent(uddg)
+    }
+    return trimmed
+  } catch {
+    return href
+  }
+}
+
+/**
+ * Parse a DuckDuckGo HTML SERP into search results. Exported so the unit
+ * tests (and any future debugging) can exercise the parser without hitting
+ * the network.
+ *
+ * Strategy: walk every `<a class="result__a">` anchor in document order;
+ * each anchor carries the result title + href. For the snippet, look ahead
+ * up to 1.2 KB for the nearest `result__snippet`-classed element. This is
+ * resilient to template revisions because it doesn't depend on a particular
+ * containing-div structure — the classic SERP and the lite-template SERP
+ * both use the `result__a` anchor.
+ */
+export function parseDuckDuckGoHtml(html: string, max: number): WebSearchResult[] {
+  const out: WebSearchResult[] = []
+  const anchorRe = /<a\b[^>]*class="[^"]*\bresult__a\b[^"]*"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/g
+  let m: RegExpExecArray | null
+  while ((m = anchorRe.exec(html)) !== null && out.length < max) {
+    const url = unwrapDdgRedirect(decodeHtmlEntities(m[1]))
+    const title = stripTags(m[2])
+    if (!url || !title) continue
+    // Look ahead up to ~1.2KB for the nearest snippet. Accept either an
+    // <a>, <div>, or <span> element carrying the `result__snippet` class.
+    const start = m.index + m[0].length
+    const tail = html.slice(start, start + 1200)
+    const snippetMatch = tail.match(
+      /<(?:a|div|span)\b[^>]*class="[^"]*\bresult__snippet\b[^"]*"[^>]*>([\s\S]*?)<\/(?:a|div|span)>/
+    )
+    const snippet = snippetMatch ? stripTags(snippetMatch[1]) : ''
+    out.push({ title, url, snippet })
+  }
+  return out
+}
+
+class DuckDuckGoAdapter implements WebSearchAdapter {
+  readonly id = 'duckduckgo' as const
+  readonly label = 'DuckDuckGo'
+
+  async search(query: string, opts: WebSearchOpts = {}): Promise<WebSearchResult[]> {
+    const count = Math.max(1, Math.min(30, opts.count ?? 10))
+    const params = new URLSearchParams({ q: query })
+    const df = freshnessToDdg(opts.freshness)
+    if (df) params.set('df', df)
+
+    const res = await fetchWithTimeout(DDG_HTML_ENDPOINT, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        Accept: 'text/html,application/xhtml+xml',
+        // DDG returns a much simpler markup for common UA strings. Use a
+        // generic desktop UA so we get parseable HTML rather than the JS
+        // single-page-app shell.
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36'
+      },
+      body: params.toString()
+    })
+    if (!res.ok) {
+      throw new Error(`DuckDuckGo HTTP ${res.status}: ${await safeReadText(res)}`)
+    }
+    const html = await res.text()
+    return parseDuckDuckGoHtml(html, count)
   }
 }
 
@@ -406,6 +541,7 @@ export const ALL_WEB_SEARCH_PROVIDERS: ReadonlyArray<{
   requiresKey: boolean
   requiresEndpoint: boolean
 }> = [
+  { id: 'duckduckgo', label: 'DuckDuckGo · no key required', requiresKey: false, requiresEndpoint: false },
   { id: 'brave', label: 'Brave Search', requiresKey: true, requiresEndpoint: false },
   { id: 'tavily', label: 'Tavily', requiresKey: true, requiresEndpoint: false },
   { id: 'serpapi', label: 'SerpAPI', requiresKey: true, requiresEndpoint: false },
@@ -426,6 +562,9 @@ export function getWebSearchAdapter(): WebSearchAdapter | null {
   const provider = settings.searchProvider
 
   switch (provider) {
+    case 'duckduckgo': {
+      return new DuckDuckGoAdapter()
+    }
     case 'brave': {
       const key = getKey(keychainProviderFor('brave'))
       if (!key) return null
@@ -451,8 +590,40 @@ export function getWebSearchAdapter(): WebSearchAdapter | null {
   }
 }
 
-/** True if the provider has a key (Brave/Tavily/SerpAPI) or an endpoint (SearXNG). */
+/**
+ * Build a specific adapter by id, regardless of which provider is currently
+ * "active" in settings. Used by the deep-research cascade (D2) to try a
+ * declared list of providers in order. Returns null when the requested
+ * provider is not fully configured (missing key / endpoint).
+ */
+export function getWebSearchAdapterById(id: WebSearchProviderId): WebSearchAdapter | null {
+  switch (id) {
+    case 'duckduckgo':
+      return new DuckDuckGoAdapter()
+    case 'brave': {
+      const key = getKey(keychainProviderFor('brave'))
+      return key ? new BraveAdapter(key) : null
+    }
+    case 'tavily': {
+      const key = getKey(keychainProviderFor('tavily'))
+      return key ? new TavilyAdapter(key) : null
+    }
+    case 'serpapi': {
+      const key = getKey(keychainProviderFor('serpapi'))
+      return key ? new SerpApiAdapter(key) : null
+    }
+    case 'searxng': {
+      const endpoint = readWebToolsSettings().searxngEndpoint?.trim()
+      return endpoint ? new SearxngAdapter(endpoint) : null
+    }
+    default:
+      return null
+  }
+}
+
+/** True if the provider has a key (Brave/Tavily/SerpAPI) or an endpoint (SearXNG). DDG needs neither. */
 export function isProviderConfigured(id: WebSearchProviderId): boolean {
+  if (id === 'duckduckgo') return true
   if (id === 'searxng') {
     return Boolean(readWebToolsSettings().searxngEndpoint?.trim())
   }
