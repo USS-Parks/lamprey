@@ -1,5 +1,23 @@
 # Lamprey Harness Dev Log
 
+## [Deep Research — Prompt D1] DuckDuckGo adapter (no-key default)  —  2026-06-05
+
+**Files changed:**
+- `electron/services/web-search-adapters.ts` — `DuckDuckGoAdapter` class, `parseDuckDuckGoHtml` (exported for tests), `unwrapDdgRedirect`, `freshnessToDdg`, `decodeHtmlEntities`, `stripTags` helpers; `WebSearchProviderId` union extended; `ALL_WEB_SEARCH_PROVIDERS` lists DDG first; `getWebSearchAdapter()` + `isProviderConfigured()` handle the no-key path; `DEFAULT_SETTINGS.searchProvider` switched to `'duckduckgo'` for new installs (existing users keep their saved provider via `readWebToolsSettings`).
+- `electron/services/web-search-adapters.test.ts` — `parseDuckDuckGoHtml` parser tests (classic markup, redirect unwrapping, entity decoding, max-result cap, fallback anchor markup, empty input); adapter wiring tests (factory returns adapter without keychain entry, `isProviderConfigured('duckduckgo') === true`, POST to `html.duckduckgo.com` with `df` freshness param, HTTP non-2xx throws, empty SERP returns `[]`, provider list ordering).
+- `electron/ipc/web-tools.ts` — `isProviderId` accepts `'duckduckgo'`; `setProvider` skips the keychain write for DDG; `deleteKey` rejects DDG.
+- `src/components/settings/WebToolsSettings.tsx` — `ProviderId` union + `drafts`/`showKey` records extended; `DOC_LINKS` includes DDG; doc-link label renders "About DuckDuckGo →".
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- vitest electron/services/web-search-adapters.test.ts ✓ (17/17, 12 new)
+- vitest full suite ✓ (1403 passed | 18 skipped — +12 from baseline 1391)
+
+**Notes:** First parser draft used a `<div class="result ...">` block regex that over-matched into the outer `<div class="results">` container and only captured the last block. Rewrote as a single anchor-walking strategy (every `result__a` → nearest `result__snippet` within 1.2 KB) which is more resilient to template revisions and passes all six parser fixtures. DDG returns simpler markup for desktop User-Agent strings, so the adapter sets a generic Chrome UA. Existing users keep their saved provider; default change only affects fresh installs.
+
+**Commit:** _pending_
+
 ## [Sandbox Parity Phase — COMPLETE] — 2026-06-05
 
 All thirteen prompts landed on `feat/sandbox-parity-phase`. Plan moved to reference-only. Brings `shell_command` to functional parity with Claude Code's Bash tool: per-platform OS sandbox (sandbox-exec / bwrap), explicit bypass flag, shell selector, persistent cwd, anti-polling guard, monitor/list/stop/output aux tools, richer tool description, 2-minute default timeout, `'sandboxBypass'` risk vocabulary.

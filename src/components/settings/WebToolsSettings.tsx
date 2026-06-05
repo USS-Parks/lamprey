@@ -11,7 +11,7 @@ import { ensurePlaintextConsentIfNeeded } from '@/lib/keychain-consent'
 // get back. Settings are persisted to userData/settings.json under the
 // `webTools` key.
 
-type ProviderId = 'brave' | 'tavily' | 'serpapi' | 'searxng'
+type ProviderId = 'duckduckgo' | 'brave' | 'tavily' | 'serpapi' | 'searxng'
 
 interface ProviderEntry {
   id: ProviderId
@@ -58,6 +58,7 @@ function getApi(): WebToolsApi | null {
 }
 
 const DOC_LINKS: Record<ProviderId, string> = {
+  duckduckgo: 'https://duckduckgo.com/',
   brave: 'https://api.search.brave.com/app/keys',
   tavily: 'https://app.tavily.com/home',
   serpapi: 'https://serpapi.com/manage-api-key',
@@ -67,12 +68,14 @@ const DOC_LINKS: Record<ProviderId, string> = {
 export function WebToolsSettings() {
   const [state, setState] = useState<ProviderState | null>(null)
   const [drafts, setDrafts] = useState<Record<ProviderId, string>>({
+    duckduckgo: '',
     brave: '',
     tavily: '',
     serpapi: '',
     searxng: ''
   })
   const [showKey, setShowKey] = useState<Record<ProviderId, boolean>>({
+    duckduckgo: false,
     brave: false,
     tavily: false,
     serpapi: false,
@@ -315,7 +318,11 @@ export function WebToolsSettings() {
                   }}
                   className="mt-1 inline-block font-mono text-[12px] text-[var(--accent)] hover:underline"
                 >
-                  {p.requiresKey ? 'Get a key →' : 'About SearXNG →'}
+                  {p.requiresKey
+                    ? 'Get a key →'
+                    : p.id === 'searxng'
+                      ? 'About SearXNG →'
+                      : 'About DuckDuckGo →'}
                 </a>
               </div>
               {!isActive && (

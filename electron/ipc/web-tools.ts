@@ -24,7 +24,7 @@ import { probeAdapter } from '../services/web-tools'
 //                          configured adapter and report ok / error.
 
 function isProviderId(v: unknown): v is WebSearchProviderId {
-  return v === 'brave' || v === 'tavily' || v === 'serpapi' || v === 'searxng'
+  return v === 'duckduckgo' || v === 'brave' || v === 'tavily' || v === 'serpapi' || v === 'searxng'
 }
 
 export function registerWebToolsHandlers(): void {
@@ -54,7 +54,13 @@ export function registerWebToolsHandlers(): void {
         patchSettings(settingsPatch)
 
         // For key-based providers, optionally write the key to the keychain.
-        if (provider !== 'searxng' && typeof o.apiKey === 'string' && o.apiKey.trim()) {
+        // DuckDuckGo + SearXNG do not have keys; skip the keychain write.
+        if (
+          provider !== 'searxng' &&
+          provider !== 'duckduckgo' &&
+          typeof o.apiKey === 'string' &&
+          o.apiKey.trim()
+        ) {
           setKey(keychainProviderFor(provider), o.apiKey.trim())
         }
 
@@ -109,7 +115,7 @@ export function registerWebToolsHandlers(): void {
 
   ipcMain.handle('webTools:deleteKey', async (_event, provider: unknown) => {
     try {
-      if (!isProviderId(provider) || provider === 'searxng') {
+      if (!isProviderId(provider) || provider === 'searxng' || provider === 'duckduckgo') {
         return {
           success: false,
           error: `webTools:deleteKey only valid for key-based providers (got ${String(provider)})`
