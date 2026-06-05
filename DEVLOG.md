@@ -1,5 +1,23 @@
 # Lamprey Harness Dev Log
 
+## [Sandbox Parity — Prompt S7] dangerously_disable_sandbox flag — 2026-06-05
+
+**Files changed:**
+- `electron/services/shell-tool.ts` — adds `dangerously_disable_sandbox?: boolean` to `ShellArgs`. When true, both foreground and background executors skip `applyProfile` and set `sandboxTier: 'bypassed'` + `sandboxNote: 'sandbox bypass approved by user …'`.
+- `electron/services/permissions-store.ts` — `ToolApprovalRequest` gains `dangerous?: boolean`. `requestApprovalDetailed` skips `resolvePersistedDecision` entirely when `dangerous === true`, forcing a fresh modal every call; the resulting `ApprovalOutcome.source` is tagged `<source>+sandbox-bypass` so audit logs can isolate bypass approvals.
+- `electron/ipc/chat.ts` — for `shell_command` calls with `dangerously_disable_sandbox: true`, the dispatcher sets `dangerous: true` on the approval request. Other tools do not honour the flag.
+- `electron/services/shell-tool.test.ts` — 2 new cases: bypass tier on the result, bypass banner in the format helper.
+- `electron/services/permissions-store-askuser.test.ts` — 2 new cases: bypass overrides "always allow", denial source tagged `modal+sandbox-bypass`.
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- vitest `shell-tool.test.ts` + `permissions-store-askuser.test.ts` + `permissions-store.test.ts` ✓ 75/75
+
+**Notes:** Audit-event differentiation is achieved via the source-string tag (`+sandbox-bypass` suffix) on the existing `tool:approval` event, not a new event type. That keeps the event-log schema stable while giving downstream consumers a clean filter. A future S12 follow-up may introduce a separate `'sandboxBypass'` risk tag in the descriptor risks vocabulary.
+
+**Commit:** S7
+
 ## [Sandbox Parity — Prompt S6] Windows fallback + sandboxTier on ShellResult — 2026-06-05
 
 **Files changed:**
@@ -17,7 +35,7 @@
 
 **Notes:** The `sandboxTier` field on `ToolApprovalRequest` is exposed by type for S6; the chat dispatcher will populate it as part of S7's bypass-aware flow. The Windows fallback is documented as "weakest tier" both in the result body and (when S7 lands) in the approval modal.
 
-**Commit:** S6
+**Commit:** `68e2fc3`
 
 ## [Sandbox Parity — Prompt S8] Monitor / list / stop / output aux tools — 2026-06-05
 

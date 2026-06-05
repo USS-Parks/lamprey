@@ -342,6 +342,39 @@ describe('sandbox tier on ShellResult (S6)', () => {
   })
 })
 
+describe('dangerously_disable_sandbox (S7)', () => {
+  it("sets sandboxTier 'bypassed' and emits the bypass note", async () => {
+    const result = await executeShellCommand(
+      { command: ECHO_HELLO, dangerously_disable_sandbox: true },
+      process.cwd()
+    )
+    expect(result.sandboxTier).toBe('bypassed')
+    expect(result.sandboxNote).toMatch(/bypass approved/i)
+    // The shell still runs to completion — bypass means "no sandbox", not
+    // "no execution".
+    expect(result.exitCode).toBe(0)
+    expect(result.stdout).toContain('Hello World')
+  })
+
+  it('format helper renders the bypass banner', () => {
+    const text = formatShellResultForModel({
+      command: 'rm -rf foo',
+      cwd: '/tmp/wk',
+      exitCode: 0,
+      signal: null,
+      stdout: '',
+      stderr: '',
+      stdoutTruncated: false,
+      stderrTruncated: false,
+      durationMs: 1,
+      timedOut: false,
+      sandboxTier: 'bypassed',
+      sandboxNote: 'sandbox bypass approved by user (dangerously_disable_sandbox)'
+    })
+    expect(text).toMatch(/Sandbox: bypassed — sandbox bypass approved/)
+  })
+})
+
 describe('formatShellResultForModel', () => {
   it('renders the Sandbox tier banner when present', () => {
     const text = formatShellResultForModel({

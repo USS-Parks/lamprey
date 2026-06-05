@@ -26,6 +26,16 @@ export interface ShellArgs {
    * `'powershell'` on POSIX resolves to `pwsh` if available, else error.
    */
   shell?: ShellSelector
+  /**
+   * Opt out of the sandbox wrapper for this single call (S7). When `true`:
+   *   • the platform `applyProfile` wrap is skipped
+   *   • the result reports `sandboxTier: 'bypassed'`
+   *   • the chat dispatcher escalates the approval flow (no
+   *     "always allow" policy applies; the modal pops every call)
+   * Use only when the sandbox demonstrably blocks legitimate work
+   * (e.g. a darwin build that needs to write outside the workspace).
+   */
+  dangerously_disable_sandbox?: boolean
 }
 
 export interface ShellResult {
@@ -327,16 +337,31 @@ export function executeShellCommand(
     // darwin/linux it produces a sandbox-exec / bwrap wrapper around the
     // shell. Always succeeds — the dispatcher falls back to pass-through
     // when no per-platform impl is available.
-    const wrapped = applyProfile({
-      spawnCmd: invocation.cmd,
-      spawnArgs: invocation.args,
-      cwd,
-      opts: { workspaceRoot }
-    })
-    const cmd = wrapped.cmd
-    const shellArgs = wrapped.args
-    const sandboxTier = wrapped.sandboxTier
-    const sandboxNote = wrapped.note
+    // S7: when the caller passed `dangerously_disable_sandbox: true`,
+    // skip the wrap entirely and report tier `'bypassed'`. The chat
+    // dispatcher is responsible for ensuring the user explicitly
+    // approved the bypass before we ever reach this line.
+    let cmd: string
+    let shellArgs: string[]
+    let sandboxTier: SandboxTier | undefined
+    let sandboxNote: string | undefined
+    if (args.dangerously_disable_sandbox === true) {
+      cmd = invocation.cmd
+      shellArgs = invocation.args
+      sandboxTier = 'bypassed'
+      sandboxNote = 'sandbox bypass approved by user (dangerously_disable_sandbox)'
+    } else {
+      const wrapped = applyProfile({
+        spawnCmd: invocation.cmd,
+        spawnArgs: invocation.args,
+        cwd,
+        opts: { workspaceRoot }
+      })
+      cmd = wrapped.cmd
+      shellArgs = wrapped.args
+      sandboxTier = wrapped.sandboxTier
+      sandboxNote = wrapped.note
+    }
 
     let proc: ReturnType<typeof spawn>
     try {
@@ -633,14 +658,22 @@ export function executeShellCommandInBackground(
     return snapshotBg(session)
   }
   // Wrap with the platform sandbox profile (S3). Pass-through on Windows.
-  const wrapped = applyProfile({
-    spawnCmd: invocation.cmd,
-    spawnArgs: invocation.args,
-    cwd,
-    opts: { workspaceRoot }
-  })
-  const cmd = wrapped.cmd
-  const shellArgs = wrapped.args
+  // S7: bypass when the caller asked for it.
+  let cmd: string
+  let shellArgs: string[]
+  if (args.dangerously_disable_sandbox === true) {
+    cmd = invocation.cmd
+    shellArgs = invocation.args
+  } else {
+    const wrapped = applyProfile({
+      spawnCmd: invocation.cmd,
+      spawnArgs: invocation.args,
+      cwd,
+      opts: { workspaceRoot }
+    })
+    cmd = wrapped.cmd
+    shellArgs = wrapped.args
+  }
 
   // We force `stdio: ['ignore', 'pipe', 'pipe']` so stdin is null but
   // both stdout + stderr are real Readable streams. The narrower

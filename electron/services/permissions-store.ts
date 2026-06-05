@@ -49,11 +49,16 @@ export interface ToolApprovalRequest {
   /**
    * Predicted sandbox tier for the call's execution context. Populated
    * for shell tools so the approval modal can render a tier badge (amber
-   * for `'none'` on Windows, green for kernel-level wrappers). Population
-   * lands fully in S7 — for S6 the field is type-exposed so renderers
-   * can opt in once it starts arriving.
+   * for `'none'` on Windows, green for kernel-level wrappers).
    */
   sandboxTier?: SandboxTier
+  /**
+   * S7 — the caller has opted into sandbox bypass for this single call.
+   * When true, {@link PermissionsService.requestApprovalDetailed} skips
+   * persisted "always allow" policies entirely and re-prompts the user.
+   * Approval events are tagged so audit logs can isolate bypasses.
+   */
+  dangerous?: boolean
 }
 
 export interface ToolApprovalResponse {
@@ -134,24 +139,36 @@ class PermissionsService {
         return undefined
       }
     })()
-    const persisted = resolvePersistedDecision({
-      toolId: req.toolId,
-      risks: req.risks,
-      conversationId: req.conversationId,
-      workspacePath
-    })
-    if (persisted) {
-      const outcome: ApprovalOutcome = {
-        decision: persisted.decision,
-        source: `policy:${persisted.policyId}`
+
+    // S7 — when `dangerous: true`, skip any persisted "always allow" /
+    // "this workspace" / "this conversation" policy and force the modal
+    // every time. The bypass is one-shot by design: a user who said
+    // "always allow shell_command" did not consent to sandbox bypass.
+    if (req.dangerous !== true) {
+      const persisted = resolvePersistedDecision({
+        toolId: req.toolId,
+        risks: req.risks,
+        conversationId: req.conversationId,
+        workspacePath
+      })
+      if (persisted) {
+        const outcome: ApprovalOutcome = {
+          decision: persisted.decision,
+          source: `policy:${persisted.policyId}`
+        }
+        emitApprovalEvent(req, outcome, workspacePath, persisted.policyId)
+        return outcome
       }
-      emitApprovalEvent(req, outcome, workspacePath, persisted.policyId)
-      return outcome
     }
 
     const userOutcome = await this.askUser(req, workspacePath)
-    emitApprovalEvent(req, userOutcome, workspacePath)
-    return userOutcome
+    // Tag bypass outcomes distinctly so the audit log can filter them.
+    const finalOutcome: ApprovalOutcome =
+      req.dangerous === true
+        ? { ...userOutcome, source: `${userOutcome.source}+sandbox-bypass` }
+        : userOutcome
+    emitApprovalEvent(req, finalOutcome, workspacePath)
+    return finalOutcome
   }
 
   /**
