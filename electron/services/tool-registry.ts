@@ -676,7 +676,11 @@ toolRegistry.registerNative(
   },
   async (args, ctx) => {
     const workspaceRoot = ctx.workspacePath ?? process.cwd()
-    const r = await executeShellCommand(args as unknown as ShellArgs, workspaceRoot)
+    const r = await executeShellCommand(
+      args as unknown as ShellArgs,
+      workspaceRoot,
+      ctx.conversationId
+    )
     const result = formatShellResultForModel(r)
     // A spawn-time failure (no exit code) and any non-zero exit are
     // failures even though the body still renders normally — return the

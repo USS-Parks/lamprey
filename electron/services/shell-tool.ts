@@ -1,6 +1,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'child_process'
 import { EventEmitter } from 'events'
 import { randomUUID } from 'crypto'
+import { statSync } from 'fs'
 import { resolve, relative, isAbsolute } from 'path'
 import { resolveWorkspaceRelative } from './path-utils'
 
@@ -64,6 +65,53 @@ export function resolveCwdWithinWorkspace(
   return target
 }
 
+// ────────────────────────────────────────────────────────────────────────
+// S1 — Per-conversation cwd persistence
+//
+// Claude Code's Bash tool persists the working directory across calls in a
+// session — `cd sub` followed by `pwd` reports `<workspace>/sub`. Our
+// foreground executor is one-shot, so each call would otherwise re-anchor
+// at the workspace root.
+//
+// `cwdSessions` keeps the last validated cwd per `conversationId`. The
+// executor reads it as the default candidate when `args.cwd` is absent,
+// and updates it after a clean (exit 0) run that contained a `cd …` /
+// `Set-Location …` prefix. The workspace boundary is re-checked on every
+// transition — a `cd /tmp` runs in the spawned shell but does NOT pollute
+// the session cwd because the validation rejects it.
+// ────────────────────────────────────────────────────────────────────────
+
+const cwdSessions = new Map<string, string>()
+
+export function getSessionCwd(conversationId: string): string | null {
+  return cwdSessions.get(conversationId) ?? null
+}
+
+export function clearSessionCwd(conversationId: string): void {
+  cwdSessions.delete(conversationId)
+}
+
+export function clearAllSessionCwds(): void {
+  cwdSessions.clear()
+}
+
+// POSIX: a leading `cd` followed by a target (optionally quoted). Token
+// terminates at whitespace or shell operators `&;|`.
+const POSIX_CD_RE = /^\s*cd\s+(?:(['"])([^'"]+)\1|([^\s&;|]+))/
+// PowerShell: `cd`, `Set-Location`, or `sl` (alias). Case-insensitive.
+const PS_CD_RE = /^\s*(?:cd|set-location|sl)\s+(?:(['"])([^'"]+)\1|([^\s&;|]+))/i
+
+export function extractCdTarget(
+  command: string,
+  platform: NodeJS.Platform = process.platform
+): string | null {
+  const re = platform === 'win32' ? PS_CD_RE : POSIX_CD_RE
+  const m = command.match(re)
+  if (!m) return null
+  const target = (m[2] ?? m[3] ?? '').trim()
+  return target.length > 0 ? target : null
+}
+
 function buildShellInvocation(command: string): { cmd: string; args: string[] } {
   if (process.platform === 'win32') {
     return {
@@ -92,10 +140,14 @@ function appendCapped(
  * Run a shell command. Pure function — caller must enforce permission
  * approval; only the workspace-root boundary is enforced here (so that
  * an absent gate still can't escape the tree).
+ *
+ * When `conversationId` is supplied, the executor reads/writes a
+ * persisted session cwd so `cd sub` carries forward to the next call.
  */
 export function executeShellCommand(
   args: ShellArgs,
-  workspaceRoot: string
+  workspaceRoot: string,
+  conversationId?: string
 ): Promise<ShellResult> {
   return new Promise((resolveResult) => {
     const startedAt = Date.now()
@@ -117,11 +169,14 @@ export function executeShellCommand(
       return
     }
 
-    const cwd = resolveCwdWithinWorkspace(workspaceRoot, args.cwd)
+    // Resolve cwd: explicit args.cwd → persisted session cwd → root.
+    const sessionCwd = conversationId ? cwdSessions.get(conversationId) ?? null : null
+    const cwdCandidate = args.cwd ?? sessionCwd ?? undefined
+    const cwd = resolveCwdWithinWorkspace(workspaceRoot, cwdCandidate)
     if (cwd === null) {
       resolveResult({
         command: args.command,
-        cwd: args.cwd ?? workspaceRoot,
+        cwd: args.cwd ?? sessionCwd ?? workspaceRoot,
         exitCode: null,
         signal: null,
         stdout: '',
@@ -130,7 +185,7 @@ export function executeShellCommand(
         stderrTruncated: false,
         durationMs: 0,
         timedOut: false,
-        error: `cwd "${args.cwd}" is outside the workspace root "${workspaceRoot}"`
+        error: `cwd "${args.cwd ?? sessionCwd}" is outside the workspace root "${workspaceRoot}"`
       })
       return
     }
@@ -204,6 +259,35 @@ export function executeShellCommand(
     const finish = (exitCode: number | null, signal: NodeJS.Signals | null, err?: string) => {
       clearTimeout(timer)
       if (killGrace) clearTimeout(killGrace)
+
+      // Persist session cwd on a clean exit with a recognisable `cd`
+      // prefix. Heuristic — complex chains like `cd a && cd b` only
+      // capture the first hop. Anything that escapes the workspace,
+      // doesn't exist, or isn't a directory does NOT update the
+      // session; the in-shell `cd` still ran but is forgotten.
+      if (
+        exitCode === 0 &&
+        !timedOut &&
+        !err &&
+        conversationId &&
+        cwd
+      ) {
+        const target = extractCdTarget(args.command, process.platform)
+        if (target) {
+          const newCandidate = resolve(cwd, target)
+          const validated = resolveCwdWithinWorkspace(workspaceRoot, newCandidate)
+          if (validated !== null) {
+            try {
+              if (statSync(validated).isDirectory()) {
+                cwdSessions.set(conversationId, validated)
+              }
+            } catch {
+              // Path doesn't exist or stat threw — don't persist.
+            }
+          }
+        }
+      }
+
       resolveResult({
         command: args.command,
         cwd,

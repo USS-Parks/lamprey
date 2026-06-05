@@ -1,5 +1,22 @@
 # Lamprey Harness Dev Log
 
+## [Sandbox Parity — Prompt S1] Persistent cwd state across shell calls — 2026-06-05
+
+**Files changed:**
+- `electron/services/shell-tool.ts` — new `cwdSessions` Map keyed by `conversationId`; `extractCdTarget()` regex parser (POSIX + PowerShell variants); session-update branch on clean exit with workspace + isDirectory validation; new exports `getSessionCwd` / `clearSessionCwd` / `clearAllSessionCwds`.
+- `electron/services/tool-registry.ts` — `shell_command` handler now forwards `ctx.conversationId` to the executor.
+- `electron/services/shell-tool.test.ts` — 13 new cases: `extractCdTarget` (6) + persistent session (7).
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- vitest `shell-tool.test.ts` ✓ 29/29
+- vitest `tool-registry.test.ts` ✓ 17/17
+
+**Notes:** MVP only catches the first `cd …` token in the command; chains like `cd a && cd b` track to `a`, not `b`. The shell still does the right thing in-process; only the session-cwd memo drifts. Documented as a known limitation. `cwdSessions` grows unbounded — a follow-up should hook into conversation deletion to clear stale entries (not blocking for this phase).
+
+**Commit:** S1
+
 ## [v0.3.4 — Tool approval no longer auto-denies after 30s] — 2026-06-05
 
 **Symptom (user report):** "The Tool Call seems to time out if the user is
