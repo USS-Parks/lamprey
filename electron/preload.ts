@@ -24,6 +24,23 @@ const api = {
       ipcRenderer.on('chat:tool-call-result', (_, e) => cb(e)),
     onPhase: (cb: (e: { conversationId: string; phase: string }) => void) =>
       ipcRenderer.on('chat:phase', (_, e) => cb(e)),
+    onDocumentCreated: (
+      cb: (e: {
+        conversationId: string
+        document: {
+          id: string
+          name: string
+          mimeType: string
+          content: string
+          sizeBytes: number
+          createdAt: number
+        }
+      }) => void
+    ): (() => void) => {
+      const handler = (_: unknown, e: any): void => cb(e)
+      ipcRenderer.on('chat:document-created', handler)
+      return () => ipcRenderer.removeListener('chat:document-created', handler)
+    },
     onAgentStatus: (cb: (e: unknown) => void) => ipcRenderer.on('agent:status', (_, e) => cb(e)),
     onAsyncEvent: (cb: (e: unknown) => void): (() => void) => {
       const handler = (_: unknown, e: unknown): void => cb(e)
@@ -39,6 +56,7 @@ const api = {
         'chat:tool-call',
         'chat:tool-call-result',
         'chat:phase',
+        'chat:document-created',
         'agent:status'
       ].forEach((ch) => ipcRenderer.removeAllListeners(ch))
     },

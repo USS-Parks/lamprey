@@ -20,6 +20,42 @@ export interface Message {
    *  off the streaming `delta.reasoning_content` channel and persisted
    *  alongside the visible body. Rendered by ReasoningBlock. */
   reasoning?: string
+  /** Standalone documents the model produced for this turn via the
+   *  `create_document` native tool. Rendered as cards below the message
+   *  body — separate from tool-call cards because these are deliverables,
+   *  not transient transcript noise. */
+  documents?: DocumentAttachment[]
+  /** Per-assistant-row tool calls as stored in the messages.tool_calls
+   *  column (JSON-encoded server-side, parsed by getMessages). Mirrors
+   *  the OpenAI chat-completion tool_calls shape. Used to rehydrate the
+   *  ToolActivityChip when a previously-completed conversation is
+   *  reopened — without this the chip would render empty until the next
+   *  live tool event arrives. */
+  toolCalls?: Array<{
+    id: string
+    type: 'function'
+    function: { name: string; arguments: string }
+  }>
+}
+
+/** Standalone deliverable a model produced inside a single assistant turn —
+ *  a plan, a draft, a code file, a report. Distinct from RAG citations and
+ *  from tool-call results: this is content the user is meant to keep, open,
+ *  copy, or save. Persisted as JSON on the owning message row. */
+export interface DocumentAttachment {
+  id: string
+  /** Filename-style label (e.g. "plan.md", "auth.ts"). Surfaced as the card
+   *  title; no path component. */
+  name: string
+  /** MIME type the model declared. Drives the icon + "Open in" routing
+   *  (markdown → Artifact panel, code → VS Code, everything else → Save). */
+  mimeType: string
+  /** Full document body. Capped at 256 KB at the handler. */
+  content: string
+  /** Byte length of `content` at create time. */
+  sizeBytes: number
+  /** Epoch ms when the model emitted the document. */
+  createdAt: number
 }
 
 export type ConversationKind = 'local' | 'cloud' | 'worktree'

@@ -13,7 +13,8 @@ import { validateChatSendRequest } from './chat-validation'
 import * as convStore from '../services/conversation-store'
 import {
   isPlanModeActive,
-  setPlanModeActive
+  setPlanModeActive,
+  type StoredDocument
 } from '../services/conversation-store'
 import * as memStore from '../services/memory-store'
 import { createChapter } from '../services/chapters-store'
@@ -152,6 +153,37 @@ interface ActiveRun {
   startedAt: number
 }
 const activeAbortControllers = new Map<string, ActiveRun>()
+
+// Documents the model emits via `create_document` during a single chat:send
+// turn. Keyed by correlationId so the buffer is stable across the recursive
+// runChatRound calls and isolated between concurrent turns (parallel agent
+// pipeline). The final-message branch in runChatRound drains the buffer when
+// it persists the assistant row; the catch block in chat:send clears it on
+// failure so a partial run does not leak into the next turn.
+const pendingDocuments = new Map<string, StoredDocument[]>()
+
+const CREATE_DOCUMENT_MAX_BYTES = 256 * 1024
+
+function pushPendingDocument(correlationId: string | undefined, doc: StoredDocument): void {
+  if (!correlationId) return
+  const list = pendingDocuments.get(correlationId)
+  if (list) {
+    list.push(doc)
+  } else {
+    pendingDocuments.set(correlationId, [doc])
+  }
+}
+
+function drainPendingDocuments(correlationId: string | undefined): StoredDocument[] | undefined {
+  if (!correlationId) return undefined
+  const list = pendingDocuments.get(correlationId)
+  if (!list || list.length === 0) {
+    pendingDocuments.delete(correlationId)
+    return undefined
+  }
+  pendingDocuments.delete(correlationId)
+  return list
+}
 
 // Tool definitions (memory_add + MCP tools) come from toolRegistry.
 // Approval gating is owned by permissionsService — both live in services/.
@@ -420,9 +452,11 @@ export function registerChatHandlers(): void {
       }
 
       activeAbortControllers.delete(conversationId)
+      drainPendingDocuments(correlationId)
       return { success: true, data: { conversationId } }
     } catch (err: any) {
       activeAbortControllers.delete(conversationId)
+      drainPendingDocuments(correlationId)
       emitPhase(conversationId, 'error')
       emitChatEvent('chat:error', { conversationId, error: err.message })
       // Mirror into the event spine so the timeline reader sees the failure
@@ -451,6 +485,7 @@ export function registerChatHandlers(): void {
     if (run) {
       run.controller.abort()
       activeAbortControllers.delete(conversationId)
+      drainPendingDocuments(run.correlationId)
       try {
         recordEvent({
           type: 'chat.cancelled',
@@ -606,6 +641,7 @@ export async function runChatRound(
                 }
               }
             }
+            const documents = drainPendingDocuments(correlationId)
             const assistantMsg = convStore.saveMessage({
               id: randomUUID(),
               conversationId,
@@ -613,7 +649,8 @@ export async function runChatRound(
               content: finalContent,
               model,
               draft,
-              reasoning: fullReasoning
+              reasoning: fullReasoning,
+              documents
             })
             if (!suppressDoneEvent) {
               emitPhase(conversationId, 'done')
@@ -865,6 +902,33 @@ async function resolveSingleToolCall(
       const entry = memStore.addMemory(args.content, conversationId)
       emitChatEvent('memory:added', entry)
       result = 'Saved to memory.'
+    } else if (toolName === 'create_document') {
+      const nameRaw = typeof args.name === 'string' ? args.name.trim() : ''
+      const mimeRaw = typeof args.mimeType === 'string' ? args.mimeType.trim() : ''
+      const contentRaw = typeof args.content === 'string' ? args.content : ''
+      if (!nameRaw || !mimeRaw || !contentRaw) {
+        result =
+          'Error: create_document requires non-empty `name`, `mimeType`, and `content`.'
+        explicitStatus = 'error'
+      } else {
+        const sizeBytes = Buffer.byteLength(contentRaw, 'utf8')
+        if (sizeBytes > CREATE_DOCUMENT_MAX_BYTES) {
+          result = `Error: create_document body exceeds ${CREATE_DOCUMENT_MAX_BYTES} bytes (got ${sizeBytes}). Split into multiple documents or shorten.`
+          explicitStatus = 'error'
+        } else {
+          const doc: StoredDocument = {
+            id: randomUUID(),
+            name: nameRaw.slice(0, 200),
+            mimeType: mimeRaw.slice(0, 120),
+            content: contentRaw,
+            sizeBytes,
+            createdAt: Date.now()
+          }
+          pushPendingDocument(correlationId, doc)
+          emitChatEvent('chat:document-created', { conversationId, document: doc })
+          result = `Document "${doc.name}" (${doc.sizeBytes} bytes, ${doc.mimeType}) attached to this turn. Do NOT paste the body into your visible reply — the user already sees the card.`
+        }
+      }
     } else if (toolName === 'enter_plan_mode') {
       // Track 2 / C3 — inline because the handler emits a renderer event.
       // Persisted on the conversation row so it survives a restart.

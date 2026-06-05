@@ -9,9 +9,11 @@ import { MultiAgentRunCard } from './MultiAgentRunCard'
 // Code keep the transcript clean: tool calls don't stack as cards inside
 // the conversation flow. Lamprey now does the same — when the model fires
 // shell_command / workspace_context / etc., the chat panel stays silent,
-// and this chip materializes in the input pill row instead. Click it to
-// pop the grouped list upward; idle turns render NOTHING (the component
-// returns null when there are no visible tool calls).
+// and this chip sits in the input pill row instead. Click it to pop the
+// grouped list upward. The chip is permanent — it renders on every chat,
+// every reopen, even on a fresh conversation with zero calls so far — so
+// the user always has a single anchor for "what work has been done." The
+// popover scrolls when the list grows past 60vh.
 
 interface ToolActivityChipProps {
   // When true the popover auto-opens whenever a new call shows up. Off by
@@ -59,8 +61,7 @@ export function ToolActivityChip({
     prevCountRef.current = visible.length
   }, [visible.length, autoOpenOnActivity])
 
-  if (visible.length === 0) return null
-
+  const isEmpty = visible.length === 0
   const running = visible.some(
     (tc) => tc.status === 'pending' || tc.status === 'running'
   )
@@ -71,25 +72,31 @@ export function ToolActivityChip({
 
   const grouped = groupConsecutiveToolCalls(visible)
 
-  const toneClass = running
-    ? 'border-[var(--accent)] text-[var(--accent)]'
-    : errored
-      ? 'border-[var(--error)]/40 text-[var(--error)]'
-      : 'border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--accent)] hover:text-[var(--text-primary)]'
+  const toneClass = isEmpty
+    ? 'border-[var(--border)] text-[var(--text-muted)] hover:border-[var(--accent)] hover:text-[var(--text-secondary)]'
+    : running
+      ? 'border-[var(--accent)] text-[var(--accent)]'
+      : errored
+        ? 'border-[var(--error)]/40 text-[var(--error)]'
+        : 'border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--accent)] hover:text-[var(--text-primary)]'
 
   return (
     <div ref={wrapRef} className="relative ml-auto">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        title={`${count} tool call${count === 1 ? '' : 's'} this turn — click to inspect`}
+        title={
+          isEmpty
+            ? 'No tool calls yet — click to open the activity log'
+            : `${count} tool call${count === 1 ? '' : 's'} this conversation — click to inspect`
+        }
         aria-haspopup="dialog"
         aria-expanded={open}
         className={`flex items-center gap-1.5 rounded-md border bg-[var(--bg-secondary)] px-2 py-1 text-[12px] transition-colors ${toneClass} ${
           open ? 'border-[var(--accent)] text-[var(--text-primary)]' : ''
         }`}
       >
-        <StatusDot running={running} errored={errored} />
+        <StatusDot running={running} errored={errored} isEmpty={isEmpty} />
         <span className="font-mono tabular-nums leading-none">{count}</span>
         <span className="leading-none">
           tool call{count === 1 ? '' : 's'}
@@ -131,22 +138,30 @@ export function ToolActivityChip({
             </button>
           </div>
           <div className="flex-1 overflow-y-auto px-2 py-1">
-            {grouped.map((item, idx) => {
-              if (item.kind === 'group') {
-                return (
-                  <ToolUseGroup
-                    key={`g-${idx}-${item.items[0].callId}`}
-                    group={item}
-                  />
+            {isEmpty ? (
+              <div className="px-3 py-6 text-center text-[12px] text-[var(--text-muted)]">
+                No tool activity in this conversation yet.
+                <br />
+                Tool calls show up here as the model runs them.
+              </div>
+            ) : (
+              grouped.map((item, idx) => {
+                if (item.kind === 'group') {
+                  return (
+                    <ToolUseGroup
+                      key={`g-${idx}-${item.items[0].callId}`}
+                      group={item}
+                    />
+                  )
+                }
+                const tc = item.toolCall
+                return tc.toolName === 'multi_agent_run' ? (
+                  <MultiAgentRunCard key={tc.callId} toolCall={tc} />
+                ) : (
+                  <ToolUseCard key={tc.callId} toolCall={tc} />
                 )
-              }
-              const tc = item.toolCall
-              return tc.toolName === 'multi_agent_run' ? (
-                <MultiAgentRunCard key={tc.callId} toolCall={tc} />
-              ) : (
-                <ToolUseCard key={tc.callId} toolCall={tc} />
-              )
-            })}
+              })
+            )}
           </div>
         </div>
       )}
@@ -156,11 +171,21 @@ export function ToolActivityChip({
 
 function StatusDot({
   running,
-  errored
+  errored,
+  isEmpty
 }: {
   running: boolean
   errored: boolean
+  isEmpty: boolean
 }) {
+  if (isEmpty) {
+    return (
+      <span
+        className="inline-block h-2 w-2 rounded-full border border-[var(--text-muted)]"
+        aria-label="no tool activity"
+      />
+    )
+  }
   if (running) {
     return (
       <span

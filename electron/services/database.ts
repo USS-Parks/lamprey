@@ -415,6 +415,11 @@ function initSchema(db: Database.Database): void {
   // sub-agent part of?" without log-time joining.
   safeAddColumn(db, 'tool_calls', 'parent_call_id TEXT')
 
+  // Documents the assistant emitted via the `create_document` native tool,
+  // persisted as a JSON array of DocumentAttachment on the owning row. NULL
+  // for turns that produced none. Rendered as cards below the message body.
+  safeAddColumn(db, 'messages', 'documents TEXT')
+
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_conversations_project
       ON conversations(project_id, updated_at DESC);

@@ -826,6 +826,50 @@ toolRegistry.registerNative({
   transcriptHidden: true
 })
 
+// create_document — produces a standalone deliverable (plan, draft, code
+// file, report) that renders as a card below the assistant message. The
+// handler lives inline in chat.ts because it has to stash the attachment on
+// the in-flight assistant turn and broadcast `chat:document-created` to the
+// renderer, the same way memory_add emits `memory:added`. transcriptHidden:
+// the card row IS the visible side effect — leaving a tool-call card would
+// double-render. mutates: false because the deliverable is session-scoped
+// (lives on the message row), not a workspace write.
+toolRegistry.registerNative({
+  id: 'create_document',
+  name: 'create_document',
+  title: 'Create document',
+  description:
+    "Emit a standalone document for the user — a plan, draft, report, code file, or any deliverable they may want to keep, open, copy, or save. The document renders as a card below your message with an \"Open in\" action; do NOT also paste the body into your reply. Use only for content the user is meant to take away as a discrete file. Do not use for casual prose, short answers, or transient explanations — write those inline. One call per discrete deliverable; for a multi-file change, call once per file. mimeType drives the icon and \"Open in\" routing (text/markdown → Artifact panel, text/* → file panel / VS Code, anything else → save dialog). Content is capped at 256 KB.",
+  providerKind: 'native',
+  providerId: 'internal',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      name: {
+        type: 'string',
+        description:
+          'Filename-style label shown on the card (e.g. "plan.md", "auth.ts", "report.txt"). Include the extension that matches mimeType. No path component.'
+      },
+      mimeType: {
+        type: 'string',
+        description:
+          'IANA MIME type. Common values: text/markdown, text/plain, text/x-typescript, text/x-python, application/json, text/html, text/csv.'
+      },
+      content: {
+        type: 'string',
+        description: 'Full document body, verbatim. Max 256 KB.'
+      }
+    },
+    required: ['name', 'mimeType', 'content'],
+    additionalProperties: false
+  },
+  risks: [],
+  requiresApproval: false,
+  enabled: true,
+  mutates: false,
+  transcriptHidden: true
+})
+
 // Tool packs are loaded by electron/services/tool-packs.ts (imported from
 // electron/ipc/index.ts), not from this file. Side-effect imports at the
 // bottom of a module are not safe — bundlers can hoist them above

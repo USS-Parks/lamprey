@@ -4,6 +4,7 @@ import { parseReasoning } from '@/lib/reasoning'
 import { MessageBubble } from './MessageBubble'
 import { StreamingText } from './StreamingText'
 import { StreamStatusLine } from './StreamStatusLine'
+import { DocumentCardRow } from './DocumentCardRow'
 import { InlineApprovalChip } from './InlineApprovalChip'
 import { useInlineApprovalsStore } from '@/stores/inline-approvals-store'
 import { TranscriptNotice } from './TranscriptNotice'
@@ -112,6 +113,7 @@ export function MessageList({
   // does. Falls back to the legacy inline-<think> parse for reasoners that
   // smuggle thinking into the visible content.
   const streamingReasoning = useChatStore((s) => s.streamingReasoning)
+  const streamingDocuments = useChatStore((s) => s.streamingDocuments)
   const isReasoner = activeModel === 'deepseek-reasoner'
   const parsed = (() => {
     if (streamingReasoning) {
@@ -166,7 +168,7 @@ export function MessageList({
   }, [allNotices, activeConvId, messages])
 
   return (
-    <div ref={scrollRef} className="flex-1 overflow-y-auto py-4">
+    <div ref={scrollRef} className="flex-1 overflow-y-auto py-4 [scrollbar-gutter:stable]">
       {/* Belt-and-suspenders centering: flex wrapper guarantees horizontal
           centering even if Tailwind's mx-auto can't compute against the
           parent's flex context. */}
@@ -227,7 +229,13 @@ export function MessageList({
 
           {isStreaming && (hasStreamingActivity || streamStartedAt) && (
             <div className="mb-3 flex justify-start">
-              <div className="max-w-[80%] rounded-lg bg-[var(--bg-secondary)] px-4 py-3">
+              {/* Streaming bubble mirrors the persisted assistant bubble:
+                  no background, no border, no padding — plain text on the
+                  chat surface. Keeps the streamed body, reasoning card,
+                  and status line visually identical to the bubble that
+                  takes its place once the stream finishes, so users don't
+                  see a card-to-no-card pop on completion. */}
+              <div className="w-full">
                 {hasStreamingActivity ? (
                   <StreamingText
                     content={streamingContent}
@@ -249,6 +257,9 @@ export function MessageList({
                   content={parsed.body}
                   reasoning={parsed.reasoning}
                 />
+                {streamingDocuments.length > 0 && (
+                  <DocumentCardRow documents={streamingDocuments} />
+                )}
               </div>
             </div>
           )}

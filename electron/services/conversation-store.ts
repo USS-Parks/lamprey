@@ -32,12 +32,24 @@ export interface MessageRow {
    *  for messages that have never been compressed (the default for
    *  every row in a fresh conversation). */
   compressed_into: string | null
+  /** JSON-encoded array of StoredDocument. NULL for turns with no
+   *  create_document calls. */
+  documents: string | null
 }
 
 export interface StoredToolCall {
   id: string
   type: 'function'
   function: { name: string; arguments: string }
+}
+
+export interface StoredDocument {
+  id: string
+  name: string
+  mimeType: string
+  content: string
+  sizeBytes: number
+  createdAt: number
 }
 
 export function createConversation(
@@ -457,12 +469,14 @@ export function saveMessage(msg: {
   toolCalls?: StoredToolCall[]
   draft?: string
   reasoning?: string
+  documents?: StoredDocument[]
 }) {
   const db = getDb()
   const now = Date.now()
   const toolCallsJson = msg.toolCalls && msg.toolCalls.length > 0 ? JSON.stringify(msg.toolCalls) : null
+  const documentsJson = msg.documents && msg.documents.length > 0 ? JSON.stringify(msg.documents) : null
   db.prepare(
-    'INSERT INTO messages (id, conversation_id, role, content, model, tool_call_id, tool_calls, draft, reasoning, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    'INSERT INTO messages (id, conversation_id, role, content, model, tool_call_id, tool_calls, draft, reasoning, documents, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
   ).run(
     msg.id,
     msg.conversationId,
@@ -473,6 +487,7 @@ export function saveMessage(msg: {
     toolCallsJson,
     msg.draft || null,
     msg.reasoning || null,
+    documentsJson,
     now
   )
   touchConversation(msg.conversationId)
@@ -492,7 +507,8 @@ export function saveMessage(msg: {
     toolCallId: msg.toolCallId,
     toolCalls: msg.toolCalls,
     draft: msg.draft,
-    reasoning: msg.reasoning
+    reasoning: msg.reasoning,
+    documents: msg.documents
   }
 }
 
@@ -512,6 +528,15 @@ export function getMessages(conversationId: string) {
         // handle the consequence (drop tool replies that have no parent).
       }
     }
+    let documents: StoredDocument[] | undefined
+    if (row.documents) {
+      try {
+        const parsed = JSON.parse(row.documents)
+        if (Array.isArray(parsed)) documents = parsed as StoredDocument[]
+      } catch {
+        // Same corrupt-JSON policy as toolCalls — drop and continue.
+      }
+    }
     return {
       id: row.id,
       conversationId: row.conversation_id,
@@ -524,7 +549,8 @@ export function getMessages(conversationId: string) {
       // can show a CompressedRegionPill where originals were folded.
       compressedInto: row.compressed_into ?? undefined,
       toolCalls,
-      reasoning: row.reasoning ?? undefined
+      reasoning: row.reasoning ?? undefined,
+      documents
     }
   })
 }
