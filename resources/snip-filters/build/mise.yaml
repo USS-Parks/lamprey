@@ -1,0 +1,10 @@
+name: mise
+description: Compress mise (tool version manager) output
+match:
+  command: mise
+pipeline:
+  - action: strip_ansi
+  - action: head
+    n: 60
+  - action: on_empty
+    message: 'mise: ok'

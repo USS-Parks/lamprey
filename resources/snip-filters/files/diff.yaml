@@ -1,0 +1,12 @@
+name: diff
+description: Bounded diff output (head 400 + per-line cap)
+match:
+  command: diff
+pipeline:
+  - action: strip_ansi
+  - action: truncate_lines
+    max: 200
+  - action: head
+    n: 400
+  - action: on_empty
+    message: 'diff: identical'

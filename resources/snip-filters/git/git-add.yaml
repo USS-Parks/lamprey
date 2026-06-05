@@ -1,0 +1,11 @@
+name: git-add
+description: git add typically prints nothing; surface a confirmation
+match:
+  command: git
+  subcommand: add
+pipeline:
+  - action: strip_ansi
+  - action: on_empty
+    message: 'git add: staged'
+  - action: head
+    n: 50

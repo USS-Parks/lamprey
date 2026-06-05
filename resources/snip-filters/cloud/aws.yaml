@@ -1,0 +1,10 @@
+name: aws
+description: Compress aws CLI output
+match:
+  command: aws
+pipeline:
+  - action: strip_ansi
+  - action: head
+    n: 80
+  - action: on_empty
+    message: 'aws: no output'

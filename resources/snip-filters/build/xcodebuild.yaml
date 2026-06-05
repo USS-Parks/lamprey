@@ -1,0 +1,12 @@
+name: xcodebuild
+description: Compress xcodebuild output to summary
+match:
+  command: xcodebuild
+pipeline:
+  - action: strip_ansi
+  - action: keep_lines
+    pattern: '(BUILD SUCCEEDED|BUILD FAILED|TEST SUCCEEDED|TEST FAILED|error|warning|\*\* )'
+  - action: head
+    n: 100
+  - action: on_empty
+    message: 'xcodebuild: ok'

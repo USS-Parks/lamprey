@@ -1,0 +1,15 @@
+name: pip
+description: Collapse pip install / freeze noise
+match:
+  command: pip
+pipeline:
+  - action: strip_ansi
+  - action: match_output
+    pattern: 'Requirement already satisfied'
+    message: 'pip: requirements already satisfied'
+  - action: keep_lines
+    pattern: '(Successfully installed|Successfully uninstalled|Collecting|ERROR|WARNING|Downloading)'
+  - action: head
+    n: 50
+  - action: on_empty
+    message: 'pip: no output'

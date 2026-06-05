@@ -1,0 +1,10 @@
+name: psql
+description: Bound psql query output
+match:
+  command: psql
+pipeline:
+  - action: strip_ansi
+  - action: head
+    n: 100
+  - action: on_empty
+    message: 'psql: no output'

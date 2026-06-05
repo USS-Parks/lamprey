@@ -1,0 +1,12 @@
+name: rspec
+description: Compress rspec output to summary + failures
+match:
+  command: rspec
+pipeline:
+  - action: strip_ansi
+  - action: keep_lines
+    pattern: '(examples?,|failures?|pending|Finished in|\d+ examples?|Failed examples:|FAIL|Failure)'
+  - action: head
+    n: 80
+  - action: on_empty
+    message: 'rspec: no output'

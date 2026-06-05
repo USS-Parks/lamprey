@@ -1,0 +1,12 @@
+name: poetry
+description: Compress poetry install / update output
+match:
+  command: poetry
+pipeline:
+  - action: strip_ansi
+  - action: keep_lines
+    pattern: '(Installing|Updating|Removing|Resolving|locked|already up to date|Writing|Error)'
+  - action: head
+    n: 50
+  - action: on_empty
+    message: 'poetry: no output'

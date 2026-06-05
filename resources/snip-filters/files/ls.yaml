@@ -1,0 +1,12 @@
+name: ls
+description: Bounded ls output (head 100 + per-line cap)
+match:
+  command: ls
+pipeline:
+  - action: strip_ansi
+  - action: truncate_lines
+    max: 200
+  - action: head
+    n: 100
+  - action: on_empty
+    message: 'ls: empty'

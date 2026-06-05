@@ -12,6 +12,7 @@ vi.mock('electron', () => ({
   },
   BrowserWindow: { getAllWindows: () => [] }
 }))
+vi.mock('@electron-toolkit/utils', () => ({ is: { dev: true } }))
 
 import {
   __forceMemoryFallback as forcePolicyMemory,

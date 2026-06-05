@@ -1,0 +1,19 @@
+name: git-log
+description: Trim verbose git log to first 30 lines with per-line cap
+match:
+  command: git
+  subcommand: log
+  excludeFlags:
+    - '--oneline'
+    - '--pretty'
+    - '--format'
+    - '-n'
+    - '--name-only'
+    - '--name-status'
+    - '--stat'
+pipeline:
+  - action: strip_ansi
+  - action: truncate_lines
+    max: 200
+  - action: head
+    n: 30

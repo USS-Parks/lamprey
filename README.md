@@ -121,6 +121,23 @@ Thirteen prompts that bring `shell_command` to functional parity with Claude Cod
 
 Spec: [PLANNING/LAMPREY_SANDBOX_PARITY_PLAN.md](PLANNING/LAMPREY_SANDBOX_PARITY_PLAN.md). Build entries: see DEVLOG (the "Sandbox Parity" entries from 2026-06-05).
 
+### Snip — in-process shell-output token filter
+
+Same concept as [rtk](https://github.com/rtk-ai/rtk) (Rust Token Killer) and [snip](https://github.com/edouard-claude/snip), implemented as a native layer inside Lamprey's main process. Every foreground `shell_command` runs through a declarative YAML pipeline before reaching the model, turning verbose tool output into the signal-only summary the LLM needs.
+
+- **~120 built-in filters** covering git, JS/TS, Go, Rust, Python, Ruby, .NET, Docker/K8s, cloud/infra (terraform/helm/kubectl/aws/gcloud), build tools, files/search (ls/find/grep/rg), linting, package managers, system/network, and misc (gh/jira/ollama/sops). Ships with the app under `resources/snip-filters/`, bootstrapped into `userData/snip/filters/built-in/` on first launch.
+- **YAML-extensible**: drop a `.yaml` file under `userData/snip/filters/` and chokidar hot-reload picks it up in ~1 second. User filters override built-ins of the same `name`. Primer: [docs/snip-filter-primer.md](docs/snip-filter-primer.md).
+- **`gain` dashboard** at Settings → Snip: tokens-saved counter, avg-savings %, 14-day sparkline, top-5 filters by savings, recent activity, filter library with source badges (built-in vs. user vs. user-overrides-built-in).
+- **`discover` panel** (rtk analogue): scans the shell-call history for commands that ran without a matching filter, ranks by total tokens spent, surfaces them as "consider writing a filter for X" suggestions with category hints and a "Write a filter" button that opens the user filter dir.
+- **Per-call `bypass_snip: true`** on `shell_command` (rtk `proxy <cmd>` analogue): the model can force raw output for one call when the verbose body IS the signal (debugging a filter regression, forensic dig). Documented in the descriptor schema.
+- **Master kill-switch** `snipEnabled` (default `true`): flips the entire layer to pass-through with zero DB writes, zero matcher runs.
+- **Verbose mode** for the dashboard's activity log; never decorates the text the model sees (Invariant 13 — would corrupt structured tool output).
+- **Status-line slot** `snip: 1.2k saved` shows today's savings in emerald; hidden until the first event; click opens the dashboard.
+- **Best-effort tracking**: DB write errors swallowed silently (Invariant 5) — a locked SQLite never blocks the model from receiving the filtered output.
+- **Failure pass-through by default**: filters run only on exit code 0 unless they opt in via `match.exitCodes`. The model always sees raw error text for failed commands.
+
+Spec: [PLANNING/LAMPREY_SNIP_PLAN.md](PLANNING/LAMPREY_SNIP_PLAN.md). Build entries: see DEVLOG (the "Snip" entries from 2026-06-05).
+
 ### Chat surface
 
 - **Streaming markdown** with syntax-highlighted code (Shiki), reasoning blocks (DeepSeek R1), token ticker, and inline thinking/coding animations (the lamprey icon swap).

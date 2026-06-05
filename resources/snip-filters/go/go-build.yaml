@@ -1,0 +1,11 @@
+name: go-build
+description: go build silent on success; pass through errors
+match:
+  command: go
+  subcommand: build
+pipeline:
+  - action: strip_ansi
+  - action: on_empty
+    message: 'go build: ok'
+  - action: head
+    n: 100

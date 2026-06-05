@@ -1,0 +1,13 @@
+name: git-commit
+description: Keep the [branch hash] one-liner; drop the verbose body
+match:
+  command: git
+  subcommand: commit
+pipeline:
+  - action: strip_ansi
+  - action: keep_lines
+    pattern: '^\[[^\]]+\s+[0-9a-f]{7,}\]|^\s*\d+\s+files? changed'
+  - action: head
+    n: 5
+  - action: on_empty
+    message: 'git commit: complete'

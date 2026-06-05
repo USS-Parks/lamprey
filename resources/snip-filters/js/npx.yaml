@@ -1,0 +1,10 @@
+name: npx
+description: npx wrapper progress; usually filtered through the wrapped tool's own filter
+match:
+  command: npx
+pipeline:
+  - action: strip_ansi
+  - action: remove_lines
+    pattern: '^npx:'
+  - action: head
+    n: 80

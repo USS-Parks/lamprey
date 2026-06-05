@@ -1,0 +1,9 @@
+name: stat
+description: Bound stat output
+match:
+  command: stat
+pipeline:
+  - action: head
+    n: 30
+  - action: on_empty
+    message: 'stat: no output'

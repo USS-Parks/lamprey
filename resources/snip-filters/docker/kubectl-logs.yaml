@@ -1,0 +1,11 @@
+name: kubectl-logs
+description: Tail of kubectl logs to last 100 lines
+match:
+  command: kubectl
+  subcommand: logs
+pipeline:
+  - action: strip_ansi
+  - action: tail
+    n: 100
+  - action: on_empty
+    message: 'kubectl logs: empty'

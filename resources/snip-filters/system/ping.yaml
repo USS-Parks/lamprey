@@ -1,0 +1,10 @@
+name: ping
+description: Compress ping output to statistics block
+match:
+  command: ping
+pipeline:
+  - action: strip_ansi
+  - action: tail
+    n: 8
+  - action: on_empty
+    message: 'ping: no output'

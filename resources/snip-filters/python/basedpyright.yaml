@@ -1,0 +1,12 @@
+name: basedpyright
+description: Compress basedpyright output
+match:
+  command: basedpyright
+pipeline:
+  - action: strip_ansi
+  - action: keep_lines
+    pattern: '(\d+ errors?|\d+ warnings?|error|warning|info|hint|Finished)'
+  - action: head
+    n: 100
+  - action: on_empty
+    message: 'basedpyright: no diagnostics'

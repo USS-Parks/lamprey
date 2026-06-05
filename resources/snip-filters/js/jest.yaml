@@ -1,0 +1,13 @@
+name: jest
+description: Compress jest output to summary + failures
+match:
+  command: jest
+  viaNpx: true
+pipeline:
+  - action: strip_ansi
+  - action: keep_lines
+    pattern: '(Tests:|Test Suites:|Snapshots:|Time:|FAIL|PASS|●)'
+  - action: head
+    n: 80
+  - action: on_empty
+    message: 'jest: no summary output'

@@ -1,0 +1,13 @@
+name: cargo-install
+description: cargo install progress → installed lines only
+match:
+  command: cargo
+  subcommand: install
+pipeline:
+  - action: strip_ansi
+  - action: keep_lines
+    pattern: '(Installing|Compiling|Replacing|Finished|Installed|warning:|error:|Updating)'
+  - action: head
+    n: 60
+  - action: on_empty
+    message: 'cargo install: ok'

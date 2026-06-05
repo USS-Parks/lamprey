@@ -1,0 +1,11 @@
+name: du
+description: Bound du output (head + per-line cap)
+match:
+  command: du
+pipeline:
+  - action: truncate_lines
+    max: 200
+  - action: head
+    n: 50
+  - action: on_empty
+    message: 'du: empty'

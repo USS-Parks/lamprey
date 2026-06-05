@@ -1,0 +1,12 @@
+name: markdownlint
+description: Compress markdownlint output
+match:
+  command: markdownlint
+pipeline:
+  - action: strip_ansi
+  - action: keep_lines
+    pattern: '(MD\d+|error|warning|:\d+:)'
+  - action: head
+    n: 100
+  - action: on_empty
+    message: 'markdownlint: clean'

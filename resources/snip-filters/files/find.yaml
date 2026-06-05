@@ -1,0 +1,12 @@
+name: find
+description: Bounded find output (head 100 + per-line cap)
+match:
+  command: find
+pipeline:
+  - action: strip_ansi
+  - action: truncate_lines
+    max: 300
+  - action: head
+    n: 100
+  - action: on_empty
+    message: 'find: no matches'

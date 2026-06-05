@@ -1,0 +1,12 @@
+name: wget
+description: Compress wget progress to result line
+match:
+  command: wget
+pipeline:
+  - action: strip_ansi
+  - action: keep_lines
+    pattern: '(saved|HTTP request|Connecting|Resolving|error|warning|already there)'
+  - action: head
+    n: 30
+  - action: on_empty
+    message: 'wget: done'

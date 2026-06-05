@@ -1,4 +1,13 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+
+// Snip Phase K9 wired the snip layer into tool-registry; the chain
+// imports filter-loader which pulls in electron + @electron-toolkit.
+vi.mock('electron', () => ({
+  app: { getPath: () => '.tmp-plan-mode-test' },
+  BrowserWindow: { getAllWindows: () => [] }
+}))
+vi.mock('@electron-toolkit/utils', () => ({ is: { dev: true } }))
+
 import { isMutatingDescriptor, type LampreyToolDescriptor } from './tool-registry'
 
 // Track 2 / C3 — tests for the plan-mode gate's primitives. The

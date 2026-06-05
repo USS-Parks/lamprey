@@ -1,0 +1,9 @@
+name: fail2ban
+description: Bound fail2ban-client output
+match:
+  command: fail2ban-client
+pipeline:
+  - action: head
+    n: 60
+  - action: on_empty
+    message: 'fail2ban: no output'

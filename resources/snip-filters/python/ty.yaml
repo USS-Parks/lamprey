@@ -1,0 +1,12 @@
+name: ty
+description: Compress ty (typescript-style py type checker) output
+match:
+  command: ty
+pipeline:
+  - action: strip_ansi
+  - action: keep_lines
+    pattern: '(error|warning|info|\d+ errors?|\d+ warnings?)'
+  - action: head
+    n: 100
+  - action: on_empty
+    message: 'ty: clean'

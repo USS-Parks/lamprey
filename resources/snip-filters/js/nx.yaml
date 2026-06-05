@@ -1,0 +1,13 @@
+name: nx
+description: Compress nx affected / run output
+match:
+  command: nx
+  viaNpx: true
+pipeline:
+  - action: strip_ansi
+  - action: keep_lines
+    pattern: '(NX|Running|Successfully|Failed|Affected|projects?:|×|✓)'
+  - action: head
+    n: 80
+  - action: on_empty
+    message: 'nx: no output'

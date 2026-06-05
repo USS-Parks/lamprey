@@ -1,0 +1,9 @@
+name: jq
+description: Bound jq output (often verbose pretty-print)
+match:
+  command: jq
+pipeline:
+  - action: head
+    n: 200
+  - action: on_empty
+    message: 'jq: null'

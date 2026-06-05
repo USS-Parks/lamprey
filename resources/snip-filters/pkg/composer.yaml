@@ -1,0 +1,12 @@
+name: composer
+description: Collapse composer install / update output
+match:
+  command: composer
+pipeline:
+  - action: strip_ansi
+  - action: keep_lines
+    pattern: '(Installing|Updating|Removing|Loading|Generating|Package|warning|error|Nothing to install)'
+  - action: head
+    n: 60
+  - action: on_empty
+    message: 'composer: no output'

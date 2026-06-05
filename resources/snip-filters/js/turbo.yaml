@@ -1,0 +1,13 @@
+name: turbo
+description: Compress turbo build output
+match:
+  command: turbo
+  viaNpx: true
+pipeline:
+  - action: strip_ansi
+  - action: keep_lines
+    pattern: '(Tasks:|Cached:|Time:|FAILURE|Error|Successful|cache (hit|miss))'
+  - action: head
+    n: 80
+  - action: on_empty
+    message: 'turbo: no output'

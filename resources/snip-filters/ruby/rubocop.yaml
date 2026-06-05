@@ -1,0 +1,12 @@
+name: rubocop
+description: Compress rubocop output to offenses + summary
+match:
+  command: rubocop
+pipeline:
+  - action: strip_ansi
+  - action: keep_lines
+    pattern: '(offenses?|Inspecting|files inspected|\.rb:\d+|C: |W: |E: )'
+  - action: head
+    n: 80
+  - action: on_empty
+    message: 'rubocop: no offenses'

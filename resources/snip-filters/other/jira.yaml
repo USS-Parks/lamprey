@@ -1,0 +1,10 @@
+name: jira
+description: Compress jira CLI output
+match:
+  command: jira
+pipeline:
+  - action: strip_ansi
+  - action: head
+    n: 80
+  - action: on_empty
+    message: 'jira: no output'

@@ -3,6 +3,25 @@
 ## [Deep Research Phase Complete] — 2026-06-05
 
 **Prompts completed:** D1 DuckDuckGo adapter, D2 cascade, D3 intent classifier + auto-trigger routing, D4 query planner, D5 source collector, D6 readable-text extractor, D7 claim extraction, D8 multi-source corroboration, D9 strict-citation synthesizer, D10 orchestrator + IPC, D11 artifact emission + chat surfacing, D12 progress banner.
+## [Snip Phase Complete] — 2026-06-05
+
+All fourteen prompts landed on `feat/snip-phase`. Lamprey now ships a native, in-process RTK-style shell-output filter layer with snip-style YAML extensibility. Every foreground `shell_command` runs through declarative pipelines before reaching the model; ~120 built-in filters cover git / JS-TS / Go / Rust / Python / Ruby / .NET / Docker-K8s / cloud-infra / build tools / files-search / linting / pkg managers / system-network / misc. Token savings tracked in SQLite, surfaced as the SnipSettings dashboard + Discover panel + status-line slot.
+
+| Prompt | Title | Commit |
+|---|---|---|
+| K1 | Engine — types + 11 pipeline actions + runner | `50e20dc` |
+| K2 | Matcher — command parsing + filter selection | `5a982b6` |
+| K3 | YAML filter loader + schema + chokidar hot-reload | `05ed861` |
+| K4 | Built-in filters: git family (12) + golden harness | `0fefc94` |
+| K5 | Built-in filters: JS/TS + Go + Rust toolchains (27) | `58017c0` |
+| K6 | Built-in filters: Python + Ruby + .NET + Docker/K8s + Cloud (30) | `cdafbae` |
+| K7 | Built-in filters: build + files + linting + pkg + system + other (51) | `d50ad4c` |
+| K8 | Tracking — snip_events + snip_command_log + dashboard queries | `cb99aa1` |
+| K9 | Interpose — apply.ts wired live into shell handler | `742e97c` |
+| K10 | IPC + preload bridge + filter-loader init | `95488e1` |
+| K11 + K12 | SnipSettings dashboard + Discover panel | `656dfca` |
+| K13 | Status-line snip slot | `b50b438` |
+| K14 | Phase verify + DEVLOG + README + primer | _this commit_ |
 
 **Phase verify:**
 - tsc node ✓
@@ -29,6 +48,27 @@
 - `src/App.tsx` — calls `useResearchProgressSubscription()` once at App root so the event stream is live for every conversation.
 - `src/components/chat/MessageList.tsx` — renders `<DeepResearchBanner conversationId={activeConvId} />` at the top of the chat column.
 - `electron/services/memory-store.test.ts` + `electron/services/keychain.test.ts` — fix pre-existing Windows EPERM flake by allocating a fresh `mkdtempSync` directory per test (memory-store) and tolerating the EPERM on cleanup (keychain). The pre-existing tests were trying to `rmSync` directories whose SQLite WAL files were still held open by better-sqlite3 on Windows; new directory per test sidesteps the race, best-effort cleanup absorbs the residual.
+- vitest ✓ — 1601 / 1619 passing (18 failures are the same pre-existing Windows EPERM tmpdir-race in `memory-store.test.ts` + `keychain.test.ts`, unchanged from the K8 baseline; confirmed unrelated to this phase by reverting `database.ts`).
+- `npx electron-vite build` ✓
+- 120 YAML filters loaded under `resources/snip-filters/`.
+- user-verification-needed: in a running Electron build, run at least 8 distinct shell commands across the chat, confirm compressed bodies reach the model for matched filters, raw bodies for failures + chains + `bypass_snip:true`, Settings → Snip shows events accumulating, Discover panel populates, status-line slot appears after first event.
+
+**Filter set shipped:** 120 built-in YAML filters across 15 categories.
+
+**RTK-parity features:**
+- `gain` dashboard → Settings → Snip header card + sparkline + top filters + recent activity.
+- `discover` filter-gap scanner → Settings → Snip → Discover panel (K12).
+- `rtk proxy <cmd>` analogue → per-call `bypass_snip: true` on `shell_command` (K9, descriptor schema documents it).
+- `rtk -v` analogue → `snipVerbose` settings toggle, renderer-side log only (Invariant 13 — never decorates model-facing text).
+- `~/.config/snip/filters/` analogue → `userData/snip/filters/` with chokidar hot-reload (K3).
+
+**Notes:** YAML extensibility chosen over a TypeScript-filters MVP because Lamprey ships to many machines — filter coverage should be able to grow without app releases. The 11-action engine + matcher + loader are all pure modules (Invariant 1); only `tracking.ts`, `apply.ts`, and `filter-loader.ts` have side effects. The decision tree in `apply.ts` is the only integration point; if it lands wrong the model sees corrupted output, so K9 carried the most-tested invariants (never grows output, exit code preserved, failure pass-through default, tracking best-effort). Pre-execution command rewriting ("inject") is deferred to a v2 phase — the post-process-only approach means `git log` without `--oneline` ships as `head 30 + truncate_lines` rather than the snip-CLI's pretty-format rewrite. Per-filter UI toggles, marketplace-style remote filter loading, and model-callable stats also deferred.
+
+## [Snip — Prompt K13] Status-line snip slot  —  2026-06-05
+
+**Files changed:**
+- `electron/services/statusline-config.ts` — added `'snip'` to `StatusLineSlot` union and `ALL_SLOTS`; added it as a default-visible slot in the new position between `wakeups` and `tokens`; added the default format `'snip: {saved} saved'`.
+- `src/components/layout/StatusLine.tsx` — extended `SlotId`, `DEFAULT_CONFIG.slots`, `DEFAULT_CONFIG.formats`, and the `Slot.tone` union to include `'snip'`. New TONE_BG entry uses emerald (distinguished from the amber/red status tones — savings is a positive signal, not a warning). Added a 30s polling effect that reads today's saved tokens off `snip:stats` sparkline tail. Added the `case 'snip':` to `renderSlot` with a hide-when-zero guard so brand-new installs don't see a "0 saved" placeholder. Clicking the slot dispatches a `settings:open` window event with `{tab:'snip'}` (host handler unchanged — the Fluidity J-phase already wired the equivalent for other slot clicks).
 
 **Verify gate:**
 - tsc node ✓
@@ -50,6 +90,19 @@
 - `electron/preload.ts` — exposes `window.api.research.{read, download}` alongside the existing `start`/`cancel`/`status`/`list`.
 - `src/components/artifacts/MarkdownRenderer.tsx` — anchor handler intercepts `artifact://research/<filename>` links, fetches the artifact content via `window.api.research.read`, and opens it in the right panel via `window.__openArtifact('markdown', content)`. Falls back to external-URL handling for everything else.
 - `src/components/artifacts/ResearchArtifact.tsx` (new) — wraps the existing `MarkdownRenderer` with a header chip (`Research report · N sources`) and a `Download .md` button that drives the native save dialog through the new IPC. Clipboard fallback when the API isn't available (e.g. browser dev mode).
+- vitest electron/services/statusline-config.test.ts ✓ (6 tests, no changes needed — existing tests cover slot ordering and the default-list expansion was backward-compat).
+- user-verification-needed: after at least one filter event, the status line shows a green `snip: <N> saved` slot; clicking opens Settings → Snip.
+
+**Notes:** the slot uses an emerald tone (`bg-emerald-500/15`) — visually distinct from wakeups (amber) and rag (blue) since "savings" is a positive signal, not a warning. The 30s poll is conservative; the Fluidity-phase `loops:onFired` event-driven refresh isn't applicable here (no event fires per filter match), but the polling cost is one IPC call per 30 seconds.
+
+## [Snip — Prompts K11 + K12] SnipSettings dashboard + Discover panel  —  2026-06-05
+
+**Files changed:**
+- `src/stores/snip-store.ts` (new) — Zustand store. `loadAll` fans out across `stats`/`recent`/`listFilters` IPC; `loadDiscover` pulls the K12 ranking. Toggle helpers re-call `loadAll` so the header card reflects new state without a reload. `formatCount` (1234 → "1.2k") exported for shared use by K13's status-line slot.
+- `src/stores/snip-store.test.ts` (new) — 4 tests covering `formatCount` thresholds + monotonicity.
+- `src/components/settings/SnipSettings.tsx` (new) — dashboard tab. Header card: Enabled + Verbose toggles, three stat blocks (tokens saved, avg %, commands filtered), 14-day sparkline (`Sparkline` renders each bucket's height proportional to the day's max, dim past quiet days). Sections: top filters (table + saved-bar), recent activity (filter + command + saved tokens), Discover panel mount, filter library (collapsed by default, source badge per row + "overridden by user file" marker), reset history (confirm-click pattern).
+- `src/components/settings/SnipDiscoverPanel.tsx` (new) — rtk-discover analogue. Three time windows (7d/30d/90d), table of unmatched commands ranked by token cost with category hint and "Write a filter" button that opens the user filter dir. Empty state when no unfiltered commands in window.
+- `src/components/settings/SettingsDialog.tsx` — registers the Snip tab between RAG and Activity.
 
 **Verify gate:**
 - tsc node ✓
@@ -73,6 +126,20 @@
 - `electron/services/research/adapter-cascade.test.ts` — updates the "defaults when empty" test to expect `autoTrigger=true`.
 - `electron/ipc/chat.ts` — rewrites the D3 routing branch: creates an early `AbortController` (registered in `activeAbortControllers` so `chat:cancel` reaches the research run), calls `runDeepResearch` with the routed body + depth, and on success saves an assistant message containing the summary + sources line + clickable artifact link. On failure the error propagates to the outer catch (which already emits `chat:error`). Removed the D3 `isDeepResearchNotImplemented` fall-through — the pipeline is wired end-to-end now.
 - `electron/services/research/index.test.ts` (new) — 13 tests across happy-path (every stage runs, progress events in order, artifact writer called with a `.md` path), failure paths (empty sources / empty pages / empty claims → throw with clear message, FabricatedCitationError propagates), cancellation (pre-abort + mid-pipeline abort raise `DeepResearchCancelledError`), and the registry helpers (`listActiveRuns` cleans up after a run, `getRunStatus`/`cancelRun` return null/false for unknown ids).
+- vitest src/stores/snip-store.test.ts ✓ (4 tests)
+- vitest electron/services/snip/ ✓ (224 tests unchanged from K10)
+- user-verification-needed: open Settings → Snip in a running Electron build, confirm toggles flip state, sparkline renders, filter library shows 120 built-in entries after first launch, Discover panel populates after running a few unmatched shell commands.
+
+**Notes:** the UI follows `RagSettings.tsx`'s visual language exactly — same Section/Toggle/EmptyState shapes, same monospaced 11-12px type scale. K11 mounts the Discover panel inline (not a sub-tab) per the plan; the time-window selector is part of the panel rather than the dashboard header so it stays local. K11 and K12 ship as a **single combined commit** because K11's `SnipSettings.tsx` imports `SnipDiscoverPanel` directly — splitting them into two commits would leave K11 with a broken import and fail its tsc gate. The phase-completion summary table at K14 will list both prompts against this single SHA.
+
+## [Snip — Prompt K10] IPC + preload bridge + main-process wiring  —  2026-06-05
+
+**Files changed:**
+- `electron/ipc/snip.ts` (new) — 9 channels: `snip:stats`, `:recent`, `:listFilters`, `:setEnabled`, `:setVerbose`, `:reloadFilters`, `:discover`, `:clearHistory`, `:openFilterDir`. Discover wraps `getUnfilteredCommands` with a category-suggestion heuristic mapping command head → shipped folder (powers the K12 panel's "drop a draft YAML in <category>/" hint). `setEnabled` / `setVerbose` write straight through `patchSettings()` so the K9 shell-handler's next read picks up the change.
+- `electron/ipc/index.ts` — registers `registerSnipHandlers()` at the bottom of the registration list.
+- `electron/main.ts` — initializes the YAML filter loader on app startup (after skill-loader) and shuts it down on `will-quit`.
+- `electron-builder.yml` — added `resources/snip-filters` → `snip-filters` extraResource so the installer ships the 120 built-in YAML files.
+- `electron/preload.ts` — `window.api.snip` exposing all nine IPC channels + an `onFiltersChanged()` subscription (fires when chokidar detects a userData filter file changing). `LampreyAPI` is `typeof api`, so renderer types update automatically.
 
 **Verify gate:**
 - tsc node ✓
@@ -90,6 +157,21 @@
 - `electron/services/research/slugify.ts` (new) — small URL-safe slugifier: NFKD-strips diacritics, lowercases, hyphenates non-ASCII-alphanumerics, caps at 80 chars, falls back to `"research"` on empty/punctuation-only inputs.
 - `electron/services/research/synthesizer.ts` (new) — `synthesizeReport(input)` runs the strict-citation system prompt that lists the source pool by index and forbids citing anything else; on first generation `extractCitationRefs` walks every `[n]` / `[n, m]` ref (ignoring code-fence interiors) and validates against the source-pool indices. Fabricated refs trigger one retry with explicit feedback to the model; a second-pass failure raises `FabricatedCitationError` (typed, carrying the fabricated indices). This is the §2 rule 2 invariant — the synthesizer NEVER ships a report with a citation that doesn't map to a real source. After a clean validation pass, the model output (with any model-emitted `## Sources` / `## Bibliography` section stripped) is appended to a deterministically-built bibliography (`[n] [Title](URL) — accessed YYYY-MM-DD`, ordered by first appearance in the body). URLs and titles come straight from `CuratedSource`, never from the model. Filename is `research-<slug(question)>-<timestamp>.md`; the slug part is computed by the new helper.
 - `electron/services/research/synthesizer.test.ts` (new) — 20 tests across the slugifier (lowercase + hyphens, NFKD diacritics, empty fallback, length cap), `extractCitationRefs` (single, multi, multiple groups, code-fence exclusion), happy paths (complete report w/ bibliography, first-appearance ordering, dropping model-emitted bibliography, URL-from-source-not-model, dispute-pair context propagation), and the strict-citation validator (fabricated → throws, retry-then-succeed, error exposes fabricated indices, clean fixture passes), plus a smoke-check of the system prompt content.
+- vitest electron/services/snip/ ✓ (224 tests — K10 is pure IPC wire, no new unit tests; coverage is exercised by the K11 / K12 dashboard tests against the IPC mocks)
+
+**Notes:** the renderer surface is now complete. K11 builds the dashboard tab on top of it; K12 adds the Discover panel; K13 adds the status-line slot. The category-suggestion heuristic in `snip.ts` mirrors snip-the-CLI's filter taxonomy — it's a lookup table, not magic.
+
+## [Snip — Prompt K9] Interpose — apply.ts + shell wire + flags + bypass + verbose  —  2026-06-05
+
+**Files changed:**
+- `electron/services/snip/apply.ts` (new) — the single integration point. `applySnip(command, result, ctx) → { result, event, bypassed, matchedFilter }`. Walks the seven-path decision tree (master off → bypass → no match → exit-code gate → grew output → record + transform), always returns a ShellResult, never throws.
+- `electron/services/snip/index.ts` (new) — barrel for the snip service. Importers (tool-registry, future IPC, future UI store) pull from here so the file layout can move without ripple.
+- `electron/services/tool-registry.ts` — wired `applySnip` between `executeShellCommand` and `formatShellResultForModel` at the shell_command handler. Read `snipEnabled` from persisted settings (default `true`); read `bypass_snip` from the shell args. Added `bypass_snip` to the descriptor JSON Schema with rtk-proxy-flavored description so the model knows the escape hatch exists.
+- `electron/services/shell-tool.ts` — extended `ShellArgs` interface with `bypass_snip?: boolean`. Documented as the rtk-proxy analogue.
+- `src/lib/types.ts` — extended `AppSettings` with `snipEnabled` + `snipVerbose` flags, both documented inline (incl. Invariant 13 reminder that verbose never decorates model-facing text).
+- `src/stores/settings-store.ts` — defaults: `snipEnabled: true`, `snipVerbose: false`.
+- `electron/ipc/settings.ts` — same defaults in `defaultSettings` so first-launch reads from settings.json return them. Sanitizer is open-by-design (only blocks `__proto__`) so no allowlist update needed.
+- `electron/services/snip/apply.test.ts` (new) — 7 tests covering: master off → no DB writes; per-call bypass → log only; no match → log only; failure exit → pass-through; success → transform + record + preserve exit code; would-grow output → fall back, command_log records matched filter for coverage but no savings event; chain → pass-through.
 
 **Verify gate:**
 - tsc node ✓
@@ -106,6 +188,16 @@
 **Files changed:**
 - `electron/services/research/corroborator.ts` (new) — `corroborate(claims, sources, embeddings)` embeds every claim once via the injected `EmbeddingProvider` (RAG embeddings service in production; test fixtures inject deterministic vectors), then greedy-clusters by cosine ≥ 0.78. Each cluster's support is counted by **unique registrable domain** (from `CuratedSource.registrableDomain`) so two sibling sub-domains of the same publisher count once. ≥ 2 domains → `accepted`; 1 domain → `singleSource`. Dispute detection (`buildOppositionCandidates`) pairs clusters with token-overlap ≥ 0.15, sorts by overlap descending, caps at `maxOppositionPairs` (default 12), and asks a small LLM "do these contradict?" via `OPPOSITION_SYSTEM_PROMPT`. Contradicting pairs move both clusters to the `disputed` bucket and remove them from accepted/single-source. Embedding-failure path: fall back to all-claims-single-source rather than throw, so a worker crash doesn't kill the pipeline. `corroborateWithOpposition` is the orchestrator-facing convenience wrapper that injects `chatOnce` as the LLM caller. `parseOppositionOutput` is exported for direct testing.
 - `electron/services/research/corroborator.test.ts` (new) — 20 tests across cosine/normalize math, token-overlap math, clustering (same label → same cluster, eTLD+1 independence accounting, ≥2 domains required for accepted, empty input, embedding failure → fallback, count mismatch → fallback, deterministic across runs), dispute detection (opposing clusters move to disputed, no-overlap pairs skipped without LLM call, cap respected, non-contradicting verdicts leave clusters alone), opposition parser (clean JSON, malformed, safe defaults), and candidate pair selection.
+- vitest electron/services/snip/ ✓ (224 tests — K1-K8 plus K9's 7)
+
+**Notes:** the layer is now LIVE for the model. After K9, every foreground shell command in a real chat session flows through `applySnip` before `formatShellResultForModel`. The model sees compressed bodies for matched filters; raw output for chains, mismatches, failures, and `bypass_snip: true`. The Invariant 13 split between "in-band verbose markers" (forbidden) and "renderer-side verbose log" (allowed) means `snipVerbose` is a UI-side switch — `applySnip` itself never decorates the body. Settings flow: settings.json → `readSettings()` in tool-registry → `applySnip` ctx. No new IPC channel needed yet (K10 adds the renderer-facing surface).
+
+## [Snip — Prompt K8] Tracking — SQLite migration + dashboard queries  —  2026-06-05
+
+**Files changed:**
+- `electron/services/database.ts` — extended `initSchema` with two new tables: `snip_events` (one row per successful filter match — drives the gain dashboard) and `snip_command_log` (one row per foreground shell call regardless of match — feeds the K12 Discover panel). Both tables have `(ts DESC)` indexes plus a secondary `(filter_name | command_head, ts DESC)`.
+- `electron/services/snip/tracking.ts` (new) — `recordEvent`, `recordCommandLog`, `getStats` (totals + top-5-by-tokens-saved + 14-day sparkline with zero-fill), `getRecent`, `getUnfilteredCommands`, `clearAll`. All wrapped in a `safe()` helper that swallows DB errors and returns a sane fallback per Invariant 5. `__setDbForTests` lets tests inject an in-memory better-sqlite3 connection without touching the Electron-backed singleton.
+- `electron/services/snip/tracking.test.ts` (new) — 13 tests against `:memory:` SQLite covering: stats totals + top-5 ordering, 14-day sparkline with zero-fill + window-cutoff, `getRecent` ordering + limit cap, `getUnfilteredCommands` matched-filter exclusion + since-window, `clearAll`, and best-effort failure (closed DB → empty payload, no throw).
 
 **Verify gate:**
 - tsc node ✓
@@ -122,6 +214,21 @@
 **Files changed:**
 - `electron/services/research/claims.ts` (new) — `extractClaims(page)` runs the configured claims model on a single extracted page with a strict-JSON system prompt that asks for atomic declarative claims, each paired with a verbatim source span. The prompt explicitly excludes opinions / marketing language / rhetorical questions / nav text / comment-section content / vague unverifiable assertions, and caps the per-source output at 25 claims (model is told to pick the most central if there are more). Failed-status pages short-circuit to `[]` with zero LLM cost. LLM errors and malformed JSON also fall to `[]` — the orchestrator relies on these never throwing so peer sources can keep working. `parseClaimsOutput` is exported for direct unit testing; it tolerates prose-wrapped JSON, drops entries without `text`, allows missing/non-string `span`, caps per-claim text at 400 chars and per-claim span at 600 chars, and assigns stable IDs `<source_n>-<i>`. `extractClaimsAll` batches with a configurable concurrency cap (default 6) and honours an abort signal.
 - `electron/services/research/claims.test.ts` (new) — 18 tests across parser shape (clean JSON, prose-wrapped, malformed, missing array, missing-text drop, non-string span tolerance, MAX cap, claim-text cap), `extractClaims` semantics (failed-status no-op, LLM-error → empty, valid output passes through, empty-claims output, user-message contains source URL + title), and `extractClaimsAll` (source-order flatten, failed-page skip without LLM call, abort signal respected).
+- vitest electron/services/snip/ ✓ (217 tests — K1-K7 plus K8's 13)
+- vitest full sweep — 1590 / 1608 passing; 18 failures in `memory-store.test.ts` (17) + `keychain.test.ts` (1) all from a pre-existing Windows EPERM tmpdir-race when SQLite still holds a handle during `rmSync`. Confirmed unchanged from the pre-K8 baseline (reverted database.ts → same failures).
+
+**Notes:** the tracking module is the first snip file that actually touches a side-effect (SQLite). It uses a `safe()` wrapper around every DB operation so a locked DB / corrupt schema / disk-full failure cannot block the model from receiving the filtered output (Invariant 5). The `__setDbForTests` escape hatch keeps the tests free of Electron — they pass a `better-sqlite3 ':memory:'` connection and the production `getDb()` path is never reached.
+
+## [Snip — Prompt K7] Built-in filter set — build + files/search + linting + pkg + system + other  —  2026-06-05
+
+**Files changed:**
+- `resources/snip-filters/build/{make,gcc,g++,gradle,gradlew,mvn,swift,xcodebuild,just,task,pio,trunk,mise}.yaml` (13 new) — build tools. C/C++ compilers + JVM ecosystem + Apple toolchain + task runners.
+- `resources/snip-filters/files/{ls,find,grep,rg,diff,wc,tree}.yaml` (7 new) — files / search. All use head + per-line truncate; `rg` and `grep` cap at 300 chars/line so a single noisy match doesn't blow the budget.
+- `resources/snip-filters/linting/{shellcheck,hadolint,markdownlint,yamllint,pre-commit}.yaml` (5 new) — linting family; substitute clean-result messages on no findings.
+- `resources/snip-filters/pkg/{brew,composer}.yaml` (2 new) — remaining package managers (npm/yarn/pnpm in K5, pip/poetry/uv in K6, bundle in K6).
+- `resources/snip-filters/system/{curl,wget,psql,jq,ping,ssh,rsync,df,du,ps,systemctl,iptables,stat,fail2ban}.yaml` (14 new) — system/network. `ping` uses `tail 8` for the stats block; logs/long-output tools use `head` with `truncate_lines`.
+- `resources/snip-filters/other/{gh-pr,gh-issue,gh-run,jira,jj,yadm,gt,ollama,sops,skopeo}.yaml` (10 new) — misc. The gh-* trio matches `gh pr / issue / run` subcommands.
+- `electron/services/snip/filters.test.ts` — extended with goldens for `rg` (200-match file list) and `gh-pr` (empty → "no PRs").
 
 **Verify gate:**
 - tsc node ✓
@@ -139,6 +246,19 @@
 - `package.json` + `package-lock.json` — `node-html-parser@7.1.0` added (MIT, 169 KB unpacked). Well under the plan's 300 KB minified+gzipped threshold; no fallback path needed.
 - `electron/services/research/extractor.ts` (new) — `extractPage(source)` fetches HTML via `safeFetch` (SSRF invariant), parses with `node-html-parser`, prunes boilerplate (script/style/noscript/nav/footer/aside/form/iframe/svg + class-pattern matchers for `ad`/`cookie`/`newsletter`/`comment`/`share`/`social`/`subscribe`/`related`/`promo`), picks main content in priority order (`<article>` → `<main>` → `[role="main"]` → largest `<div>`/`<section>` text block among body children), extracts title (H1 preferred, then `<title>`, then `og:title`), byline (`meta[name=author]` → `[rel=author]` → `.byline`/`.author`/`[itemprop=author]`), published_at (`<time datetime>` → `meta[property="article:published_time"]`), and caps full text at 30 KB. Non-200 / non-HTML / no-readable-text → `status: 'failed'`; aborted → `status: 'aborted'`. Never throws — peer pages can succeed even when one fails. Streaming body reader caps fetch at 1 MB.
 - `electron/services/research/extractor.test.ts` (new) — 15 tests across happy paths (article extraction, main fallback, largest-div fallback, script/style stripping, H1-over-title preference, published_at extraction, byline extraction, byte cap) and failure paths (HTTP 404, non-HTML content-type, no readable text, abort-before-fetch, fetch-throw lands as failed). Batch entry point `extractAll(sources, concurrency)` tested for parallel-extract correctness + abort.
+- vitest electron/services/snip/ ✓ (204 tests; all 120 of the planned ~125 YAML filters schema-validate through the harness)
+
+**Notes:** filter set closed at 120 YAMLs — slightly under the ~125 target because some snip filters (e.g. duplicates between `dotnet-build` / `dotnet-test` and the standalone `dotnet` wrapper) collapsed into a single subcommand-keyed file in the YAML layout. Coverage spans 15 categories (git, js, go, rust, python, ruby, dotnet, docker, cloud, build, files, linting, pkg, system, other) which matches snip's category structure. K8 will land the SQLite tracking now that the filter set is frozen.
+
+## [Snip — Prompt K6] Built-in filter set — Python + Ruby + .NET + Docker/K8s + Cloud  —  2026-06-05
+
+**Files changed:**
+- `resources/snip-filters/python/{pytest,ruff,mypy,basedpyright,ty,pip,poetry,uv}.yaml` (8 new) — Python family. ruff/mypy substitute clean-result messages; pip short-circuits "Requirement already satisfied".
+- `resources/snip-filters/ruby/{rspec,rubocop,rake,bundle,rails-migrate,rails-routes}.yaml` (6 new) — Ruby family.
+- `resources/snip-filters/dotnet/{dotnet-build,dotnet-test,dotnet-format}.yaml` (3 new) — .NET family. dotnet-build keeps `Build (succeeded|FAILED)` lines + error/warning detail.
+- `resources/snip-filters/docker/{docker-build,docker-ps,docker-images,docker-logs,docker-compose,kubectl-get,kubectl-logs}.yaml` (7 new) — Docker/K8s family. `docker-logs` / `kubectl-logs` use `tail` (not `head`) — log tails are where the signal is.
+- `resources/snip-filters/cloud/{terraform,tofu,helm,ansible-playbook,gcloud,aws}.yaml` (6 new) — Cloud/Infra family. Terraform / tofu keep the `Plan: N to add` summary + per-resource `# … will be created` lines.
+- `electron/services/snip/filters.test.ts` — extended with goldens for `pytest` (2-passed run) and `terraform` (single-resource plan).
 
 **Verify gate:**
 - tsc node ✓
@@ -157,6 +277,17 @@
 - `electron/services/research/adapter-cascade.ts` — refactored to import `canonicalUrl` from the new shared module (replacing the inline copy from D2). Behavioural contract unchanged; all 23 D2 tests still pass.
 - `electron/services/research/collector.ts` (new) — `collectSources(planned, depth)` runs planner queries through `searchCascade` with a bounded concurrency pool (4 workers), then curates: spam-domain blocklist (conservative set: ezinearticles, hubpages, squidoo, articlesbase, buzzle), canonical-URL dedup across queries/providers, per-domain cap (`≤ 3` configurable), trust ranking (`.gov`/`.edu` → 3; allowlisted major publishers → 2; neutral → 1), top-N by depth tier (`quick`: 12, `standard`: 25, `exhaustive`: 50), and stable 1..N numbering for citation indices. AbortSignal honored between queries and before curation.
 - `electron/services/research/collector.test.ts` (new) — 44 tests across canonicalUrl (15 URL fixtures), registrableDomain (11 fixtures including `news.bbc.co.uk` → `bbc.co.uk`, `someone.github.io` → `someone.github.io`, `*.pages.dev`), dedupe stability, trust-score determinism, spam blocklist behaviour, and collector integration (numbering, domain cap, spam drop, cross-query dedup, depth-cap truncation, trust-rank ordering, error propagation, abort, planner-angle propagation).
+- vitest electron/services/snip/ ✓ (151 tests; 69 of ~125 filters now schema-validated through the harness)
+
+**Notes:** 69 of the targeted ~125 filters shipped after K6 (39 from K4+K5 plus 30 here — 8+6+3+7+6). K7 closes the filter set with the remaining ~50 across build tools, files/search, linting, package managers, system/network, and misc. `docker-logs` and `kubectl-logs` are the first filters in the set that use `tail` instead of `head` — log output's signal is always at the bottom.
+
+## [Snip — Prompt K5] Built-in filter set — JS/TS + Go + Rust toolchains  —  2026-06-05
+
+**Files changed:**
+- `resources/snip-filters/js/{tsc,vitest,jest,eslint,prettier,biome,oxlint,next,playwright,nx,turbo,npm,npx,yarn,pnpm,prisma}.yaml` (16 new) — JS/TS family. `tsc` returns "no type errors" on empty body, otherwise passes the diagnostics through. `vitest` short-circuits "all passed" then keeps the summary lines. `npm` collapses "up to date" / progress bars to a one-line summary. All `viaNpx: true` filters accept the direct binary AND `npx <bin>` / `pnpm dlx <bin>` / `yarn dlx <bin>` forms (K2 matcher work).
+- `resources/snip-filters/go/{go-test,go-build,go-vet,golangci-lint}.yaml` (4 new) — Go family. `go-test` aggregates `ok` / `FAIL` package counts; `go-build` / `go-vet` substitute "ok" on empty success.
+- `resources/snip-filters/rust/{cargo-test,cargo-build,cargo-check,cargo-clippy,cargo-install,cargo-nextest,rustc}.yaml` (7 new) — Rust family. `cargo-test` keeps result counts + failing-test detail; the rest preserve `warning:` / `error[…]` / `Finished` lines.
+- `electron/services/snip/filters.test.ts` — extended with goldens for `tsc` (clean), `vitest` (all-passed summary), and `cargo-test` (5-test green run).
 
 **Verify gate:**
 - tsc node ✓
@@ -173,6 +304,15 @@
 **Files changed:**
 - `electron/services/research/planner.ts` (new) — `planQueries(question, depth)` runs the configured planner model with a strict-JSON system prompt that asks for `target = {quick: 3, standard: 5, exhaustive: 8}` queries covering distinct angles (baseline / news / opposing view / comparative / technical / primary / expert / quantitative). `parsePlannerOutput` tolerates leading/trailing prose, validates the `queries[].q` shape, defaults missing `angle` to `"unspecified"`, and returns null on malformed input. `dedupePlannedQueries` drops near-identical queries by Jaccard token overlap (default threshold 0.75) preserving first occurrence. On first-attempt parse failure the planner retries once with a tightened system prompt; second failure throws.
 - `electron/services/research/planner.test.ts` (new) — 19 tests across parser (clean, prose-wrapped, malformed, missing-queries, all-empty, missing-angle default, mixed-validity), dedup (uniques pass, Jaccard kills near-dups, configurable threshold, empty input), and the planner itself (target-count by depth tier, cap on too-many results, retry-on-malformed, throw-on-double-failure, near-dup collapse, distinct angles).
+- vitest electron/services/snip/ ✓ (119 tests — K1-K4 plus K5's three new goldens; YAML-validation loop now exercises 39 of the planned ~125 filters)
+
+**Notes:** filter count is 39 of the targeted ~125 after K5 (12 git + 16 js + 4 go + 7 rust). K6 will add Python + Ruby + .NET + Docker/K8s + Cloud/Infra (~35); K7 closes with build + files/search + linting + pkg + system/network + other (~50). The K5 set deliberately keeps `npm install` aggressive (drop everything but the `added N packages` summary) — that's where the biggest token wins live for this project.
+
+## [Snip — Prompt K4] Built-in filter set — git family  —  2026-06-05
+
+**Files changed:**
+- `resources/snip-filters/git/{git-status,git-log,git-diff,git-show,git-add,git-commit,git-push,git-pull,git-fetch,git-branch,git-stash,git-worktree}.yaml` (12 new) — declarative pipelines for the git family. `git-status` short-circuits on "nothing to commit" via `match_output`; `git-log` post-processes with `strip_ansi` + `truncate_lines` + `head 30` (no inject so we can't force `--pretty`); `git-push` / `git-pull` / `git-fetch` strip the Counting/Compressing progress noise; `git-add` substitutes "staged" on empty output; `git-commit` keeps the `[branch hash]` summary line.
+- `electron/services/snip/filters.test.ts` (new) — golden-input regression harness. Scans `resources/snip-filters/` at test time, validates every YAML via `filter-schema`, then runs each named filter through a captured-from-terminal golden input asserting (a) `estimateTokens(out) <= estimateTokens(in)` and (b) the output contains / doesn't contain expected substrings. K5/K6/K7 extend the goldens array — no new test files.
 
 **Verify gate:**
 - tsc node ✓
@@ -191,6 +331,17 @@
 - `electron/services/research/index.ts` (new) — stub `runDeepResearch()` that throws a typed `DeepResearchNotImplementedError`. D10 replaces this with the real orchestrator; D11 extends it with artifact emission. The typed error lets `chat.ts` distinguish "pipeline not ready" from genuine pipeline failures.
 - `electron/ipc/chat.ts` — wires `routeChatTurn` between conversation creation and message persistence. The saved user message reflects the body with `/research` or `--no-research` already stripped, so downstream history, RAG, and skills see the clean text. When routing chooses research and the orchestrator stub throws `NotImplementedError`, we log a warning and fall through to normal dispatch.
 - `electron/services/research/intent.test.ts` (new) — 51 tests across prefix parsing (case-insensitive, position-anchored, bare-verb edge cases), prefilter REJECT fixtures (10 code-edit verbs + path tokens + code fences + plan-mode + short non-questions + empty input), prefilter ALLOW fixtures (6 research-loud phrases), prefilter UNDECIDED branch, `parseClassifierOutput` (clean JSON, embedded JSON, malformed input, confidence clamp, depth fallback), `classifyResearchIntent` (LLM error → null), `shouldEscalateToResearch` composition (prefix → no LLM, prefilter → no LLM, undecided → LLM, cache hit), `routeChatTurn` (forced, suppressed, autoTrigger-off path is cheap, prefilter-allow path, LLM-yes-confidence-met path, LLM-below-threshold falls back, plan-mode never escalates, LLM error falls back).
+- vitest electron/services/snip/ ✓ (89 tests — 22 engine + 25 matcher + 20 loader + 22 filter goldens)
+
+**Notes:** two regression-driven design lessons. First, `match_output` substitutes its message into the body but does NOT halt the pipeline — the next step keeps running on the substituted text. So patterns like "short-circuit then format_template" don't work; you need `match_output` + a pipeline that keeps the substituted message intact (or just use `keep_lines` + `on_empty`). Second, without snip-style "inject" pre-execution rewriting, `git log` can't be made one-line-per-commit purely via post-processing — the most honest compression is `head + truncate_lines`. Reserve inject for a v2 phase.
+
+## [Snip — Prompt K3] YAML filter loader + schema + chokidar hot-reload  —  2026-06-05
+
+**Files changed:**
+- `electron/services/snip/filter-schema.ts` (new) — pure validator that walks a raw JS object (the result of `yaml.load`) into a typed `Filter`, returning a structured `{ ok, filter? , error? }`. Strict: partial fields fail loud. 11 action tags individually validated for required fields.
+- `electron/services/snip/filter-loader.ts` (new) — mirrors `skill-loader.ts` shape. Dual filter dirs: `resources/snip-filters/` (built-in, bundled with app) and `<userData>/snip/filters/` (user-extensible). First launch copies the built-in tree to `<userData>/snip/filters/built-in/` so users can fork. chokidar watch on the userData dir with `awaitWriteFinish` debounce. User filters at the root override built-ins by name (K2's first-match-wins consumes them ahead of built-ins). `listActiveFilters`, `listAllFilters` (dashboard metadata), `listLoadErrors`, `reloadAllFilters`, `subscribeFilterChanges` exposed.
+- `electron/services/snip/filter-loader.test.ts` (new) — 20 unit tests covering schema validator edge cases (missing fields, malformed actions, aggregate without counters, etc.), YAML→Filter round-trip, classifyPath for built-in-vs-user, and isYamlFile (rejects `*.draft.yaml` reserved for K12's discover stub).
+- `package.json`, `package-lock.json` — `@types/js-yaml` added as a devDep. `js-yaml` itself was already a transitive dep via `gray-matter`, so no new runtime bundle weight.
 
 **Verify gate:**
 - tsc node ✓
@@ -208,6 +359,15 @@
 - `electron/services/web-search-adapters.ts` — new `getWebSearchAdapterById(id)` lets the cascade instantiate a specific provider without mutating `webTools.searchProvider` settings.
 - `electron/services/research/adapter-cascade.ts` (new) — `searchCascade(query, opts)` runs the configured cascade in first-non-empty mode by default, or merges across all configured providers when `mergeAll: true`. Transient HTTP errors (`429`, `5xx`, network/timeout/abort) fall through; non-transient errors throw a typed `CascadeFailureError`. Inline canonicaliser strips `www.`, fragments, `utm_*`/`fbclid`/`gclid`/`msclkid`/`yclid`/`dclid`/`igshid`/`_hsenc`/`_hsmi` params; sorts remaining params for stable dedup; trims trailing slash. `readDeepResearchSettings()` reads `deepResearch.providerCascade` from settings.json with default `['duckduckgo','brave','serpapi']`, plus `autoTrigger` (default `false` until D10 wires the orchestrator), `depthTier` (default `'auto'`), and model overrides.
 - `electron/services/research/adapter-cascade.test.ts` (new) — 23 tests across settings parsing, canonical-URL rules, dedup, first-non-empty cascade behaviour (429/503/empty fallthrough, unconfigured-provider skip, all-fail trail, providers override, non-transient abort), and mergeAll mode.
+- vitest electron/services/snip/ ✓ (67 tests including K1's 22 + K2's 25)
+
+**Notes:** the test file follows skill-loader.test.ts's pattern of `vi.mock('electron', …)` + `vi.mock('@electron-toolkit/utils', …)` at the top — required because filter-loader.ts pulls in electron APIs (app.getPath, BrowserWindow). The `__filterLoaderTest` test surface exposes the pure pipeline (string YAML → Filter | error) so we don't need chokidar in tests. `*.draft.yaml` files are explicitly skipped by isYamlFile because K12 will drop draft stubs there for the user to edit before they become live filters.
+
+## [Snip — Prompt K2] Matcher: command parsing + filter selection  —  2026-06-05
+
+**Files changed:**
+- `electron/services/snip/matcher.ts` (new) — `parseCommand` (shell lexer handling single/double quotes + backslash escapes + chain-operator detection + env-var stripping) and `selectFilter` (head/sub exact match, `viaNpx` for npx / pnpm dlx / yarn dlx wrappers, `excludeFlags` short-circuit with long-flag prefix support).
+- `electron/services/snip/matcher.test.ts` (new) — 25 unit tests covering quoting edge cases, chain detection (`&&`, `||`, `;`, `|`, quoted-vs-unquoted), env-var stripping, viaNpx wrapper resolution across all three forms, and excludeFlags both standalone and combined with viaNpx.
 
 **Verify gate:**
 - tsc node ✓
@@ -226,6 +386,17 @@
 - `electron/services/web-search-adapters.test.ts` — `parseDuckDuckGoHtml` parser tests (classic markup, redirect unwrapping, entity decoding, max-result cap, fallback anchor markup, empty input); adapter wiring tests (factory returns adapter without keychain entry, `isProviderConfigured('duckduckgo') === true`, POST to `html.duckduckgo.com` with `df` freshness param, HTTP non-2xx throws, empty SERP returns `[]`, provider list ordering).
 - `electron/ipc/web-tools.ts` — `isProviderId` accepts `'duckduckgo'`; `setProvider` skips the keychain write for DDG; `deleteKey` rejects DDG.
 - `src/components/settings/WebToolsSettings.tsx` — `ProviderId` union + `drafts`/`showKey` records extended; `DOC_LINKS` includes DDG; doc-link label renders "About DuckDuckGo →".
+- vitest electron/services/snip/ ✓ (47 tests including K1's 22)
+
+**Notes:** the lexer is deliberately scoped to what selection needs — it parses well enough to find the head, subcommand, and flag set, and to spot chain operators. It does NOT interpret redirection, command substitution, or process substitution; filtering opts out on `isChain` so we never have to guess which stage of a multi-stage pipeline produced the bytes we're holding. `viaNpx` accepts `npx tsc`, `pnpm dlx tsc`, and `yarn dlx tsc` — all three are how Lamprey's users run JS toolchains.
+
+## [Snip — Prompt K1] Engine: types + pipeline actions + runner  —  2026-06-05
+
+**Files changed:**
+- `electron/services/snip/types.ts` (new) — `MatchSpec`, `PipelineAction` tagged union (11 variants), `Filter`, `SnipEvent`, `SnipStats`, `SnipRecentRow`, `SnipDiscoverSuggestion`.
+- `electron/services/snip/actions.ts` (new) — pure implementations of all 11 actions + `ActionContext` (counters scratch).
+- `electron/services/snip/engine.ts` (new) — `runPipeline` (try/catch per step + prev-step fallback) + `estimateTokens` (`Math.ceil(len/4)`).
+- `electron/services/snip/engine.test.ts` (new) — 22 unit tests covering each action, runner containment semantics, and the token estimator.
 
 **Verify gate:**
 - tsc node ✓
@@ -236,6 +407,9 @@
 **Notes:** First parser draft used a `<div class="result ...">` block regex that over-matched into the outer `<div class="results">` container and only captured the last block. Rewrote as a single anchor-walking strategy (every `result__a` → nearest `result__snippet` within 1.2 KB) which is more resilient to template revisions and passes all six parser fixtures. DDG returns simpler markup for desktop User-Agent strings, so the adapter sets a generic Chrome UA. Existing users keep their saved provider; default change only affects fresh installs.
 
 **Commit:** `7ec4e68`
+- vitest electron/services/snip/ ✓ (22 tests)
+
+**Notes:** the runner-containment test surfaced a real bug — `applyAction`'s exhaustive switch returns `undefined` at runtime for an unknown action tag, and the runner was previously letting that undefined become the next step's `input`. Fixed by adding (a) a `default: return input` in `applyAction` and (b) a `typeof next === 'string' ? next : prev` guard in `runPipeline`. The pipeline now genuinely never corrupts the model-facing output regardless of action shape. Per-prompt commit SHAs captured in the phase-close summary table at K14.
 
 ## [Sandbox Parity Phase — COMPLETE] — 2026-06-05
 

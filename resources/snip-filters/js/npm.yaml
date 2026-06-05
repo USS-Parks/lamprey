@@ -1,0 +1,17 @@
+name: npm
+description: Collapse npm install / ci / audit progress to summary
+match:
+  command: npm
+pipeline:
+  - action: strip_ansi
+  - action: match_output
+    pattern: 'up to date(,| in )'
+    message: 'npm: up to date'
+  - action: remove_lines
+    pattern: '^(npm (notice|info|verb|http|warn deprecated)|\s*\|\s|\s*\\\s|\s*-\s)'
+  - action: keep_lines
+    pattern: '(added \d+|removed \d+|changed \d+|audited \d+|vulnerabilit|deprecated|error|ERR!|npm WARN)'
+  - action: head
+    n: 60
+  - action: on_empty
+    message: 'npm: no significant output'

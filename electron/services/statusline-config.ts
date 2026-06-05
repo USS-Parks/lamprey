@@ -35,6 +35,7 @@ export type StatusLineSlot =
   | 'workflow'
   | 'branch'
   | 'wakeups'
+  | 'snip'
   | 'tokens'
   | 'rag'
 
@@ -44,16 +45,21 @@ const ALL_SLOTS: StatusLineSlot[] = [
   'workflow',
   'branch',
   'wakeups',
+  'snip',
   'tokens',
   'rag'
 ]
 
+// Snip Phase K13: the 'snip' slot is shipped as a default-visible slot
+// but the renderer hides it when today's saved count is 0 so brand-new
+// installs don't see a "0 saved" zero-state in the status bar.
 const DEFAULT_VISIBLE_SLOTS: StatusLineSlot[] = [
   'model',
   'context',
   'workflow',
   'branch',
-  'wakeups'
+  'wakeups',
+  'snip'
 ]
 
 export interface StatusLineConfig {
@@ -70,6 +76,7 @@ export const DEFAULT_STATUSLINE_CONFIG: StatusLineConfig = {
     workflow: '{label}',
     branch: '{name}',
     wakeups: '{count} wake-up{plural}',
+    snip: 'snip: {saved} saved',
     tokens: '{kilo}k tokens',
     rag: '{count} corpus'
   },

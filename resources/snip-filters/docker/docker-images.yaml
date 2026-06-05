@@ -1,0 +1,11 @@
+name: docker-images
+description: docker images listing bounded to 50 rows
+match:
+  command: docker
+  subcommand: images
+pipeline:
+  - action: strip_ansi
+  - action: head
+    n: 50
+  - action: on_empty
+    message: 'docker images: none'

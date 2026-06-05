@@ -1,0 +1,12 @@
+name: g++
+description: Compress g++ compile output
+match:
+  command: g++
+pipeline:
+  - action: strip_ansi
+  - action: keep_lines
+    pattern: '(error|warning|note|undefined reference)'
+  - action: head
+    n: 100
+  - action: on_empty
+    message: 'g++: ok'

@@ -1,0 +1,13 @@
+name: dotnet-format
+description: Compress dotnet format output
+match:
+  command: dotnet
+  subcommand: format
+pipeline:
+  - action: strip_ansi
+  - action: keep_lines
+    pattern: '(Formatted|warning|error|Could not)'
+  - action: head
+    n: 50
+  - action: on_empty
+    message: 'dotnet format: no changes'

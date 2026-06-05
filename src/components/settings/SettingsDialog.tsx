@@ -18,6 +18,7 @@ import { GitHubSettings } from './GitHubSettings'
 import { ActivityTimeline } from '@/components/activity/ActivityTimeline'
 import { LibraryView } from '@/components/library/LibraryView'
 import { RagSettings } from './RagSettings'
+import { SnipSettings } from './SnipSettings'
 import { useUiStore } from '@/stores/ui-store'
 
 interface SettingsDialogProps {
@@ -43,6 +44,7 @@ const TABS = [
   { id: 'automations', label: 'Automations' },
   { id: 'library', label: 'Library' },
   { id: 'rag', label: 'RAG' },
+  { id: 'snip', label: 'Snip' },
   { id: 'activity', label: 'Activity' }
 ] as const
 
@@ -114,6 +116,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
             {activeTab === 'automations' && <AutomationsSettings />}
             {activeTab === 'library' && <LibraryView />}
             {activeTab === 'rag' && <RagSettings />}
+            {activeTab === 'snip' && <SnipSettings />}
             {activeTab === 'activity' && <ActivityTimeline />}
           </div>
         </div>

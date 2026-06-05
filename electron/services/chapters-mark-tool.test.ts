@@ -1,4 +1,12 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+
+// Snip Phase K9 wired the snip layer into tool-registry; the chain
+// imports filter-loader which pulls in electron + @electron-toolkit.
+vi.mock('electron', () => ({
+  app: { getPath: () => '.tmp-chapters-mark-test' },
+  BrowserWindow: { getAllWindows: () => [] }
+}))
+vi.mock('@electron-toolkit/utils', () => ({ is: { dev: true } }))
 
 // Track 2 / E1 — verifies the `mark_chapter` tool descriptor is
 // registered and matches the contract documented in the plan §5: a

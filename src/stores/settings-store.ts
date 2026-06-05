@@ -25,7 +25,9 @@ const defaultSettings: AppSettings = {
   },
   agenticCodingMode: false,
   agenticCodingSkills: ['codex-plan', 'codex-context', 'codex-verify'],
-  agenticCodingComposer: 'auto'
+  agenticCodingComposer: 'auto',
+  snipEnabled: true,
+  snipVerbose: false
 }
 
 interface SettingsState {

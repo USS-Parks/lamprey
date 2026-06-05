@@ -1,0 +1,13 @@
+name: dotnet-build
+description: Compress dotnet build to summary + errors
+match:
+  command: dotnet
+  subcommand: build
+pipeline:
+  - action: strip_ansi
+  - action: keep_lines
+    pattern: '(Build (succeeded|FAILED)|Errors?|Warnings?|Time Elapsed|error |warning )'
+  - action: head
+    n: 60
+  - action: on_empty
+    message: 'dotnet build: ok'

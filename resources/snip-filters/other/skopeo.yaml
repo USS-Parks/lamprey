@@ -1,0 +1,10 @@
+name: skopeo
+description: Compress skopeo (container image) output
+match:
+  command: skopeo
+pipeline:
+  - action: strip_ansi
+  - action: head
+    n: 60
+  - action: on_empty
+    message: 'skopeo: no output'

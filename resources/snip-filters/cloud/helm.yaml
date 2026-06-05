@@ -1,0 +1,12 @@
+name: helm
+description: Compress helm install / upgrade / list output
+match:
+  command: helm
+pipeline:
+  - action: strip_ansi
+  - action: keep_lines
+    pattern: '(NAME|STATUS|REVISION|DEPLOYED|FAILED|Release|Error|warning|Installing|Upgrading|deployed)'
+  - action: head
+    n: 80
+  - action: on_empty
+    message: 'helm: no output'

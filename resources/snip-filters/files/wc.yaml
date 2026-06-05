@@ -1,0 +1,10 @@
+name: wc
+description: wc output usually fits in a few lines; only enforce a cap
+match:
+  command: wc
+pipeline:
+  - action: strip_ansi
+  - action: head
+    n: 30
+  - action: on_empty
+    message: 'wc: no input'

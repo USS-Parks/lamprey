@@ -1,0 +1,12 @@
+name: yamllint
+description: Compress yamllint output
+match:
+  command: yamllint
+pipeline:
+  - action: strip_ansi
+  - action: keep_lines
+    pattern: '(error|warning|:\d+:\d+:)'
+  - action: head
+    n: 100
+  - action: on_empty
+    message: 'yamllint: clean'

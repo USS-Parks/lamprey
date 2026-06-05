@@ -40,6 +40,11 @@ extraResources:
   # process.resourcesPath/mcp/<server>/server.js at runtime in production.
   - from: resources/mcp
     to: mcp
+  # Snip Phase K3+K10: bundled YAML filters. filter-loader.ts bootstraps
+  # userData/snip/filters/built-in/ from process.resourcesPath/snip-filters
+  # on first launch; subsequent launches hot-reload from userData.
+  - from: resources/snip-filters
+    to: snip-filters
 
 mac:
   category: public.app-category.developer-tools

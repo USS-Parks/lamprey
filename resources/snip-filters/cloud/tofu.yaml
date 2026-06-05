@@ -1,0 +1,12 @@
+name: tofu
+description: Compress opentofu plan / apply output
+match:
+  command: tofu
+pipeline:
+  - action: strip_ansi
+  - action: keep_lines
+    pattern: '(Plan:|Apply complete|Destroy complete|Error:|Warning:|will be (created|updated|destroyed)|# .* will be|Outputs:)'
+  - action: head
+    n: 100
+  - action: on_empty
+    message: 'tofu: no output'

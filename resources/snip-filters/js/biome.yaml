@@ -1,0 +1,13 @@
+name: biome
+description: Compress biome check / lint output
+match:
+  command: biome
+  viaNpx: true
+pipeline:
+  - action: strip_ansi
+  - action: keep_lines
+    pattern: '(Checked|Found|fixed|error|warning|×|→)'
+  - action: head
+    n: 100
+  - action: on_empty
+    message: 'biome: no problems'

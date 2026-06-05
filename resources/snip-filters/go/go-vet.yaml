@@ -1,0 +1,11 @@
+name: go-vet
+description: go vet silent on success; pass through warnings
+match:
+  command: go
+  subcommand: vet
+pipeline:
+  - action: strip_ansi
+  - action: on_empty
+    message: 'go vet: ok'
+  - action: head
+    n: 100

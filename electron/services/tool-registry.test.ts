@@ -1,4 +1,13 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
+
+// Snip Phase K9 wired `applySnip` into tool-registry.ts; that import
+// chain pulls in electron's `BrowserWindow` API via filter-loader. Mock
+// electron so the dynamic-import path stays clean in vitest.
+vi.mock('electron', () => ({
+  app: { getPath: () => '.tmp-tool-registry-test' },
+  BrowserWindow: { getAllWindows: () => [] }
+}))
+vi.mock('@electron-toolkit/utils', () => ({ is: { dev: true } }))
 
 // Regression guard for the production startup crash.
 //

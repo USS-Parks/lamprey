@@ -1,0 +1,13 @@
+name: playwright
+description: Compress playwright test output
+match:
+  command: playwright
+  viaNpx: true
+pipeline:
+  - action: strip_ansi
+  - action: keep_lines
+    pattern: '(passed|failed|skipped|flaky|Running|Slow|✓|✗|×|Error:|expect\()'
+  - action: head
+    n: 100
+  - action: on_empty
+    message: 'playwright: no output'

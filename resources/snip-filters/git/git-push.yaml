@@ -1,0 +1,15 @@
+name: git-push
+description: Keep result + ref-update lines; drop progress / counting noise
+match:
+  command: git
+  subcommand: push
+pipeline:
+  - action: strip_ansi
+  - action: remove_lines
+    pattern: '^(Counting|Compressing|Writing|Total|remote: Resolving|remote: Counting|remote: Compressing|remote: Total)'
+  - action: keep_lines
+    pattern: '^(To |\s+\*?\s+\[|\s*[a-f0-9]{7}\.\.|Everything up-to-date|Branch .* set up|remote:)'
+  - action: head
+    n: 30
+  - action: on_empty
+    message: 'git push: complete (no output)'

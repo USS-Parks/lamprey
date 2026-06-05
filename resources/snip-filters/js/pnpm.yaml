@@ -1,0 +1,12 @@
+name: pnpm
+description: Collapse pnpm install / run output
+match:
+  command: pnpm
+pipeline:
+  - action: strip_ansi
+  - action: keep_lines
+    pattern: '(Already up to date|Packages:|\+\s*\d+|Progress:|done in|err|ERR|WARN|Done in)'
+  - action: head
+    n: 60
+  - action: on_empty
+    message: 'pnpm: no output'

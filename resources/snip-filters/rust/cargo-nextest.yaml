@@ -1,0 +1,13 @@
+name: cargo-nextest
+description: Compress cargo nextest output to summary
+match:
+  command: cargo
+  subcommand: nextest
+pipeline:
+  - action: strip_ansi
+  - action: keep_lines
+    pattern: '(PASS|FAIL|SKIP|Summary|Starting|test|Slow|Compiling|Finished|error:)'
+  - action: head
+    n: 80
+  - action: on_empty
+    message: 'nextest: no output'

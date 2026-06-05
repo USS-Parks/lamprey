@@ -1,0 +1,13 @@
+name: rails-migrate
+description: Compress rails db:migrate output
+match:
+  command: rails
+  subcommand: db:migrate
+pipeline:
+  - action: strip_ansi
+  - action: keep_lines
+    pattern: '(== |Migrating to|migrated|created_at|add_column|drop_table|create_table)'
+  - action: head
+    n: 80
+  - action: on_empty
+    message: 'rails migrate: ok'

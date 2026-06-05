@@ -1,0 +1,10 @@
+name: yadm
+description: Compress yadm (dotfile manager) output
+match:
+  command: yadm
+pipeline:
+  - action: strip_ansi
+  - action: head
+    n: 50
+  - action: on_empty
+    message: 'yadm: no output'
