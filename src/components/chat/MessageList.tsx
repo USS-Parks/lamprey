@@ -4,6 +4,7 @@ import { parseReasoning } from '@/lib/reasoning'
 import { MessageBubble } from './MessageBubble'
 import { StreamingText } from './StreamingText'
 import { StreamStatusLine } from './StreamStatusLine'
+import { DocumentCardRow } from './DocumentCardRow'
 import { InlineApprovalChip } from './InlineApprovalChip'
 import { useInlineApprovalsStore } from '@/stores/inline-approvals-store'
 import { TranscriptNotice } from './TranscriptNotice'
@@ -112,6 +113,7 @@ export function MessageList({
   // does. Falls back to the legacy inline-<think> parse for reasoners that
   // smuggle thinking into the visible content.
   const streamingReasoning = useChatStore((s) => s.streamingReasoning)
+  const streamingDocuments = useChatStore((s) => s.streamingDocuments)
   const isReasoner = activeModel === 'deepseek-reasoner'
   const parsed = (() => {
     if (streamingReasoning) {
@@ -249,6 +251,9 @@ export function MessageList({
                   content={parsed.body}
                   reasoning={parsed.reasoning}
                 />
+                {streamingDocuments.length > 0 && (
+                  <DocumentCardRow documents={streamingDocuments} />
+                )}
               </div>
             </div>
           )}

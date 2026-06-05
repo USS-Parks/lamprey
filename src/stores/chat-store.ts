@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import type {
   AgentRunPhase,
   Conversation,
+  DocumentAttachment,
   Message,
   ProcessedFile,
   ToolCallEvent,
@@ -47,6 +48,12 @@ interface ChatState {
    *  (DeepSeek `delta.reasoning_content`, OpenRouter `delta.reasoning`).
    *  Reset when a new stream starts; cleared on finishStream/streamError. */
   streamingReasoning: string
+  /** Documents the model emitted via `create_document` during the current
+   *  in-flight turn. Appended on `chat:document-created`; cleared on
+   *  finishStream/streamError. The persisted message returned by chat:done
+   *  already carries the same attachments, so the live buffer is only for
+   *  rendering during the streaming bubble. */
+  streamingDocuments: DocumentAttachment[]
   streamStartedAt: number | null
   activeModel: string
   toolCalls: ToolCallState[]
@@ -66,6 +73,7 @@ interface ChatState {
   setModel: (model: string) => Promise<void>
   appendStreamChunk: (content: string) => void
   appendReasoningChunk: (content: string) => void
+  appendStreamingDocument: (doc: DocumentAttachment) => void
   finishStream: (message: Message) => void
   streamError: (error: string) => void
   addToolCall: (event: ToolCallEvent) => void
@@ -140,6 +148,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   isStreaming: false,
   streamingContent: '',
   streamingReasoning: '',
+  streamingDocuments: [],
   streamStartedAt: null,
   activeModel: 'deepseek-v4-pro',
   toolCalls: [],
@@ -254,6 +263,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       isStreaming: true,
       streamingContent: '',
       streamingReasoning: '',
+      streamingDocuments: [],
       streamStartedAt: Date.now(),
       toolCalls: [],
       runPhase: 'understanding',
@@ -343,12 +353,19 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }))
   },
 
+  appendStreamingDocument: (doc: DocumentAttachment) => {
+    set((state) => ({
+      streamingDocuments: [...state.streamingDocuments, doc]
+    }))
+  },
+
   finishStream: (message: Message) => {
     set((state) => ({
       messages: [...state.messages, message],
       isStreaming: false,
       streamingContent: '',
       streamingReasoning: '',
+      streamingDocuments: [],
       streamStartedAt: null,
       runPhase: null
     }))
@@ -360,6 +377,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       isStreaming: false,
       streamingContent: '',
       streamingReasoning: '',
+      streamingDocuments: [],
       streamStartedAt: null,
       runPhase: null
     })

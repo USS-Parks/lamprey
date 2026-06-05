@@ -91,6 +91,23 @@ export interface MemoryAddedPayload {
   sourceConversationId?: string
 }
 
+/** Standalone document the model produced via the `create_document` native
+ *  tool. Fires as soon as the tool dispatch completes so the renderer can
+ *  show the card during the same assistant turn (well before the turn's
+ *  final message is persisted). The same attachment is also written to the
+ *  owning message row at save time — replays read from there. */
+export interface DocumentCreatedPayload {
+  conversationId: string
+  document: {
+    id: string
+    name: string
+    mimeType: string
+    content: string
+    sizeBytes: number
+    createdAt: number
+  }
+}
+
 // Prompt 11: agent pipeline status. One emit per stage transition during a
 // multi-agent run (planner / coder / reviewer). The renderer's agent-store
 // records these into `activeRun`; AgentRunBanner renders them.
@@ -183,6 +200,7 @@ export interface ChatEventMap {
   'async-event:received': AsyncEventReceivedPayload
   'tasks:spawned': TaskSpawnedPayload
   'memory:added': MemoryAddedPayload
+  'chat:document-created': DocumentCreatedPayload
   'agent:status': AgentStatusPayload
 }
 

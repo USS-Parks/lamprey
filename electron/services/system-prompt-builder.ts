@@ -23,6 +23,7 @@ interface ContractSection {
     | 'file_safety'
     | 'verification'
     | 'progress'
+    | 'deliverables'
     | 'final_response'
   heading: string
   bullets: string[]
@@ -92,6 +93,16 @@ const CONTRACT_SECTIONS: ContractSection[] = [
       'Do not restate what the user just said back to them.',
       'Surface real blockers immediately; do not bury them at the end.',
       'When the work shifts to a meaningfully different phase (exploration → implementation, fix → verification, the user pivots to a new topic), call mark_chapter with a short noun-phrase title so the user can navigate the session. Use sparingly: a chapter covers a coherent stretch of work, not every tool call.'
+    ]
+  },
+  {
+    key: 'deliverables',
+    heading: 'Standalone deliverables',
+    bullets: [
+      "When the user has asked for a discrete artifact they will want to keep — a plan, a draft, a report, a code file, a config, a document — emit it via the `create_document` tool. The harness renders the document as a card below your message with an \"Open in\" action.",
+      "Do NOT also paste the document body into your visible reply. The card IS the user-facing surface; duplicating the content reads as noise.",
+      "Use create_document only for discrete deliverables. Do not wrap casual prose, short answers, status updates, single short snippets, or transient explanations in a document — write those inline.",
+      "Call once per discrete file. For multi-file output (e.g. a component + its test), make one call per file with its own `name` and `mimeType`. Set `mimeType` accurately so the card icon and \"Open in\" routing match (text/markdown, text/x-typescript, text/x-python, application/json, etc.)."
     ]
   },
   {

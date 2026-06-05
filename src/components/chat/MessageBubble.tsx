@@ -7,6 +7,7 @@ import { parseReasoning } from '@/lib/reasoning'
 import { ReasoningBlock } from './ReasoningBlock'
 import { MessageActions } from './MessageActions'
 import { WakeupPill } from './WakeupPill'
+import { DocumentCardRow } from './DocumentCardRow'
 
 interface MessageBubbleProps {
   message: Message
@@ -102,6 +103,9 @@ export function MessageBubble({ message }: MessageBubbleProps) {
           </button>
         </div>
       </div>
+      {!isUser && message.documents && message.documents.length > 0 && (
+        <DocumentCardRow documents={message.documents} />
+      )}
       {!isUser && <MessageActions content={body || message.content} />}
     </div>
   )

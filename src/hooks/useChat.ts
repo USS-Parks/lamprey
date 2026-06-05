@@ -113,6 +113,18 @@ export function useChat(): void {
       useChatStore.getState().updateToolCall(e as any)
     })
 
+    const onDocCreated = (window.api.chat as {
+      onDocumentCreated?: (
+        cb: (e: { conversationId: string; document: any }) => void
+      ) => () => void
+    }).onDocumentCreated
+    const docUnsub = onDocCreated
+      ? onDocCreated((e) => {
+          if (!matchesActive(e)) return
+          useChatStore.getState().appendStreamingDocument(e.document)
+        })
+      : undefined
+
     const onPhase = (window.api.chat as { onPhase?: (cb: (e: { conversationId: string; phase: string }) => void) => void }).onPhase
     if (onPhase) {
       onPhase((e) => {
@@ -156,6 +168,7 @@ export function useChat(): void {
       if (rafHandle !== null) cancelAnimationFrame(rafHandle)
       window.api?.chat.offAll()
       planUnsub?.()
+      docUnsub?.()
     }
   }, [])
 }
