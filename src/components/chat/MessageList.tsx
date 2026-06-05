@@ -17,6 +17,7 @@ import {
   CompressedRegionPill,
   isCompressedSummaryMessage
 } from './CompressedRegionPill'
+import { DeepResearchBanner } from './DeepResearchBanner'
 import thinkingIconUrl from '@assets/Lamprey Thinking Icon.png'
 
 interface MessageListProps {
@@ -173,6 +174,8 @@ export function MessageList({
           parent's flex context. */}
       <div className="flex w-full justify-center">
         <div className={CHAT_COLUMN_CLASS}>
+          {/* D12 — Deep Research Banner pinned at top of MessageList */}
+          {activeConvId && <DeepResearchBanner conversationId={activeConvId} />}
           {messages.map((msg, i) => {
             // Track 2 / E5 — messages that were folded into a summary
             // by the compressor are not rendered here (the summary

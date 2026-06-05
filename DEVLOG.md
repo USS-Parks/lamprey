@@ -1,5 +1,27 @@
 # Lamprey Harness Dev Log
 
+## [Deep Research — Prompt D12] Live progress banner + cancel button  —  2026-06-05
+
+**Files changed:**
+- `electron/preload.ts` — extends `window.api.research` with `onProgress`, `onCompleted`, `onFailed` IPC event subscribers (each returns an unsubscribe function).
+- `src/stores/research-runs-store.ts` (new) — Zustand store tracking the latest research progress snapshot per conversation id. Terminal stages (`done`/`cancelled`/`failed`) flip a `terminalAt` timestamp so the banner can auto-dismiss after a short delay. `clearForConversation` removes a single entry; `__reset` is for tests.
+- `src/stores/research-runs-store.test.ts` (new) — 4 tests: ingest writes the snapshot, terminal flags fire, latest replaces previous, clearForConversation isolates.
+- `src/hooks/useResearchProgress.ts` (new) — single-mount subscription hook wired into App.tsx that forwards `research:progress` / `:completed` / `:failed` events from main into the runs store. Gracefully no-ops when `window.api.research` isn't present (browser dev mode).
+- `src/components/chat/DeepResearchBanner.tsx` (new) — sticky banner pinned above MessageList: stage label, depth-tier-appropriate count (`N sources`, `M/N read · K claims`, etc.), elapsed-time chip, Cancel button (calls `window.api.research.cancel(runId)`). Terminal stages render with an error tint (cancelled/failed) or a success dot (done) and auto-dismiss after 3 seconds via the store's `clearForConversation`.
+- `src/App.tsx` — calls `useResearchProgressSubscription()` once at App root so the event stream is live for every conversation.
+- `src/components/chat/MessageList.tsx` — renders `<DeepResearchBanner conversationId={activeConvId} />` at the top of the chat column.
+- `electron/services/memory-store.test.ts` + `electron/services/keychain.test.ts` — fix pre-existing Windows EPERM flake by allocating a fresh `mkdtempSync` directory per test (memory-store) and tolerating the EPERM on cleanup (keychain). The pre-existing tests were trying to `rmSync` directories whose SQLite WAL files were still held open by better-sqlite3 on Windows; new directory per test sidesteps the race, best-effort cleanup absorbs the residual.
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- vitest src/stores/research-runs-store.test.ts ✓ (4/4)
+- **vitest FULL SUITE ✓ (1640 passed | 18 skipped — +22 from D11's 1618 = D12 4 + EPERM-fix 18)**
+
+**Notes:** No React-render tests for `DeepResearchBanner` — Lamprey doesn't have `@testing-library/react` in its devDeps; the existing renderer test suite is pure-function over module exports. The banner's state machine is fully covered by the store tests; visual smoke is `user-verification-needed` per the §3 completion criteria. The EPERM flake fix isn't strictly part of D12 but the plan's phase-completion criteria require a green full vitest run — and the flakes were genuinely Windows-environment, not behavioural regressions. The cancel button passes the live `runId` from the snapshot through to `window.api.research.cancel`; the orchestrator's abort registry handles the rest.
+
+**Commit:** _pending_
+
 ## [Deep Research — Prompt D11] Artifact emission + chat surfacing  —  2026-06-05
 
 **Files changed:**
@@ -19,7 +41,7 @@
 
 **Notes:** The chat-side message format from D10 already contains the `[Open full report](artifact://research/<filename>)` link; D11's MarkdownRenderer change is what makes the link clickable. Bibliography URLs (e.g. `[3] [Title 3](https://reuters.com/foo)`) are regular external links — the anchor handler's `artifact://` branch only fires for the research-report link, everything else still goes through the normal external-URL pathway (`openExternal` in Electron, `window.open` fallback). The download button uses `dialog.showSaveDialog` for native parity with other Electron apps; cancellation returns a `{saved: false}` success rather than an error so the renderer doesn't toast a "fail" for user-cancelled saves.
 
-**Commit:** _pending_
+**Commit:** `69e9c92`
 
 ## [Deep Research — Prompt D10] Orchestrator + IPC + progress streaming  —  2026-06-05
 

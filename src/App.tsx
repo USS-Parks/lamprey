@@ -35,6 +35,7 @@ import { SecurityBanner } from '@/components/ui/SecurityBanner'
 import { AsyncEventToast } from '@/components/chat/AsyncEventToast'
 import { StatusLine } from '@/components/layout/StatusLine'
 import { AskUserModal } from '@/components/chat/AskUserModal'
+import { useResearchProgressSubscription } from '@/hooks/useResearchProgress'
 import artifactsPlaceholderUrl from '@assets/Lamprey Code Window Icon.png'
 import type { ToolApprovalRequest } from '@/lib/types'
 
@@ -71,6 +72,11 @@ function App(): React.ReactElement {
   // resize / window resize / DPI change.
   const chatWorkspaceRef = useRef<HTMLDivElement>(null)
   const [chatWorkspaceWidth, setChatWorkspaceWidth] = useState(0)
+
+  // D12 — subscribe the renderer to research:progress / completed / failed
+  // event streams. Mounted once at App root; banner subscribers read
+  // snapshots from the resulting Zustand store.
+  useResearchProgressSubscription()
 
   useEffect(() => {
     // The main app — and the chatWorkspaceRef div with it — doesn't render
