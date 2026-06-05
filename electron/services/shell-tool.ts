@@ -145,6 +145,54 @@ export function extractCdTarget(
   return target.length > 0 ? target : null
 }
 
+// ────────────────────────────────────────────────────────────────────────
+// S11 — Anti-polling sleep guard.
+//
+// Claude Code blocks long leading `sleep` calls because they tend to be
+// "sleep until I check next turn" rather than legitimate waits — they
+// burn a context-window cache for nothing and the next round-trip just
+// repeats. The remediation is to use the `shell_monitor` aux tool
+// (an event-driven `until-pattern` wait) or to wrap the sleep in a real
+// polling loop (`until <cond>; do sleep 2; done`) so the wait ends when
+// the condition is met, not on a fixed timer.
+//
+// The heuristic accepts:
+//   • short sleeps (<= 30 s),
+//   • any sleep that appears after a `while`/`until`/`for`/`do` keyword
+//     (the loop signals real polling intent),
+//   • any call with `dangerously_disable_sandbox: true` (caller has
+//     opted into manual oversight).
+// ────────────────────────────────────────────────────────────────────────
+
+const POSIX_LONG_SLEEP_RE = /\bsleep\s+(\d+(?:\.\d+)?)/
+const PS_LONG_SLEEP_RE = /\bStart-Sleep\s+(?:-Seconds\s+|-s\s+)?(\d+(?:\.\d+)?)/i
+const LOOP_RE = /\b(while|until|for|do)\b/i
+
+export const LONG_SLEEP_THRESHOLD_SECONDS = 30
+
+export function screenLongSleep(
+  command: string,
+  platform: NodeJS.Platform = process.platform
+): { reason: string } | null {
+  // Try the platform's native form first, then the other — a model
+  // sometimes emits POSIX-style sleep on Windows via Git Bash.
+  const primary = platform === 'win32' ? PS_LONG_SLEEP_RE : POSIX_LONG_SLEEP_RE
+  const secondary = platform === 'win32' ? POSIX_LONG_SLEEP_RE : PS_LONG_SLEEP_RE
+  const match = command.match(primary) ?? command.match(secondary)
+  if (!match) return null
+
+  const seconds = parseFloat(match[1])
+  if (!Number.isFinite(seconds) || seconds <= LONG_SLEEP_THRESHOLD_SECONDS) return null
+
+  // Loop keyword anywhere before the sleep → accept as a polling pattern.
+  const before = command.slice(0, match.index ?? 0)
+  if (LOOP_RE.test(before)) return null
+
+  return {
+    reason: `Long solo sleep (${seconds}s) rejected — use a polling loop (\`until <cond>; do sleep 2; done\`) or the \`shell_monitor\` aux tool with an \`untilPattern\`. To override, set \`dangerously_disable_sandbox: true\` on this call.`
+  }
+}
+
 /**
  * Look for an executable along `PATH`. Returns the absolute path of the
  * first hit, or `null` when nothing matches. Used so `buildShellInvocation`
@@ -288,6 +336,27 @@ export function executeShellCommand(
         error: 'command is required and must be a non-empty string'
       })
       return
+    }
+
+    // S11 — reject long solo sleeps unless the caller explicitly bypasses.
+    if (args.dangerously_disable_sandbox !== true) {
+      const sleepGuard = screenLongSleep(args.command)
+      if (sleepGuard) {
+        resolveResult({
+          command: args.command,
+          cwd: workspaceRoot,
+          exitCode: null,
+          signal: null,
+          stdout: '',
+          stderr: '',
+          stdoutTruncated: false,
+          stderrTruncated: false,
+          durationMs: 0,
+          timedOut: false,
+          error: sleepGuard.reason
+        })
+        return
+      }
     }
 
     // Resolve cwd: explicit args.cwd → persisted session cwd → root.
@@ -614,6 +683,31 @@ export function executeShellCommandInBackground(
     }
     bgSessions.set(id, session)
     return snapshotBg(session)
+  }
+
+  // S11 — anti-polling guard applies to background shells too.
+  if (args.dangerously_disable_sandbox !== true) {
+    const sleepGuard = screenLongSleep(args.command)
+    if (sleepGuard) {
+      const session: BackgroundSession = {
+        id,
+        command: args.command,
+        cwd: workspaceRoot,
+        proc: null,
+        pid: null,
+        startedAt,
+        status: 'failed',
+        exitCode: null,
+        signal: null,
+        stdout: '',
+        stderr: sleepGuard.reason,
+        bytesWritten: 0,
+        stdoutLineBuf: '',
+        stderrLineBuf: ''
+      }
+      bgSessions.set(id, session)
+      return snapshotBg(session)
+    }
   }
 
   const cwd = resolveCwdWithinWorkspace(workspaceRoot, args.cwd)

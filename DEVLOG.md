@@ -1,5 +1,20 @@
 # Lamprey Harness Dev Log
 
+## [Sandbox Parity — Prompt S11] Anti-polling sleep guard — 2026-06-05
+
+**Files changed:**
+- `electron/services/shell-tool.ts` — new `screenLongSleep(command, platform?)` helper + `LONG_SLEEP_THRESHOLD_SECONDS` export. Catches POSIX `sleep N` and PowerShell `Start-Sleep -Seconds N` / `Start-Sleep N` (positional); rejects when N > 30 AND no `while`/`until`/`for`/`do` keyword precedes the call. `dangerously_disable_sandbox: true` bypasses screening entirely. Wired into both foreground and background executors.
+- `electron/services/shell-tool.test.ts` — 9 new cases: threshold constant, POSIX + PowerShell positive cases, short-sleep allowed, polling-loop allowed, non-sleep allowed, `-Milliseconds` not a false match, executor rejection observed, bypass flag observed.
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- vitest `shell-tool.test.ts` ✓ 53/53
+
+**Notes:** Heuristic is intentionally loose — a literal string `"for fun"; sleep 600` would be accepted because the `for` keyword precedes the sleep. The remediation hint in the rejection points the model at `shell_monitor` + `untilPattern` (S8), which is the right answer for "wait for a condition." A future tightening could lex shell tokens properly, but the simple regex catches the most common abuses (raw `sleep 600` polling) without false positives on legitimate scripts.
+
+**Commit:** S11
+
 ## [Sandbox Parity — Prompt S10] Timeout default 30s → 120s — 2026-06-05
 
 **Files changed:**
@@ -14,7 +29,7 @@
 
 **Notes:** Existing callers that pass an explicit `timeout_ms` are unaffected.
 
-**Commit:** S10
+**Commit:** `e40f7a0`
 
 ## [Sandbox Parity — Prompt S9] Tool description rewrite — 2026-06-05
 

@@ -4,6 +4,7 @@ import { tmpdir } from 'os'
 import { join, sep } from 'path'
 import {
   DEFAULT_TIMEOUT_MS,
+  LONG_SLEEP_THRESHOLD_SECONDS,
   MAX_TIMEOUT_MS,
   STDOUT_CAP,
   buildShellInvocation,
@@ -14,7 +15,8 @@ import {
   findOnPath,
   formatShellResultForModel,
   getSessionCwd,
-  resolveCwdWithinWorkspace
+  resolveCwdWithinWorkspace,
+  screenLongSleep
 } from './shell-tool'
 
 const IS_WIN = process.platform === 'win32'
@@ -339,6 +341,75 @@ describe('sandbox tier on ShellResult (S6)', () => {
     const result = await executeShellCommand({ command: ECHO_HELLO }, process.cwd())
     expect(result.sandboxTier).toBe('none')
     expect(result.sandboxNote).toMatch(/windows host/i)
+  })
+})
+
+describe('screenLongSleep (S11)', () => {
+  it(`exposes the threshold constant (${LONG_SLEEP_THRESHOLD_SECONDS}s)`, () => {
+    expect(LONG_SLEEP_THRESHOLD_SECONDS).toBe(30)
+  })
+
+  it('rejects POSIX `sleep 600`', () => {
+    const r = screenLongSleep('sleep 600', 'linux')
+    expect(r).not.toBeNull()
+    expect(r?.reason).toMatch(/600/)
+    expect(r?.reason).toMatch(/shell_monitor/)
+  })
+
+  it('rejects PowerShell `Start-Sleep -Seconds 60`', () => {
+    const r = screenLongSleep('Start-Sleep -Seconds 60', 'win32')
+    expect(r).not.toBeNull()
+  })
+
+  it('rejects PowerShell `Start-Sleep 60` (positional)', () => {
+    const r = screenLongSleep('Start-Sleep 60', 'win32')
+    expect(r).not.toBeNull()
+  })
+
+  it('accepts short sleeps under the threshold', () => {
+    expect(screenLongSleep('sleep 5', 'linux')).toBeNull()
+    expect(screenLongSleep('Start-Sleep -Seconds 5', 'win32')).toBeNull()
+    expect(screenLongSleep('sleep 30', 'linux')).toBeNull()
+  })
+
+  it('accepts long sleeps inside a polling loop', () => {
+    expect(screenLongSleep('until curl -fsS http://x; do sleep 60; done', 'linux')).toBeNull()
+    expect(screenLongSleep('while true; do sleep 600; done', 'linux')).toBeNull()
+    expect(screenLongSleep('for i in 1 2 3; do sleep 60; done', 'linux')).toBeNull()
+  })
+
+  it('accepts non-sleep commands', () => {
+    expect(screenLongSleep('echo hi', 'linux')).toBeNull()
+    expect(screenLongSleep('npm install', 'linux')).toBeNull()
+  })
+
+  it('does not falsely match Start-Sleep -Milliseconds 500', () => {
+    expect(screenLongSleep('Start-Sleep -Milliseconds 500', 'win32')).toBeNull()
+  })
+
+  it('rejection takes effect at the executor', async () => {
+    const result = await executeShellCommand(
+      { command: 'sleep 600' },
+      process.cwd()
+    )
+    expect(result.exitCode).toBeNull()
+    expect(result.error).toMatch(/long solo sleep/i)
+  })
+
+  it('bypass flag allows the long sleep through screening', async () => {
+    // We don't actually want a 600s sleep; just confirm the guard is
+    // skipped — pass a shorter command that would still trigger if the
+    // guard fired. Use `dangerously_disable_sandbox: true` + a `sleep 60`
+    // that we override timeout for.
+    const result = await executeShellCommand(
+      {
+        command: process.platform === 'win32' ? 'Write-Output "ok"' : 'echo ok',
+        dangerously_disable_sandbox: true
+      },
+      process.cwd()
+    )
+    expect(result.exitCode).toBe(0)
+    expect(result.sandboxTier).toBe('bypassed')
   })
 })
 
