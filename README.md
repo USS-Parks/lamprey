@@ -86,6 +86,22 @@ Eleven micro-interactions that close the "feel" gap with Claude Code:
 - **`path:line` autolinking**: bare `src/foo.ts:42` references in assistant prose render as clickable, dotted-underline spans that open the file panel at the right line.
 - **Right panel default-collapsed**: new conversations start with the chat full-width; the panel auto-opens on artifact emit or tool launch, per-trigger and per-conversation, so a single dismiss sticks for that trigger until a different one fires.
 
+### Deep Research
+
+Twelve prompts that turn research-shaped chat turns into traceable, multi-source reports:
+
+- **Auto-trigger**: an intent classifier routes research-worthy turns into the pipeline. Code-edit verbs (`fix`/`write`/`refactor`/…), path tokens, and plan mode are short-circuited so coding turns never escalate.
+- **`/research <q>` slash command** forces the pipeline. **`--no-research`** prefix forces normal dispatch. Settings flag `deepResearch.autoTrigger` disables globally.
+- **Provider cascade**: DuckDuckGo (no key required, ships as default) → Brave → SerpAPI by default. Configurable order in `deepResearch.providerCascade`. 429 / 5xx / empty SERPs fall through; results dedupe across providers by canonical URL.
+- **Query planner**: 3 / 5 / 8 sub-queries (quick / standard / exhaustive) spanning factual baseline, recent news, opposing view, comparative, technical deep-dive.
+- **Source collector**: parallel fan-out, canonical-URL dedup, per-domain cap (≤3 from each registrable domain so a single publisher can't dominate), spam blocklist, trust ranking (`.gov`/`.edu` + curated allowlist). Top N by depth tier: 12 / 25 / 50.
+- **Readable-text extractor**: `<article>` / `<main>` / largest-block heuristic via `node-html-parser`, boilerplate/ad/cookie pruning, 30 KB cap per page.
+- **Atomic claim extraction**: per source, LLM emits declarative facts with verbatim source spans (no opinions/marketing/nav text).
+- **Multi-source corroboration**: claims clustered by RAG-embedding cosine ≥ 0.78. Independence counted by **registrable domain** (sibling sub-domains count once). ≥2 domains → `accepted`; 1 domain → `single-source`. Topical-overlap candidate pairs sent to a small LLM for opposition detection; contradicting pairs → `[disputed]`.
+- **Strict-citation synthesizer**: every paragraph cites the source pool by index; single-source claims must use "According to [n]," disputed claims must cite both sides. Post-generation validator rejects any `[n]` not in the source pool — fabricated citations **fail the run** (one retry, then `FabricatedCitationError`). Bibliography is built deterministically from the source URLs, never from the model.
+- **Artifact emission**: report lands at `userData/artifacts/research/research-<slug>-<timestamp>.md`. Chat message embeds an executive summary, sources/accepted/disputed counts, and an `[Open full report](artifact://research/...)` link that opens the right panel via `MarkdownRenderer` + `ResearchArtifact`. Download button drives the native save dialog.
+- **Live progress banner** above MessageList: stage label, count progression (sources found / fetched / claims extracted / accepted / disputed), elapsed time, Cancel button. Cancellation honoured at every stage boundary via `AbortSignal`.
+
 ### Sandbox parity layer (shell_command)
 
 Thirteen prompts that bring `shell_command` to functional parity with Claude Code's Bash tool:

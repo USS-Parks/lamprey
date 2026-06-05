@@ -1,5 +1,23 @@
 # Lamprey Harness Dev Log
 
+## [Deep Research Phase Complete] — 2026-06-05
+
+**Prompts completed:** D1 DuckDuckGo adapter, D2 cascade, D3 intent classifier + auto-trigger routing, D4 query planner, D5 source collector, D6 readable-text extractor, D7 claim extraction, D8 multi-source corroboration, D9 strict-citation synthesizer, D10 orchestrator + IPC, D11 artifact emission + chat surfacing, D12 progress banner.
+
+**Phase verify:**
+- tsc node ✓
+- tsc web ✓
+- vitest ✓ (1640 passed | 18 skipped — pre-existing Windows EPERM flakes resolved by mkdtempSync per test + best-effort cleanup)
+- user-verification-needed: full end-to-end smoke per `PLANNING/LAMPREY_DEEP_RESEARCH_PLAN.md` §3 completion criteria — launch Electron, send a research-worthy prompt, confirm banner appears with live counts, assistant message contains exec summary + sources line + `[Open full report]` link, clicking opens right panel with rendered markdown, every paragraph has `[n]` citations, bibliography lists 12+ entries with clickable URLs, Download writes .md, `--no-research` blocks, `/research` forces.
+
+**Notes:** Lamprey now has a first-class deep research pipeline. A research-worthy prompt fans out 12–50 sources via a configurable provider cascade (DuckDuckGo → Brave → SerpAPI by default), extracts and corroborates claims across independent registrable domains (`bbc.co.uk` siblings count once), and emits a strict-citation markdown artifact with a clickable numbered bibliography (`[3] [Title](https://...) — accessed YYYY-MM-DD`). Auto-trigger via the intent classifier (code-edit verbs / path-tokens / plan-mode are short-circuited so coding turns aren't escalated); `/research <query>` forces; `--no-research` blocks. Strict-citation invariant: every `[n]` in the body must map to a real source — fabricated refs trigger one retry then `FabricatedCitationError`. Cancellation honoured at every stage boundary via `AbortSignal`. Live progress banner above MessageList with stage + counts + Cancel button. Artifacts persist to `userData/artifacts/research/research-<slug>-<timestamp>.md` and are downloadable via the native save dialog.
+
+**Commit range:** `7ec4e68..2c315f0` (12 prompts + 1 .gitignore cleanup).
+
+**Pipeline architecture:** Intent → Planner → Collector (cascade fan-out, dedup, domain cap, trust rank) → Extractor (`node-html-parser`, 30KB cap) → Claims (atomic facts + spans) → Corroborator (embedding cluster + opposition LLM) → Synthesizer (strict citations + bibliography) → Artifact writer. Provider-agnostic; provider list is user-configurable in settings.
+
+**Settings:** `deepResearch.{autoTrigger, providerCascade, depthTier, classifierModel, synthesizerModel}` — see `electron/services/research/adapter-cascade.ts` for defaults.
+
 ## [Deep Research — Prompt D12] Live progress banner + cancel button  —  2026-06-05
 
 **Files changed:**
@@ -20,7 +38,7 @@
 
 **Notes:** No React-render tests for `DeepResearchBanner` — Lamprey doesn't have `@testing-library/react` in its devDeps; the existing renderer test suite is pure-function over module exports. The banner's state machine is fully covered by the store tests; visual smoke is `user-verification-needed` per the §3 completion criteria. The EPERM flake fix isn't strictly part of D12 but the plan's phase-completion criteria require a green full vitest run — and the flakes were genuinely Windows-environment, not behavioural regressions. The cancel button passes the live `runId` from the snapshot through to `window.api.research.cancel`; the orchestrator's abort registry handles the rest.
 
-**Commit:** _pending_
+**Commit:** `2c315f0`
 
 ## [Deep Research — Prompt D11] Artifact emission + chat surfacing  —  2026-06-05
 
