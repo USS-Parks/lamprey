@@ -1,17 +1,10 @@
 import { useUiStore, type ToolId } from '@/stores/ui-store'
-import { useThemedIcon } from '@/lib/themed-icon'
-import folderLight from '@assets/Lamprey Folder 1 Icon.png'
-import folderDark from '@assets/Lamprey Folder 1 Dark View.png'
-import chatLight from '@assets/Lamprey Chat Window Icon.png'
-import chatDark from '@assets/Lamprey Chat Icon Dark View.png'
-import workLocationLight from '@assets/Lamprey Work Location Icon.png'
-import workLocationDark from '@assets/Lamprey Work Location Icon Dark View.png'
-import codeWindowLight from '@assets/Lamprey Code Window Icon.png'
-import codeWindowDark from '@assets/Lamprey Code Window Icon Dark View.png'
-import codingLight from '@assets/Lamprey Coding Icon.png'
-import codingDark from '@assets/Lamprey Coding Icon Dark View.png'
-import fullAccessLight from '@assets/Lamprey Full Access Icon.png'
-import fullAccessDark from '@assets/Lamprey Full Access Icon Dark View.png'
+import folderIcon from '@assets/Lamprey Worktree Icon.png'
+import chatIcon from '@assets/Lamprey Chat Window Icon.png'
+import workLocationIcon from '@assets/Lamprey Work Location Icon.png'
+import codeWindowIcon from '@assets/Lamprey Code Window Icon.png'
+import codingIcon from '@assets/Lamprey Coding Icon.png'
+import fullAccessIcon from '@assets/Lamprey Full Access Icon.png'
 
 interface RightPanelHomeProps {
   onCollapse: () => void
@@ -21,8 +14,8 @@ interface Pill {
   id: ToolId
   label: string
   description: string
-  iconLight: string
-  iconDark: string
+  icon: string
+  iconSizeClass?: string
 }
 
 // 4 rounded pill subpanels, each one an entry point into the docked mode
@@ -32,61 +25,43 @@ interface Pill {
 export function RightPanelHome({ onCollapse }: RightPanelHomeProps): React.ReactElement {
   const setActiveTool = useUiStore((s) => s.setActiveTool)
 
-  const folderIcon = useThemedIcon(folderLight, folderDark)
-  const chatIcon = useThemedIcon(chatLight, chatDark)
-  const workLocationIcon = useThemedIcon(workLocationLight, workLocationDark)
-  const codeWindowIcon = useThemedIcon(codeWindowLight, codeWindowDark)
-  const codingIcon = useThemedIcon(codingLight, codingDark)
-  const fullAccessIcon = useThemedIcon(fullAccessLight, fullAccessDark)
-
-  const pills: Array<Pill & { iconUrl: string }> = [
+  const pills: Pill[] = [
     {
       id: 'files',
       label: 'Files',
       description: 'Workspace tree, filter, preview',
-      iconLight: folderLight,
-      iconDark: folderDark,
-      iconUrl: folderIcon
+      icon: folderIcon
     },
     {
       id: 'sidechat',
       label: 'Side chat',
       description: 'Branch the current conversation',
-      iconLight: chatLight,
-      iconDark: chatDark,
-      iconUrl: chatIcon
+      icon: chatIcon
     },
     {
       id: 'browser',
       label: 'Browser',
       description: 'Embedded webview for docs and references',
-      iconLight: workLocationLight,
-      iconDark: workLocationDark,
-      iconUrl: workLocationIcon
+      icon: workLocationIcon
     },
     {
       id: 'artifacts',
       label: 'Artifacts',
       description: 'Generated HTML, SVG, Mermaid, JSX',
-      iconLight: codeWindowLight,
-      iconDark: codeWindowDark,
-      iconUrl: codeWindowIcon
+      icon: codeWindowIcon
     },
     {
       id: 'terminal',
       label: 'Terminal',
       description: 'PowerShell, Git Bash, WSL, or cmd',
-      iconLight: codingLight,
-      iconDark: codingDark,
-      iconUrl: codingIcon
+      icon: codingIcon,
+      iconSizeClass: 'h-[57px] w-[57px]'
     },
     {
       id: 'review',
       label: 'Review',
       description: 'Git status, diffs, stage and commit',
-      iconLight: fullAccessLight,
-      iconDark: fullAccessDark,
-      iconUrl: fullAccessIcon
+      icon: fullAccessIcon
     }
   ]
 
@@ -124,18 +99,12 @@ export function RightPanelHome({ onCollapse }: RightPanelHomeProps): React.React
             onClick={() => setActiveTool(pill.id)}
             className="group flex items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--bg-primary)] p-3 text-left transition-all hover:-translate-y-0.5 hover:border-[var(--accent)] hover:bg-[var(--bg-tertiary)]"
           >
-            <span className="flex h-11 w-11 shrink-0 items-center justify-center">
+            <span className={`flex ${pill.iconSizeClass ?? 'h-11 w-11'} shrink-0 items-center justify-center`}>
               <img
-                src={pill.iconLight}
+                src={pill.icon}
                 alt=""
                 aria-hidden
-                className="themed-variant-light icon-asset h-11 w-11 object-contain transition-transform group-hover:scale-110"
-              />
-              <img
-                src={pill.iconDark}
-                alt=""
-                aria-hidden
-                className="themed-variant-dark icon-asset h-11 w-11 object-contain transition-transform group-hover:scale-110"
+                className={`icon-asset ${pill.iconSizeClass ?? 'h-11 w-11'} object-contain transition-transform group-hover:scale-110`}
               />
             </span>
             <span className="flex min-w-0 flex-1 flex-col">

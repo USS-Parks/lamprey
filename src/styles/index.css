@@ -49,13 +49,6 @@
   --code-bg: #f3f4f6;
 }
 
-/* Icon variant — in light mode the cool half of the halo is muted so
-   bright surfaces don't bloom. */
-:root[data-theme-mode='light'] img.icon-asset {
-  filter: drop-shadow(0 0 1.5px rgba(0, 0, 0, 0.5))
-    drop-shadow(0 0 1.5px rgba(255, 255, 255, 0.15));
-}
-
 @layer base {
   * {
     margin: 0;
@@ -98,13 +91,10 @@ body,
   color: var(--text-primary);
 }
 
-/* Brand icons (ASSETS/*.png) — every PNG now ships with a transparent
-   background so it floats natively on any backdrop. We only add a
-   subtle dual-direction halo (warm + cool 1.5px rings) to give the
-   alpha edge a touch of contrast on noisy/colored surfaces. */
+/* Brand icons (ASSETS/*.png) — every PNG ships with a transparent
+   background. No filter: plain wireframe on every backdrop, both themes. */
 img.icon-asset {
-  filter: drop-shadow(0 0 1.5px rgba(0, 0, 0, 0.55))
-    drop-shadow(0 0 1.5px rgba(255, 255, 255, 0.45));
+  filter: none;
 }
 
 /* Crisp variant — no halo, no soft drop-shadow. Used on icons that must
@@ -114,10 +104,16 @@ img.icon-asset-crisp {
   image-rendering: -webkit-optimize-contrast;
 }
 
-/* Dual-variant theme icons — both light and dark img tags stay in the DOM,
-   CSS hides the inactive one. Eliminates the swap flash on theme toggle. */
-:root[data-theme-mode='light'] .themed-variant-dark { display: none; }
-:root[data-theme-mode='dark'] .themed-variant-light { display: none; }
+/* In dark mode, every .icon-asset and .icon-asset-crisp renders the
+   existing light-wireframe PNG inverted to solid white. The legacy
+   dark-view PNGs (with baked-in cream glow) are never displayed.
+   .themed-variant-dark stays hidden in both modes as a safety net for
+   any leftover dual-img markup. */
+.themed-variant-dark { display: none; }
+:root[data-theme-mode='dark'] img.icon-asset,
+:root[data-theme-mode='dark'] img.icon-asset-crisp {
+  filter: brightness(0) invert(1);
+}
 
 /* Chat content must always be selectable so users can copy prompts and
    model output. Buttons inside (copy, vote, fork, etc.) still get their

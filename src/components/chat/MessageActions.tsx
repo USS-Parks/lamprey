@@ -1,15 +1,10 @@
 import { useState } from 'react'
 import { toast } from '@/stores/toast-store'
-import copyLight from '@assets/Lamprey Copy Icon.png'
-import copyDark from '@assets/Lamprey Copy Icon Dark View.png'
-import thumbsUpLight from '@assets/Lamprey Thumbs Up Icon.png'
-import thumbsUpDark from '@assets/Lamprey Thumbs Up Icon Dark View.png'
-import thumbsDownLight from '@assets/Lamprey Thumbs Down Icon.png'
-import thumbsDownDark from '@assets/Lamprey Thumbs Down Icon Dark View.png'
-import forkLight from '@assets/Lamprey Work-Fork Icon.png'
-import forkDark from '@assets/Lamprey Work-Fork Icon Dark View.png'
-import pinLight from '@assets/Lamprey Pin As Chapter Icon.png'
-import pinDark from '@assets/Lamprey Pin As Chapter Icon Dark View.png'
+import copyIcon from '@assets/Lamprey Copy Icon.png'
+import thumbsUpIcon from '@assets/Lamprey Thumbs Up Icon.png'
+import thumbsDownIcon from '@assets/Lamprey Thumbs Down Icon.png'
+import forkIcon from '@assets/Lamprey Work-Fork Icon.png'
+import pinIcon from '@assets/Lamprey Pin As Chapter Icon.png'
 
 interface MessageActionsProps {
   content: string
@@ -20,40 +15,31 @@ interface MessageActionsProps {
 type Vote = 'up' | 'down' | null
 
 interface ActionButtonProps {
-  iconLight: string
-  iconDark: string
+  icon: string
   title: string
   onClick: () => void
   active?: boolean
 }
 
-function ActionButton({ iconLight, iconDark, title, onClick, active }: ActionButtonProps) {
+function ActionButton({ icon, title, onClick, active }: ActionButtonProps) {
   return (
     <button
       type="button"
       onClick={onClick}
       title={title}
       aria-label={title}
-      className={`flex h-8 w-8 items-center justify-center rounded-md transition-colors ${
+      className={`flex h-16 w-16 items-center justify-center rounded-md transition-colors ${
         active
           ? 'bg-[var(--accent-dim)] ring-1 ring-[var(--accent)]'
           : 'hover:bg-[var(--bg-tertiary)]'
       }`}
     >
-      <span className="relative flex h-[18px] w-[18px] items-center justify-center">
-        <img
-          src={iconLight}
-          alt=""
-          aria-hidden
-          className="themed-variant-light icon-asset h-[18px] w-[18px] object-contain"
-        />
-        <img
-          src={iconDark}
-          alt=""
-          aria-hidden
-          className="themed-variant-dark icon-asset h-[18px] w-[18px] object-contain"
-        />
-      </span>
+      <img
+        src={icon}
+        alt=""
+        aria-hidden
+        className="icon-asset h-[36px] w-[36px] object-contain"
+      />
     </button>
   )
 }
@@ -61,8 +47,8 @@ function ActionButton({ iconLight, iconDark, title, onClick, active }: ActionBut
 function CheckIcon() {
   return (
     <svg
-      width="14"
-      height="14"
+      width="28"
+      height="28"
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
@@ -112,44 +98,27 @@ export function MessageActions({ content, onFork, onPin }: MessageActionsProps) 
           type="button"
           title="Copied"
           aria-label="Copied"
-          className="flex h-8 w-8 items-center justify-center rounded-md bg-[var(--accent-dim)]"
+          className="flex h-16 w-16 items-center justify-center rounded-md bg-[var(--accent-dim)]"
         >
           <CheckIcon />
         </button>
       ) : (
-        <ActionButton
-          iconLight={copyLight}
-          iconDark={copyDark}
-          title="Copy"
-          onClick={handleCopy}
-        />
+        <ActionButton icon={copyIcon} title="Copy" onClick={handleCopy} />
       )}
       <ActionButton
-        iconLight={thumbsUpLight}
-        iconDark={thumbsUpDark}
+        icon={thumbsUpIcon}
         title="Good response"
         onClick={() => setVoteWith('up')}
         active={vote === 'up'}
       />
       <ActionButton
-        iconLight={thumbsDownLight}
-        iconDark={thumbsDownDark}
+        icon={thumbsDownIcon}
         title="Bad response"
         onClick={() => setVoteWith('down')}
         active={vote === 'down'}
       />
-      <ActionButton
-        iconLight={forkLight}
-        iconDark={forkDark}
-        title="Fork from here"
-        onClick={handleFork}
-      />
-      <ActionButton
-        iconLight={pinLight}
-        iconDark={pinDark}
-        title="Pin as memory chapter"
-        onClick={handlePin}
-      />
+      <ActionButton icon={forkIcon} title="Fork from here" onClick={handleFork} />
+      <ActionButton icon={pinIcon} title="Pin as memory chapter" onClick={handlePin} />
     </div>
   )
 }

@@ -39,7 +39,7 @@ export function ReasoningBlock({ content, isThinking = false }: ReasoningBlockPr
             src={thinkingIconUrl}
             alt=""
             aria-hidden
-            className={`icon-asset h-5 w-5 object-contain ${isThinking ? 'animate-pulse' : ''}`}
+            className={`icon-asset h-10 w-10 object-contain ${isThinking ? 'animate-pulse' : ''}`}
           />
           <span className="uppercase tracking-wider">Reasoning</span>
           {isThinking && (

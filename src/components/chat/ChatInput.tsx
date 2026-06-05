@@ -5,7 +5,6 @@ import { useSettingsStore } from '@/stores/settings-store'
 import { useProvidersStore } from '@/stores/providers-store'
 import { useUiStore, type PermissionsMode } from '@/stores/ui-store'
 import { toast } from '@/stores/toast-store'
-import { useThemedIcon } from '@/lib/themed-icon'
 import { ApiKeyModal } from '@/components/settings/ApiKeyModal'
 import { SlashCommandPalette } from './SlashCommandPalette'
 import { AtFileMention } from './AtFileMention'
@@ -30,24 +29,16 @@ import {
 import { usePlanMode } from '@/hooks/usePlanMode'
 import type { ModelInfo, ProcessedFile } from '@/lib/types'
 
-import defaultAccessLight from '@assets/Lamprey Default Access Icon.png'
-import defaultAccessDark from '@assets/Lamprey Default Acces Icon Dark View.png'
-import autoReviewLight from '@assets/Lamprey Auto-Review Icon.png'
-import autoReviewDark from '@assets/Lamprey Auto-Review Icon Dark View.png'
-import fullAccessLight from '@assets/Lamprey Full Access Icon.png'
-import fullAccessDark from '@assets/Lamprey Full Access Icon Dark View.png'
-import micLight from '@assets/Lamprey Microphone Icon.png'
-import micDark from '@assets/Lamprey Microphone Icon Dark View.png'
-import sendLight from '@assets/Lamprey Prompt Enter Icon.png'
-import sendDark from '@assets/Lamprey Send Prompt Icon Dark View.png'
-import workLocationLight from '@assets/Lamprey Work Location Icon.png'
-import workLocationDark from '@assets/Lamprey Work Location Icon Dark View.png'
-import folderLight from '@assets/Lamprey Folder 1 Icon.png'
-import folderDark from '@assets/Lamprey Folder 1 Dark View.png'
-import worktreeLight from '@assets/Lamprey Worktree Icon.png'
-import worktreeDark from '@assets/Lamprey Worktree Icon Dark View.png'
-import addFileLight from '@assets/Lamprey Add File Icon.png'
-import addFileDark from '@assets/Lamprey Add File Icon Dark View.png'
+import defaultAccessIcon from '@assets/Lamprey Default Access Icon.png'
+import autoReviewIcon from '@assets/Lamprey Auto-Review Icon.png'
+import fullAccessIcon from '@assets/Lamprey Full Access Icon.png'
+import micIcon from '@assets/Lamprey Microphone Icon.png'
+import sendIcon from '@assets/Lamprey Prompt Enter Icon.png'
+import stopIcon from '@assets/Lamprey Chat Pill Stop Icon Light View.png'
+import workLocationIcon from '@assets/Lamprey Work Location Icon.png'
+import folderIcon from '@assets/Lamprey Folder 1 Icon.png'
+import worktreeIcon from '@assets/Lamprey Worktree Icon.png'
+import addFileIcon from '@assets/Lamprey Add File Icon.png'
 
 interface ChatInputProps {
   onSend: (content: string) => void
@@ -61,14 +52,13 @@ const LONG_PASTE_THRESHOLD = 500
 interface PermissionOption {
   id: PermissionsMode
   label: string
-  light: string
-  dark: string
+  icon: string
 }
 
 const PERMISSION_OPTIONS: PermissionOption[] = [
-  { id: 'default', label: 'Default permissions', light: defaultAccessLight, dark: defaultAccessDark },
-  { id: 'auto-review', label: 'Auto Review', light: autoReviewLight, dark: autoReviewDark },
-  { id: 'full', label: 'Full Access', light: fullAccessLight, dark: fullAccessDark }
+  { id: 'default', label: 'Default permissions', icon: defaultAccessIcon },
+  { id: 'auto-review', label: 'Auto Review', icon: autoReviewIcon },
+  { id: 'full', label: 'Full Access', icon: fullAccessIcon }
 ]
 
 function looksLikeCode(text: string): boolean {
@@ -180,22 +170,20 @@ function PermissionsDropdown() {
   const setMode = useUiStore((s) => s.setPermissionsMode)
   const [open, setOpen] = useState(false)
   const wrapRef = useRef<HTMLDivElement>(null)
-  const themeMode = useSettingsStore((s) => s.settings.themeMode)
   useClickOutside(wrapRef, () => setOpen(false), open)
 
   const active = PERMISSION_OPTIONS.find((o) => o.id === mode) ?? PERMISSION_OPTIONS[0]
-  const activeIcon = themeMode === 'dark' ? active.dark : active.light
 
   return (
     <div ref={wrapRef} className="relative">
       <DropdownButton open={open} onToggle={() => setOpen((v) => !v)} title="Permissions mode">
-        <img src={activeIcon} alt="" aria-hidden className="icon-asset h-[25px] w-[25px] object-contain" />
+        <img src={active.icon} alt="" aria-hidden className="icon-asset h-[25px] w-[25px] object-contain" />
         <span>{active.label}</span>
       </DropdownButton>
       {open && (
         <div className="absolute bottom-full left-0 z-30 mb-1 w-52 overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)] shadow-xl">
           {PERMISSION_OPTIONS.map((opt) => {
-            const icon = themeMode === 'dark' ? opt.dark : opt.light
+            const icon = opt.icon
             return (
               <button
                 key={opt.id}
@@ -337,15 +325,14 @@ interface ChipMenuItem {
 }
 
 interface ContextChipProps {
-  iconLight: string
-  iconDark: string
+  icon: string
   label: string
   title?: string
   onClick?: () => void
   menu?: ChipMenuItem[]
 }
 
-function ContextChip({ iconLight, iconDark, label, title, onClick, menu }: ContextChipProps) {
+function ContextChip({ icon, label, title, onClick, menu }: ContextChipProps) {
   const [open, setOpen] = useState(false)
   const wrapRef = useRef<HTMLDivElement>(null)
   useClickOutside(wrapRef, () => setOpen(false), open)
@@ -378,16 +365,10 @@ function ContextChip({ iconLight, iconDark, label, title, onClick, menu }: Conte
       >
         <span className="relative flex h-[18px] w-[18px] items-center justify-center">
           <img
-            src={iconLight}
+            src={icon}
             alt=""
             aria-hidden
-            className="themed-variant-light icon-asset h-[18px] w-[18px] object-contain"
-          />
-          <img
-            src={iconDark}
-            alt=""
-            aria-hidden
-            className="themed-variant-dark icon-asset h-[18px] w-[18px] object-contain"
+            className="icon-asset h-[18px] w-[18px] object-contain"
           />
         </span>
         <span className="leading-none">{label}</span>
@@ -544,29 +525,25 @@ function ContextChipRow({ onAddFile }: ContextChipRowProps) {
   return (
     <div className="mt-2 flex flex-wrap items-center gap-2 px-1">
       <ContextChip
-        iconLight={workLocationLight}
-        iconDark={workLocationDark}
+        icon={workLocationIcon}
         label="Local"
         title="Running locally on this machine"
         menu={locationMenu}
       />
       <ContextChip
-        iconLight={folderLight}
-        iconDark={folderDark}
+        icon={folderIcon}
         label={folderLabel}
         title={folderTitle}
         menu={folderMenu}
       />
       <ContextChip
-        iconLight={worktreeLight}
-        iconDark={worktreeDark}
+        icon={worktreeIcon}
         label="main · worktree"
         title="Active git worktree"
         menu={worktreeMenu}
       />
       <ContextChip
-        iconLight={addFileLight}
-        iconDark={addFileDark}
+        icon={addFileIcon}
         label="Add file"
         title="Attach a file to your prompt"
         onClick={onAddFile}
@@ -667,9 +644,6 @@ export function ChatInput({ onSend, onCancel, isStreaming, disabled }: ChatInput
   const activeModelInfo = allModels.find((m) => m.id === activeModel)
   const activeProvider = activeModelInfo?.provider
   const activeProviderHasKey = activeProvider ? hasKey(activeProvider) : true
-
-  const micIcon = useThemedIcon(micLight, micDark)
-  const sendIcon = useThemedIcon(sendLight, sendDark)
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -1218,11 +1192,14 @@ export function ChatInput({ onSend, onCancel, isStreaming, disabled }: ChatInput
               onClick={onCancel}
               title="Stop streaming"
               aria-label="Stop streaming"
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--error)] text-white transition-colors hover:opacity-80"
+              className="group flex h-[60px] w-[60px] shrink-0 items-center justify-center rounded-full bg-[var(--bg-tertiary)] transition-all hover:scale-105 hover:bg-[var(--error)]"
             >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-                <rect x="4" y="4" width="16" height="16" rx="2" />
-              </svg>
+              <img
+                src={stopIcon}
+                alt=""
+                aria-hidden
+                className="icon-asset-crisp themed-variant-light h-[45px] w-[45px] object-contain"
+              />
             </button>
           ) : memoryShortcut ? (
             // Fluidity J4 — in memory-write mode the Send pill becomes a

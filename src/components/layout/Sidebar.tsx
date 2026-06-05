@@ -5,25 +5,20 @@ import { useProjectsStore } from '@/stores/projects-store'
 import { useSidebarStore, SIDEBAR_DEFAULT_LIMIT } from '@/stores/sidebar-store'
 import { useNavHistoryStore } from '@/stores/nav-history-store'
 import { toast } from '@/stores/toast-store'
-import { useThemedIcon } from '@/lib/themed-icon'
 import { useMediaQuery, NARROW_VIEWPORT_QUERY } from '@/hooks/useMediaQuery'
 import type { Conversation, Project } from '@/lib/types'
 import { PopoverMenu } from '@/components/ui/PopoverMenu'
 import { ActivityDashboard } from '@/components/activity/ActivityDashboard'
 import { SessionsSidebar } from '@/components/layout/SessionsSidebar'
 
-import newChatLight from '@assets/Lamprey New Chat Icon.png'
-import newChatDark from '@assets/Lamprey New Chat Icon Dark View.png'
-import searchLight from '@assets/Lamprey Searching Icon.png'
-import searchDark from '@assets/Lamprey Search Icon Dark View.png'
-import pluginsLight from '@assets/Lamprey Plugins Icon.png'
-import pluginsDark from '@assets/Lamprey Plugins Icon Dark View.png'
-import folderLight from '@assets/Lamprey Folder 1 Icon.png'
-import folderDark from '@assets/Lamprey Folder 1 Dark View.png'
-import workLight from '@assets/Lamprey Work Location Icon.png'
-import workDark from '@assets/Lamprey Work Location Icon Dark View.png'
-import settingsLight from '@assets/Lamprey Settings Icon.png'
-import settingsDark from '@assets/Lamprey Settings Icon Dark View.png'
+import newChatIcon from '@assets/Lamprey New Chat Icon.png'
+import searchIcon from '@assets/Lamprey Searching Icon.png'
+import pluginsIcon from '@assets/Lamprey Plugins Icon.png'
+import folderIcon from '@assets/Lamprey Auto-Review Icon.png'
+import workIcon from '@assets/Lamprey Auto-Review Icon.png'
+import settingsIconUrl from '@assets/Lamprey Settings Icon.png'
+import sessionsIconUrl from '@assets/Lamprey Pin As Chapter Icon.png'
+import automationsIcon from '@assets/Lamprey Project History Icon Light View.png'
 
 function formatRelativeTime(timestamp: number): string {
   const diff = Date.now() - timestamp
@@ -82,7 +77,7 @@ function NavRow({ icon, iconNode, label, shortcut, onClick, active, ariaLabel }:
       }`}
     >
       {icon ? (
-        <img src={icon} alt="" aria-hidden className="icon-asset h-[25px] w-[25px] shrink-0 object-contain" />
+        <img src={icon} alt="" aria-hidden className="icon-asset themed-variant-light h-[25px] w-[25px] shrink-0 object-contain" />
       ) : (
         <span aria-hidden className="flex h-[25px] w-[25px] shrink-0 items-center justify-center">
           {iconNode}
@@ -106,27 +101,6 @@ function Chevron({ direction, size = 12 }: ChevronProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
       <polyline points={points} />
-    </svg>
-  )
-}
-
-function ClockIcon({ size = 22 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <circle cx="12" cy="12" r="9" />
-      <polyline points="12 7 12 12 16 14" />
-    </svg>
-  )
-}
-
-function SessionsIcon({ size = 22 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <path d="M3 7h13" />
-      <path d="M3 12h13" />
-      <path d="M3 17h13" />
-      <path d="M19 7v10" />
-      <circle cx="19" cy="7" r="1.4" fill="currentColor" />
     </svg>
   )
 }
@@ -214,7 +188,7 @@ function ConversationRow({ conv, active, onSelect, onDelete, workIcon }: Convers
         src={workIcon}
         alt=""
         aria-hidden
-        className="icon-asset h-5 w-5 shrink-0 object-contain opacity-80"
+        className="icon-asset themed-variant-light h-5 w-5 shrink-0 object-contain opacity-80"
       />
       {conv.kind && conv.kind !== 'local' && (
         <span
@@ -367,7 +341,7 @@ function ProjectSection({
           src={folderIcon}
           alt=""
           aria-hidden
-          className="icon-asset h-[22px] w-[22px] shrink-0 object-contain"
+          className="icon-asset themed-variant-light h-[22px] w-[22px] shrink-0 object-contain"
         />
         <span className="flex-1 truncate font-medium">{project?.name ?? 'Unassigned'}</span>
         {project?.pinned && (
@@ -522,13 +496,6 @@ export function Sidebar() {
 
   const reduced = usePrefersReducedMotion()
   const isNarrow = useMediaQuery(NARROW_VIEWPORT_QUERY)
-
-  const newChatIcon = useThemedIcon(newChatLight, newChatDark)
-  const searchIcon = useThemedIcon(searchLight, searchDark)
-  const pluginsIcon = useThemedIcon(pluginsLight, pluginsDark)
-  const folderIcon = useThemedIcon(folderLight, folderDark)
-  const workIcon = useThemedIcon(workLight, workDark)
-  const settingsIconUrl = useThemedIcon(settingsLight, settingsDark)
 
   useEffect(() => {
     void loadProjects()
@@ -746,6 +713,7 @@ export function Sidebar() {
             searchIcon={searchIcon}
             pluginsIcon={pluginsIcon}
             settingsIconUrl={settingsIconUrl}
+            sessionsIconUrl={sessionsIconUrl}
             conversationsCount={conversations.length}
           />
         </aside>
@@ -773,7 +741,7 @@ export function Sidebar() {
           aria-label="New chat"
           className="mt-2 rounded-md p-1.5 transition-colors hover:bg-[var(--bg-tertiary)]"
         >
-          <img src={newChatIcon} alt="" aria-hidden className="icon-asset h-[28px] w-[28px] object-contain" />
+          <img src={newChatIcon} alt="" aria-hidden className="icon-asset themed-variant-light h-[28px] w-[28px] object-contain" />
         </button>
         <button
           onClick={handleSearchClick}
@@ -781,7 +749,7 @@ export function Sidebar() {
           aria-label="Search"
           className="mt-1 rounded-md p-1.5 transition-colors hover:bg-[var(--bg-tertiary)]"
         >
-          <img src={searchIcon} alt="" aria-hidden className="icon-asset h-[28px] w-[28px] object-contain" />
+          <img src={searchIcon} alt="" aria-hidden className="icon-asset themed-variant-light h-[28px] w-[28px] object-contain" />
         </button>
         <button
           onClick={() => openSettings('mcp')}
@@ -789,15 +757,15 @@ export function Sidebar() {
           aria-label="Plugins"
           className="mt-1 rounded-md p-1.5 transition-colors hover:bg-[var(--bg-tertiary)]"
         >
-          <img src={pluginsIcon} alt="" aria-hidden className="icon-asset h-[28px] w-[28px] object-contain" />
+          <img src={pluginsIcon} alt="" aria-hidden className="icon-asset themed-variant-light h-[28px] w-[28px] object-contain" />
         </button>
         <button
           onClick={() => openSettings('automations')}
           title="Automations"
           aria-label="Automations"
-          className="mt-1 rounded-md p-1.5 text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]"
+          className="mt-1 rounded-md p-1.5 transition-colors hover:bg-[var(--bg-tertiary)]"
         >
-          <ClockIcon size={22} />
+          <img src={automationsIcon} alt="" aria-hidden className="icon-asset themed-variant-light h-[28px] w-[28px] object-contain" />
         </button>
         <div className="flex-1" />
         <button
@@ -806,7 +774,7 @@ export function Sidebar() {
           aria-label="Settings"
           className="rounded-md p-1.5 transition-colors hover:bg-[var(--bg-tertiary)]"
         >
-          <img src={settingsIconUrl} alt="" aria-hidden className="icon-asset h-[28px] w-[28px] object-contain" />
+          <img src={settingsIconUrl} alt="" aria-hidden className="icon-asset themed-variant-light h-[28px] w-[28px] object-contain" />
         </button>
       </div>
     )
@@ -858,6 +826,7 @@ export function Sidebar() {
         searchIcon={searchIcon}
         pluginsIcon={pluginsIcon}
         settingsIconUrl={settingsIconUrl}
+        sessionsIconUrl={sessionsIconUrl}
         conversationsCount={conversations.length}
       />
 
@@ -914,6 +883,7 @@ interface SidebarBodyProps {
   searchIcon: string
   pluginsIcon: string
   settingsIconUrl: string
+  sessionsIconUrl: string
   conversationsCount: number
 }
 function SidebarBody(props: SidebarBodyProps) {
@@ -956,6 +926,7 @@ function SidebarBody(props: SidebarBodyProps) {
     searchIcon,
     pluginsIcon,
     settingsIconUrl,
+    sessionsIconUrl,
     conversationsCount
   } = props
 
@@ -1011,13 +982,13 @@ function SidebarBody(props: SidebarBodyProps) {
           onClick={() => openSettings('mcp')}
         />
         <NavRow
-          iconNode={<SessionsIcon size={22} />}
+          icon={sessionsIconUrl}
           label="Sessions"
           onClick={() => setSessionsVisible(!sessionsVisible)}
           active={sessionsVisible}
         />
         <NavRow
-          iconNode={<ClockIcon size={22} />}
+          iconNode={<img src={automationsIcon} alt="" aria-hidden className="icon-asset themed-variant-light h-[22px] w-[22px] object-contain" />}
           label="Automations"
           onClick={() => openSettings('automations')}
         />
@@ -1030,7 +1001,7 @@ function SidebarBody(props: SidebarBodyProps) {
               src={searchIcon}
               alt=""
               aria-hidden
-              className="icon-asset pointer-events-none absolute left-2 top-1/2 h-5 w-5 -translate-y-1/2 object-contain opacity-60"
+              className="icon-asset themed-variant-light pointer-events-none absolute left-2 top-1/2 h-5 w-5 -translate-y-1/2 object-contain opacity-60"
             />
             <input
               ref={searchRef}
