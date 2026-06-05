@@ -30,6 +30,13 @@ npx tsc --noEmit -p tsconfig.web.json
 npx electron-vite build
 ```
 
+## Where the `.exe`/installer comes from (READ THIS before looking for `dist/`)
+**A cloud / Linux session can NOT build or contain the Windows installer.** Do not hunt for `dist/Lamprey-*.exe` here — it will never exist in a remote Linux session.
+- `dist/` is electron-builder *output* and is gitignored, so a fresh clone never contains it.
+- The signed Windows NSIS `.exe` is produced ONLY by `npm run build:win` on the user's **Windows machine**, or by the **`build.yml` CI** on a `windows-latest` runner.
+- **Tag-push path (`v*`)** → CI builds `.exe` (Windows) + `.AppImage` (Linux) and attaches them to a **draft** GitHub release. **Branch-push to `main`** → CI builds the same artifacts but uploads them only as **workflow artifacts** (14-day retention), with NO release.
+- **Known environment limit:** this remote git proxy **rejects tag pushes (HTTP 403)** — branch pushes work, tag pushes do not. So from a cloud session: bump + commit + push `main` is doable, but **creating the `v*` tag (and thus the release) must be done by the user** (local `git push origin vX.Y.Z` or the GitHub "Draft a new release" UI).
+
 ## Architecture
 - **Main process**: `electron/main.ts` → `electron/ipc/` handlers → `electron/services/` business logic
 - **Preload**: `electron/preload.ts` — full typed contextBridge API (`window.api`)
