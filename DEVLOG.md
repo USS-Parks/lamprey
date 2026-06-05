@@ -1,5 +1,19 @@
 # Lamprey Harness Dev Log
 
+## [Snip — Prompt K13] Status-line snip slot  —  2026-06-05
+
+**Files changed:**
+- `electron/services/statusline-config.ts` — added `'snip'` to `StatusLineSlot` union and `ALL_SLOTS`; added it as a default-visible slot in the new position between `wakeups` and `tokens`; added the default format `'snip: {saved} saved'`.
+- `src/components/layout/StatusLine.tsx` — extended `SlotId`, `DEFAULT_CONFIG.slots`, `DEFAULT_CONFIG.formats`, and the `Slot.tone` union to include `'snip'`. New TONE_BG entry uses emerald (distinguished from the amber/red status tones — savings is a positive signal, not a warning). Added a 30s polling effect that reads today's saved tokens off `snip:stats` sparkline tail. Added the `case 'snip':` to `renderSlot` with a hide-when-zero guard so brand-new installs don't see a "0 saved" placeholder. Clicking the slot dispatches a `settings:open` window event with `{tab:'snip'}` (host handler unchanged — the Fluidity J-phase already wired the equivalent for other slot clicks).
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- vitest electron/services/statusline-config.test.ts ✓ (6 tests, no changes needed — existing tests cover slot ordering and the default-list expansion was backward-compat).
+- user-verification-needed: after at least one filter event, the status line shows a green `snip: <N> saved` slot; clicking opens Settings → Snip.
+
+**Notes:** the slot uses an emerald tone (`bg-emerald-500/15`) — visually distinct from wakeups (amber) and rag (blue) since "savings" is a positive signal, not a warning. The 30s poll is conservative; the Fluidity-phase `loops:onFired` event-driven refresh isn't applicable here (no event fires per filter match), but the polling cost is one IPC call per 30 seconds.
+
 ## [Snip — Prompts K11 + K12] SnipSettings dashboard + Discover panel  —  2026-06-05
 
 **Files changed:**

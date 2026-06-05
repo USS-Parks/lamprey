@@ -19,6 +19,7 @@ type SlotId =
   | 'workflow'
   | 'branch'
   | 'wakeups'
+  | 'snip'
   | 'tokens'
   | 'rag'
 
@@ -29,13 +30,14 @@ interface StatusLineConfig {
 }
 
 const DEFAULT_CONFIG: StatusLineConfig = {
-  slots: ['model', 'context', 'workflow', 'branch', 'wakeups'],
+  slots: ['model', 'context', 'workflow', 'branch', 'wakeups', 'snip'],
   formats: {
     model: '{name}',
     context: '{percent}% ctx',
     workflow: '{label}',
     branch: '{name}',
     wakeups: '{count} wake-up{plural}',
+    snip: 'snip: {saved} saved',
     tokens: '{kilo}k tokens',
     rag: '{count} corpus'
   },
@@ -106,6 +108,30 @@ export function StatusLine() {
         }
         const cur = r.data.branches.find((b) => b.current)
         setCurrentBranch(cur ? cur.name : null)
+      })
+    }
+    refresh()
+    const interval = setInterval(refresh, 30_000)
+    return () => {
+      cancelled = true
+      clearInterval(interval)
+    }
+  }, [])
+
+  // Snip Phase K13: poll today's tokens-saved every 30s. The slot
+  // hides itself when the count is 0 so brand-new installs don't see
+  // a "snip: 0 saved" placeholder.
+  const [snipTodaySaved, setSnipTodaySaved] = useState<number>(0)
+  useEffect(() => {
+    let cancelled = false
+    function refresh(): void {
+      void window.api?.snip?.stats().then((res) => {
+        if (cancelled) return
+        if (res?.success && res.data) {
+          const s = res.data as { sparkline?: number[] }
+          const today = s.sparkline?.[(s.sparkline?.length ?? 1) - 1] ?? 0
+          setSnipTodaySaved(today)
+        }
       })
     }
     refresh()
@@ -260,9 +286,29 @@ export function StatusLine() {
           />
         )
       }
+      case 'snip': {
+        // Hide the slot until at least one event has been recorded today.
+        if (snipTodaySaved === 0) return null
+        const text = applyFormat(fmt, { saved: formatSnipCount(snipTodaySaved) })
+        return (
+          <Slot
+            key={slot}
+            tone="snip"
+            label={text || `snip: ${formatSnipCount(snipTodaySaved)} saved`}
+            title={`${snipTodaySaved} tokens saved by snip today — click to open Snip dashboard`}
+            onClick={() => window.dispatchEvent(new CustomEvent('settings:open', { detail: { tab: 'snip' } }))}
+          />
+        )
+      }
       default:
         return null
     }
+  }
+
+  function formatSnipCount(n: number): string {
+    if (n < 1000) return String(n)
+    if (n < 1_000_000) return `${(n / 1000).toFixed(1)}k`
+    return `${(n / 1_000_000).toFixed(1)}M`
   }
 
   const renderedSlots = config.slots.map(renderSlot).filter(Boolean) as ReactElement[]
@@ -292,7 +338,7 @@ export function StatusLine() {
 }
 
 interface SlotProps {
-  tone: 'model' | 'workflow' | 'wakeups' | 'tokens' | 'rag' | 'branch'
+  tone: 'model' | 'workflow' | 'wakeups' | 'tokens' | 'rag' | 'branch' | 'snip'
   label: string
   title: string
   onClick?: () => void
@@ -304,7 +350,8 @@ const TONE_BG: Record<SlotProps['tone'], string> = {
   wakeups: 'bg-amber-500/15 text-amber-600',
   tokens: 'bg-[var(--bg-tertiary)]',
   rag: 'bg-blue-500/15 text-blue-500',
-  branch: 'bg-[var(--bg-tertiary)]'
+  branch: 'bg-[var(--bg-tertiary)]',
+  snip: 'bg-emerald-500/15 text-emerald-600'
 }
 
 function Slot({ tone, label, title, onClick }: SlotProps) {
