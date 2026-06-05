@@ -1,5 +1,21 @@
 # Lamprey Harness Dev Log
 
+## [Deep Research — Prompt D4] Query planner  —  2026-06-05
+
+**Files changed:**
+- `electron/services/research/planner.ts` (new) — `planQueries(question, depth)` runs the configured planner model with a strict-JSON system prompt that asks for `target = {quick: 3, standard: 5, exhaustive: 8}` queries covering distinct angles (baseline / news / opposing view / comparative / technical / primary / expert / quantitative). `parsePlannerOutput` tolerates leading/trailing prose, validates the `queries[].q` shape, defaults missing `angle` to `"unspecified"`, and returns null on malformed input. `dedupePlannedQueries` drops near-identical queries by Jaccard token overlap (default threshold 0.75) preserving first occurrence. On first-attempt parse failure the planner retries once with a tightened system prompt; second failure throws.
+- `electron/services/research/planner.test.ts` (new) — 19 tests across parser (clean, prose-wrapped, malformed, missing-queries, all-empty, missing-angle default, mixed-validity), dedup (uniques pass, Jaccard kills near-dups, configurable threshold, empty input), and the planner itself (target-count by depth tier, cap on too-many results, retry-on-malformed, throw-on-double-failure, near-dup collapse, distinct angles).
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- vitest electron/services/research/planner.test.ts ✓ (19/19)
+- vitest full suite ✓ (1496 passed | 18 skipped — +19 from D3's 1477)
+
+**Notes:** First exhaustive-depth fixture had queries like `"query about angle 0"` … `"query about angle 7"` — the only distinguishing token was the digit, and the tokenizer's `length > 1` filter dropped digits, leaving identical token sets that Jaccard dedup collapsed to 1 query. Replaced the fixture with 8 genuinely distinct topical queries. Tokenizer filter is correct (digits are noise on real queries); the fix belonged in the fixture.
+
+**Commit:** _pending_
+
 ## [Deep Research — Prompt D3] Intent classifier + auto-trigger routing  —  2026-06-05
 
 **Files changed:**
@@ -16,7 +32,7 @@
 
 **Notes:** First draft of the prefilter checked "too short and not a question" *before* the research-loud phrase scan, which mis-rejected short-but-clearly-research prompts like `"history of the printing press"` and `"compare REST vs GraphQL for high-throughput APIs"`. Re-ordered so research-loud beats the length check. `EscalateOpts` originally extended `PrefilterInput` (which has required `content`) but `shouldEscalateToResearch` already takes the raw content as a positional arg, so the inheritance was producing redundant-required-field errors at every call site — flattened to its own interface. `routeChatTurn` is gated on `autoTrigger`: when off, only the cheap prefix + prefilter run (no LLM call on every chat turn). Settings default `autoTrigger=false`; D10 flips it.
 
-**Commit:** _pending_
+**Commit:** `ebd8866`
 
 ## [Deep Research — Prompt D2] Adapter cascade + cross-provider dedup  —  2026-06-05
 
