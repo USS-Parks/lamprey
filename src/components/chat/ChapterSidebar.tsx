@@ -2,7 +2,7 @@ import { useEffect } from 'react'
 import { useChaptersStore } from '@/stores/chapters-store'
 
 // Track 2 / E2 — floating chapter TOC. Mounted by ChatView; visible on
-// the right edge of the chat column whenever the active conversation
+// the left edge of the chat column whenever the active conversation
 // has at least one chapter. Click a row to scroll the message list to
 // the chapter divider; hover for the summary.
 
@@ -44,7 +44,7 @@ export function ChapterSidebar({ conversationId }: ChapterSidebarProps) {
   return (
     <aside
       aria-label="Session chapters"
-      className="pointer-events-auto absolute right-3 top-3 z-10 w-[200px] rounded-md border border-[var(--border)] bg-[var(--bg-primary)]/95 p-2 text-[12px] shadow-md backdrop-blur"
+      className="pointer-events-auto absolute left-3 top-3 z-10 w-[200px] rounded-md border border-[var(--border)] bg-[var(--bg-primary)]/95 p-2 text-[12px] shadow-md backdrop-blur"
     >
       <div className="mb-1 flex items-center justify-between px-1">
         <span className="text-[10px] uppercase tracking-wider text-[var(--text-muted)]">

@@ -1,5 +1,22 @@
 # Lamprey Harness Dev Log
 
+## [v0.3.3 — Chapter chip moves to upper-left] — 2026-06-05
+
+Tiny visual move requested while testing the v0.3.2 reasoning fix in a live
+run. The floating "Chapters" TOC was anchored to the upper-right of the
+chat column, which collided visually with the token-meter row + the right
+panel collapse chevron. Moved it to the upper-left where the chat column
+has empty space and the chip is the only floating element.
+
+**Files changed:**
+- `src/components/chat/ChapterSidebar.tsx` — `absolute right-3 top-3` →
+  `absolute left-3 top-3`. File-header comment updated to match.
+- `package.json` — version bump to 0.3.3.
+
+**Verify:**
+- `npx tsc --noEmit -p tsconfig.web.json` — clean.
+- `npm run build:win` — installer + zip artifacts produced.
+
 ## [Reasoning-Block Composer Fallback] — 2026-06-05
 
 **Symptom (user report):** "The Reasoning Block STILL disappears completely
