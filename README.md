@@ -15,14 +15,14 @@
 
 ---
 
-## ⬇ Download v0.2.7
+## ⬇ Download v0.2.8
 
 Pick one — the `.exe` is the standard installer, the `.zip` is the portable bundle (unzip and run `Lamprey.exe` directly, no install required).
 
 | Format | File | Size | Direct link |
 |---|---|---:|---|
-| **NSIS installer** | `Lamprey-0.2.7-x64.exe` | 231 MB | [Download .exe](https://github.com/USS-Parks/lamprey/releases/download/v0.2.7/Lamprey-0.2.7-x64.exe) |
-| **Portable ZIP** | `Lamprey-0.2.7-x64.zip` | 300 MB | [Download .zip](https://github.com/USS-Parks/lamprey/releases/download/v0.2.7/Lamprey-0.2.7-x64.zip) |
+| **NSIS installer** | `Lamprey-0.2.8-x64.exe` | 231 MB | [Download .exe](https://github.com/USS-Parks/lamprey/releases/download/v0.2.8/Lamprey-0.2.8-x64.exe) |
+| **Portable ZIP** | `Lamprey-0.2.8-x64.zip` | 300 MB | [Download .zip](https://github.com/USS-Parks/lamprey/releases/download/v0.2.8/Lamprey-0.2.8-x64.zip) |
 
 Or browse all releases → <https://github.com/USS-Parks/lamprey/releases>
 
@@ -150,7 +150,7 @@ User-defined JavaScript sandbox hooks that fire on lifecycle events:
 
 ## Quick start
 
-1. **Download** the [v0.2.7 installer](https://github.com/USS-Parks/lamprey/releases/download/v0.2.7/Lamprey-0.2.7-x64.exe) and run it.
+1. **Download** the [v0.2.8 installer](https://github.com/USS-Parks/lamprey/releases/download/v0.2.8/Lamprey-0.2.8-x64.exe) and run it.
 2. **Get a key.** Easiest: <https://platform.deepseek.com> → sign up → create key → load $5. Lamprey also accepts Google AI Studio (Gemma), Alibaba DashScope (Qwen), and OpenRouter keys.
 3. **Paste your key** in the first-run modal. It's stored with `safeStorage` (OS keychain) under `userData/keys.json`.
 4. **Type something.** That's it.
@@ -226,7 +226,7 @@ Build history: [DEVLOG.md](DEVLOG.md).
 
 ## Roadmap
 
-Built and shipped (v0.2.7):
+Built and shipped (v0.2.8):
 
 - ✅ Multi-provider routing (DeepSeek / Gemma / Qwen / OpenRouter)
 - ✅ Planner → Coder → Reviewer agent pipeline

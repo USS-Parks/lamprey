@@ -1,5 +1,38 @@
 # Lamprey Harness Dev Log
 
+## [Release v0.2.8 Published] — 2026-06-04
+
+Patch on top of v0.2.7. The chat-pill stop button shipped in v0.2.7
+rendered as a solid white block in dark mode because the source PNG
+had a baked-flat opaque white interior — the same class of bug
+the v0.2.7 release fixed for Project History + the four Env Card
+icons. v0.2.8 runs `Lamprey Chat Pill Stop Icon Light View.png`
+through the same `scripts/make-wireframe.cjs` cleanup (93.1% of
+white pixels knocked transparent) and rebuilds the Windows
+installer + portable ZIP. No source changes — strictly an asset
+fix.
+
+**What changed:**
+- `ASSETS/Lamprey Chat Pill Stop Icon Light View.png` re-exported as a true wireframe (script's standard brightness>0.9 + saturation<0.08 transparency rule). The five PNGs already processed by v0.2.7 reconfirm 0% changed when re-run.
+- `scripts/make-wireframe.cjs` gained one more entry in its `FILES` list so future runs keep the stop icon flat. No algorithm change.
+
+**Artifacts built locally:**
+- `Lamprey-0.2.8-x64.exe` — NSIS installer
+- `Lamprey-0.2.8-x64.zip` — portable bundle
+- Both Windows-only, unsigned (same as v0.2.7).
+
+**Release ops:**
+- `package.json` 0.2.7 → 0.2.8. Local `npm run build:win` produced both artifacts.
+- README download table + Quick Start link + "Built and shipped" header bumped to v0.2.8.
+- `gh release create v0.2.8 --latest` (Windows-only, takes Latest from v0.2.7).
+- `memory/project_build_status.md` updated to mark v0.2.8 as Latest; v0.2.7 retained as prior-published since its assets stay attached and the lineage is correct.
+
+**Verify:**
+- tsc node ✓
+- tsc web ✓
+- electron-vite build ✓
+- electron-builder build ✓ (NSIS + ZIP + blockmap)
+
 ## [Release v0.2.7 Published] — 2026-06-04
 
 Icon system overhaul. The whole desktop now follows a single rule —
