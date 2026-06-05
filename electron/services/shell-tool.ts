@@ -1,8 +1,8 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'child_process'
 import { EventEmitter } from 'events'
 import { randomUUID } from 'crypto'
-import { statSync } from 'fs'
-import { resolve, relative, isAbsolute } from 'path'
+import { existsSync, statSync } from 'fs'
+import { delimiter, resolve, relative, isAbsolute } from 'path'
 import { resolveWorkspaceRelative } from './path-utils'
 
 // Native shell_command tool. One-shot command execution with cwd / timeout /
@@ -11,11 +11,20 @@ import { resolveWorkspaceRelative } from './path-utils'
 // unit-testable. Descriptor and registry wiring live in tool-registry.ts;
 // permission gating runs at the chat layer.
 
+export type ShellSelector = 'auto' | 'bash' | 'powershell'
+
 export interface ShellArgs {
   command: string
   cwd?: string
   timeout_ms?: number
   env?: Record<string, string>
+  /**
+   * Pick an explicit shell flavour. Default `'auto'` keeps the legacy
+   * behaviour (PowerShell on win32, `$SHELL || /bin/bash` elsewhere).
+   * `'bash'` on win32 resolves to Git Bash → WSL → clean error.
+   * `'powershell'` on POSIX resolves to `pwsh` if available, else error.
+   */
+  shell?: ShellSelector
 }
 
 export interface ShellResult {
@@ -112,16 +121,104 @@ export function extractCdTarget(
   return target.length > 0 ? target : null
 }
 
-function buildShellInvocation(command: string): { cmd: string; args: string[] } {
-  if (process.platform === 'win32') {
+/**
+ * Look for an executable along `PATH`. Returns the absolute path of the
+ * first hit, or `null` when nothing matches. Used so `buildShellInvocation`
+ * can give a structured "bash unavailable" / "pwsh unavailable" result
+ * instead of spawning something that fails with ENOENT.
+ */
+export function findOnPath(
+  binary: string,
+  pathEnv: string | undefined = process.env.PATH,
+  platform: NodeJS.Platform = process.platform
+): string | null {
+  if (!pathEnv) return null
+  const exts =
+    platform === 'win32' ? (process.env.PATHEXT?.split(';') ?? ['.exe', '.cmd', '.bat']) : ['']
+  for (const dir of pathEnv.split(delimiter)) {
+    if (!dir) continue
+    for (const ext of exts) {
+      const candidate = resolve(dir, binary + ext)
+      try {
+        if (existsSync(candidate)) return candidate
+      } catch {
+        // skip unreadable entries
+      }
+    }
+  }
+  return null
+}
+
+/**
+ * Resolve a `ShellSelector` to a concrete `{ cmd, args }` invocation, or
+ * a structured error string when the requested shell isn't available on
+ * this host. `'auto'` always succeeds (PowerShell on win32, $SHELL on
+ * POSIX); the cross-platform overrides may fail with a clean message.
+ */
+export function buildShellInvocation(
+  command: string,
+  selector: ShellSelector = 'auto',
+  platform: NodeJS.Platform = process.platform,
+  pathEnv: string | undefined = process.env.PATH
+): { cmd: string; args: string[] } | { error: string } {
+  if (selector === 'auto') {
+    if (platform === 'win32') {
+      return {
+        cmd: 'powershell.exe',
+        args: ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', command]
+      }
+    }
+    return {
+      cmd: process.env.SHELL || '/bin/bash',
+      args: ['-c', command]
+    }
+  }
+
+  if (selector === 'bash') {
+    // POSIX: prefer $SHELL when it's bash, otherwise the canonical path.
+    if (platform !== 'win32') {
+      const shellEnv = process.env.SHELL
+      const cmd = shellEnv && /bash$/i.test(shellEnv) ? shellEnv : findOnPath('bash', pathEnv, platform) ?? '/bin/bash'
+      return { cmd, args: ['-c', command] }
+    }
+    // win32: walk Git Bash → WSL fallback list.
+    const candidates = [
+      findOnPath('bash', pathEnv, platform),
+      'C:\\Program Files\\Git\\bin\\bash.exe',
+      'C:\\Program Files\\Git\\usr\\bin\\bash.exe',
+      'C:\\Windows\\System32\\bash.exe' // WSL launcher
+    ]
+    for (const candidate of candidates) {
+      if (!candidate) continue
+      try {
+        if (existsSync(candidate)) return { cmd: candidate, args: ['-c', command] }
+      } catch {
+        // continue
+      }
+    }
+    return {
+      error:
+        "shell: 'bash' requested but neither Git Bash nor WSL bash.exe was found on PATH or in standard install locations"
+    }
+  }
+
+  // selector === 'powershell'
+  if (platform === 'win32') {
     return {
       cmd: 'powershell.exe',
       args: ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', command]
     }
   }
+  // POSIX: PowerShell Core ships as `pwsh`.
+  const pwsh = findOnPath('pwsh', pathEnv, platform)
+  if (!pwsh) {
+    return {
+      error: "shell: 'powershell' requested but `pwsh` (PowerShell Core) is not installed on PATH"
+    }
+  }
   return {
-    cmd: process.env.SHELL || '/bin/bash',
-    args: ['-c', command]
+    cmd: pwsh,
+    args: ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', command]
   }
 }
 
@@ -195,7 +292,24 @@ export function executeShellCommand(
       MAX_TIMEOUT_MS
     )
     const env: NodeJS.ProcessEnv = { ...process.env, ...(args.env || {}) }
-    const { cmd, args: shellArgs } = buildShellInvocation(args.command)
+    const invocation = buildShellInvocation(args.command, args.shell ?? 'auto')
+    if ('error' in invocation) {
+      resolveResult({
+        command: args.command,
+        cwd,
+        exitCode: null,
+        signal: null,
+        stdout: '',
+        stderr: '',
+        stdoutTruncated: false,
+        stderrTruncated: false,
+        durationMs: Date.now() - startedAt,
+        timedOut: false,
+        error: invocation.error
+      })
+      return
+    }
+    const { cmd, args: shellArgs } = invocation
 
     let proc: ReturnType<typeof spawn>
     try {
@@ -466,7 +580,28 @@ export function executeShellCommandInBackground(
   }
 
   const env: NodeJS.ProcessEnv = { ...process.env, ...(args.env || {}) }
-  const { cmd, args: shellArgs } = buildShellInvocation(args.command)
+  const invocation = buildShellInvocation(args.command, args.shell ?? 'auto')
+  if ('error' in invocation) {
+    const session: BackgroundSession = {
+      id,
+      command: args.command,
+      cwd,
+      proc: null,
+      pid: null,
+      startedAt,
+      status: 'failed',
+      exitCode: null,
+      signal: null,
+      stdout: '',
+      stderr: invocation.error,
+      bytesWritten: 0,
+      stdoutLineBuf: '',
+      stderrLineBuf: ''
+    }
+    bgSessions.set(id, session)
+    return snapshotBg(session)
+  }
+  const { cmd, args: shellArgs } = invocation
 
   // We force `stdio: ['ignore', 'pipe', 'pipe']` so stdin is null but
   // both stdout + stderr are real Readable streams. The narrower

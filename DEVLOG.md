@@ -1,5 +1,21 @@
 # Lamprey Harness Dev Log
 
+## [Sandbox Parity — Prompt S2] Shell selector (bash / powershell / auto) — 2026-06-05
+
+**Files changed:**
+- `electron/services/shell-tool.ts` — new `ShellSelector` type + `shell?` field on `ShellArgs`; `findOnPath()` helper; `buildShellInvocation()` rewritten to accept selector + platform + PATH overrides and to return `{ cmd, args } | { error }` so the executor can short-circuit when bash/pwsh isn't installed.
+- `electron/services/shell-tool.ts` — foreground + background executors short-circuit cleanly on `{ error }` (background creates a `status: 'failed'` session with the error as stderr).
+- `electron/services/shell-tool.test.ts` — 6 `buildShellInvocation` cases + 2 `findOnPath` cases.
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- vitest `shell-tool.test.ts` ✓ 37/37
+
+**Notes:** On a Windows host where Git Bash IS installed at a standard path, the `'bash' + empty PATH` test takes the success branch rather than the error branch. Asserted with an `if (error)…else…` shape so both worlds pass. The selector defaults to `'auto'` so every existing caller is unaffected.
+
+**Commit:** S2
+
 ## [Sandbox Parity — Prompt S1] Persistent cwd state across shell calls — 2026-06-05
 
 **Files changed:**
@@ -15,7 +31,7 @@
 
 **Notes:** MVP only catches the first `cd …` token in the command; chains like `cd a && cd b` track to `a`, not `b`. The shell still does the right thing in-process; only the session-cwd memo drifts. Documented as a known limitation. `cwdSessions` grows unbounded — a follow-up should hook into conversation deletion to clear stale entries (not blocking for this phase).
 
-**Commit:** S1
+**Commit:** `15340f0`
 
 ## [v0.3.4 — Tool approval no longer auto-denies after 30s] — 2026-06-05
 

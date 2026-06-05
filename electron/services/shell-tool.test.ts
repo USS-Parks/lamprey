@@ -6,10 +6,12 @@ import {
   DEFAULT_TIMEOUT_MS,
   MAX_TIMEOUT_MS,
   STDOUT_CAP,
+  buildShellInvocation,
   clearAllSessionCwds,
   clearSessionCwd,
   executeShellCommand,
   extractCdTarget,
+  findOnPath,
   formatShellResultForModel,
   getSessionCwd,
   resolveCwdWithinWorkspace
@@ -118,6 +120,77 @@ describe('executeShellCommand', () => {
     expect(DEFAULT_TIMEOUT_MS).toBe(30_000)
     expect(MAX_TIMEOUT_MS).toBe(600_000)
     expect(STDOUT_CAP).toBe(30_000)
+  })
+})
+
+describe('buildShellInvocation', () => {
+  it("'auto' on win32 routes to powershell.exe", () => {
+    const r = buildShellInvocation('echo hi', 'auto', 'win32')
+    expect('error' in r).toBe(false)
+    if (!('error' in r)) {
+      expect(r.cmd).toBe('powershell.exe')
+      expect(r.args).toContain('-Command')
+      expect(r.args.at(-1)).toBe('echo hi')
+    }
+  })
+
+  it("'auto' on POSIX routes to $SHELL with -c", () => {
+    const r = buildShellInvocation('echo hi', 'auto', 'linux')
+    expect('error' in r).toBe(false)
+    if (!('error' in r)) {
+      expect(r.args).toEqual(['-c', 'echo hi'])
+    }
+  })
+
+  it("'bash' on POSIX returns a -c invocation", () => {
+    const r = buildShellInvocation('echo hi', 'bash', 'linux')
+    expect('error' in r).toBe(false)
+    if (!('error' in r)) {
+      expect(r.args).toEqual(['-c', 'echo hi'])
+      expect(r.cmd).toMatch(/bash/)
+    }
+  })
+
+  it("'bash' on win32 with no bash anywhere returns a structured error", () => {
+    // Pass an empty PATH; the function also probes a fixed list of standard
+    // install paths, but at minimum the error case is exercised when none
+    // of the candidates exist. On a host where bash IS installed at one of
+    // the fallback paths this would return cmd; gate via a soft check.
+    const r = buildShellInvocation('echo hi', 'bash', 'win32', '')
+    if ('error' in r) {
+      expect(r.error).toMatch(/bash/i)
+    } else {
+      // Host has bash at a standard install path — that's also valid.
+      expect(r.cmd).toMatch(/bash/i)
+    }
+  })
+
+  it("'powershell' on win32 routes to powershell.exe", () => {
+    const r = buildShellInvocation('Write-Output hi', 'powershell', 'win32')
+    expect('error' in r).toBe(false)
+    if (!('error' in r)) {
+      expect(r.cmd).toBe('powershell.exe')
+    }
+  })
+
+  it("'powershell' on POSIX without pwsh returns a structured error", () => {
+    const r = buildShellInvocation('Write-Output hi', 'powershell', 'linux', '')
+    if ('error' in r) {
+      expect(r.error).toMatch(/pwsh/i)
+    } else {
+      // Host has pwsh — also valid.
+      expect(r.cmd).toMatch(/pwsh/i)
+    }
+  })
+})
+
+describe('findOnPath', () => {
+  it('returns null when PATH is empty', () => {
+    expect(findOnPath('whatever', '', 'linux')).toBeNull()
+  })
+
+  it('returns null when PATH is undefined', () => {
+    expect(findOnPath('whatever', undefined, 'linux')).toBeNull()
   })
 })
 
