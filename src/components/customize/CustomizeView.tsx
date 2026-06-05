@@ -1,11 +1,18 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { useUiStore, type CustomizeColumnId } from '@/stores/ui-store'
+import { useThemedIcon } from '@/lib/themed-icon'
 import { SkillsColumn } from './SkillsColumn'
 import { ConnectorsColumn } from './ConnectorsColumn'
 import { PluginsColumn } from './PluginsColumn'
 import { NewSkillWizard } from './NewSkillWizard'
 import { AddConnectorFlow } from './AddConnectorFlow'
 import { InstallPluginFlow } from './InstallPluginFlow'
+import connectAppsIconLight from '@assets/Lamprey Connect Apps Icon.png'
+import connectAppsIconDark from '@assets/Lamprey Connect Apps Icon Dark View.png'
+import skillsTeacherIconLight from '@assets/Lamprey Skills Teacher Icon Light View.png'
+import skillsTeacherIconDark from '@assets/Lamprey Skills Teacher Icon Dark View.png'
+import plugInsIconLight from '@assets/Lamprey Plug-Ins Icon 2.png'
+import plugInsIconDark from '@assets/Lamprey Plug-Ins Icon 2 Dark View.png'
 
 interface ColumnDef {
   id: CustomizeColumnId
@@ -23,10 +30,11 @@ interface CtaCardProps {
   title: string
   description: string
   onClick: () => void
+  icon: ReactNode
   disabled?: boolean
 }
 
-function CtaCard({ title, description, onClick, disabled }: CtaCardProps) {
+function CtaCard({ title, description, onClick, icon, disabled }: CtaCardProps) {
   return (
     <button
       onClick={onClick}
@@ -37,12 +45,8 @@ function CtaCard({ title, description, onClick, disabled }: CtaCardProps) {
           : 'hover:border-[var(--accent)] hover:bg-[var(--bg-tertiary)]'
       }`}
     >
-      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--bg-tertiary)] text-[var(--text-secondary)] group-hover:text-[var(--text-primary)]">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-          <circle cx="12" cy="12" r="9" />
-          <line x1="12" y1="8" x2="12" y2="16" />
-          <line x1="8" y1="12" x2="16" y2="12" />
-        </svg>
+      <div className="flex h-11 w-11 shrink-0 items-center justify-center">
+        {icon}
       </div>
       <div className="min-w-0 flex-1">
         <div className="text-[14px] font-semibold text-[var(--text-primary)]">{title}</div>
@@ -50,6 +54,21 @@ function CtaCard({ title, description, onClick, disabled }: CtaCardProps) {
       </div>
     </button>
   )
+}
+
+function ConnectAppsIcon() {
+  const src = useThemedIcon(connectAppsIconLight, connectAppsIconDark)
+  return <img src={src} alt="" aria-hidden className="h-10 w-10 object-contain" />
+}
+
+function SkillsTeacherIcon() {
+  const src = useThemedIcon(skillsTeacherIconLight, skillsTeacherIconDark)
+  return <img src={src} alt="" aria-hidden className="h-10 w-10 object-contain" />
+}
+
+function PlugInsIcon() {
+  const src = useThemedIcon(plugInsIconLight, plugInsIconDark)
+  return <img src={src} alt="" aria-hidden className="h-10 w-10 object-contain" />
 }
 
 export function CustomizeView() {
@@ -141,16 +160,19 @@ export function CustomizeView() {
             title="Connect your apps"
             description="Add an MCP server to extend tool reach."
             onClick={() => setAddConnectorOpen(true)}
+            icon={<ConnectAppsIcon />}
           />
           <CtaCard
             title="Create new skills"
             description="Scaffold a Markdown skill in a guided flow."
             onClick={() => setWizardOpen(true)}
+            icon={<SkillsTeacherIcon />}
           />
           <CtaCard
             title="Browse plugins"
             description="Discover and install bundled plugin packs."
             onClick={() => setInstallPluginOpen(true)}
+            icon={<PlugInsIcon />}
           />
         </div>
       </div>
