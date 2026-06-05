@@ -1,5 +1,26 @@
 # Lamprey Harness Dev Log
 
+## [Deep Research — Prompt D11] Artifact emission + chat surfacing  —  2026-06-05
+
+**Files changed:**
+- `electron/services/research-artifacts-store.ts` (new) — in-memory manifest backed by the on-disk `userData/artifacts/research/*.md` directory. Lazy-init scans the directory once per process and rebuilds entries from the `research-<slug>-<unix-ms>.md` filename pattern. Newly-written artifacts are registered via `registerArtifact()`. Reads (`readResearchArtifact`) verify the file still exists and auto-evict stale entries. Downloads (`downloadResearchArtifact`) copy the file content to a user-chosen destination.
+- `electron/services/research-artifacts-store.test.ts` (new) — 10 tests across register + list (newest first), disk scan rebuild, ignore-non-matching-files, idempotent init, read happy path + missing-file eviction + unknown filename, and download write + unknown filename.
+- `electron/services/research/index.ts` — after the writer call, the orchestrator now calls `registerArtifact(filename, path, question, size, timestamp)` so the manifest reflects the new run. Guarded against the test-deps `writeArtifact` override so unit tests don't register synthetic entries.
+- `electron/ipc/research.ts` — adds `research:read` (returns `{entry, content}` for a filename), `research:download` (opens the native save dialog and copies the artifact to the chosen path), and extends `research:list` to include both `activeRuns` and the persisted `artifacts` manifest.
+- `electron/preload.ts` — exposes `window.api.research.{read, download}` alongside the existing `start`/`cancel`/`status`/`list`.
+- `src/components/artifacts/MarkdownRenderer.tsx` — anchor handler intercepts `artifact://research/<filename>` links, fetches the artifact content via `window.api.research.read`, and opens it in the right panel via `window.__openArtifact('markdown', content)`. Falls back to external-URL handling for everything else.
+- `src/components/artifacts/ResearchArtifact.tsx` (new) — wraps the existing `MarkdownRenderer` with a header chip (`Research report · N sources`) and a `Download .md` button that drives the native save dialog through the new IPC. Clipboard fallback when the API isn't available (e.g. browser dev mode).
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- vitest electron/services/research-artifacts-store.test.ts ✓ (10/10)
+- vitest full suite ✓ (1618 passed | 18 skipped — +10 from D10's 1608)
+
+**Notes:** The chat-side message format from D10 already contains the `[Open full report](artifact://research/<filename>)` link; D11's MarkdownRenderer change is what makes the link clickable. Bibliography URLs (e.g. `[3] [Title 3](https://reuters.com/foo)`) are regular external links — the anchor handler's `artifact://` branch only fires for the research-report link, everything else still goes through the normal external-URL pathway (`openExternal` in Electron, `window.open` fallback). The download button uses `dialog.showSaveDialog` for native parity with other Electron apps; cancellation returns a `{saved: false}` success rather than an error so the renderer doesn't toast a "fail" for user-cancelled saves.
+
+**Commit:** _pending_
+
 ## [Deep Research — Prompt D10] Orchestrator + IPC + progress streaming  —  2026-06-05
 
 **Files changed:**
@@ -21,7 +42,7 @@
 
 **Notes:** The IPC layer's `research:start` returns `{runId}` immediately by waiting one `setImmediate` tick for the first progress event to populate the runId (the orchestrator generates one internally). This keeps the renderer's `research:start` call cheap — the actual pipeline runs in the background. The chat-side path in `chat.ts` is synchronous-awaited so the assistant message lands as part of the same `chat:send` turn; both paths share the same underlying `runDeepResearch` and emit the same progress events. Lazy-loading the embeddings service via `await import(...)` lets tests stub the entire stage chain via the `deps` interface without ever touching `electron/services/rag/embeddings/service.ts`. Cascade-test updated to reflect the new `autoTrigger: true` default.
 
-**Commit:** _pending_
+**Commit:** `debd13b`
 
 ## [Deep Research — Prompt D9] Markdown synthesizer (strict-citation)  —  2026-06-05
 

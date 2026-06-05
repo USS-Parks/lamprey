@@ -1,4 +1,4 @@
-import { ipcMain } from 'electron'
+import { ipcMain, dialog, BrowserWindow } from 'electron'
 import {
   runDeepResearch,
   registerRun,
@@ -9,6 +9,11 @@ import {
   listActiveRuns,
   type ResearchProgress
 } from '../services/research'
+import {
+  downloadResearchArtifact,
+  listResearchArtifacts,
+  readResearchArtifact
+} from '../services/research-artifacts-store'
 import { emitChatEvent } from '../services/chat-events'
 import type { DepthTier } from '../services/research/intent'
 
@@ -145,11 +150,60 @@ export function registerResearchHandlers(): void {
 
   ipcMain.handle('research:list', async () => {
     try {
-      return { success: true, data: listActiveRuns() }
+      return {
+        success: true,
+        data: {
+          activeRuns: listActiveRuns(),
+          artifacts: listResearchArtifacts()
+        }
+      }
     } catch (err) {
       return {
         success: false,
         error: (err as Error).message ?? 'research:list failed'
+      }
+    }
+  })
+
+  ipcMain.handle('research:read', async (_event, filename: unknown) => {
+    try {
+      if (typeof filename !== 'string' || !filename) {
+        return { success: false, error: 'research:read requires a filename string.' }
+      }
+      const r = readResearchArtifact(filename)
+      if (!r) return { success: false, error: `Artifact not found: ${filename}` }
+      return { success: true, data: { entry: r.entry, content: r.content } }
+    } catch (err) {
+      return {
+        success: false,
+        error: (err as Error).message ?? 'research:read failed'
+      }
+    }
+  })
+
+  ipcMain.handle('research:download', async (event, filename: unknown) => {
+    try {
+      if (typeof filename !== 'string' || !filename) {
+        return { success: false, error: 'research:download requires a filename string.' }
+      }
+      const focused = BrowserWindow.getFocusedWindow() ?? BrowserWindow.fromWebContents(event.sender)
+      const opts: Electron.SaveDialogOptions = {
+        defaultPath: filename,
+        filters: [{ name: 'Markdown', extensions: ['md'] }]
+      }
+      const result = focused
+        ? await dialog.showSaveDialog(focused, opts)
+        : await dialog.showSaveDialog(opts)
+      if (result.canceled || !result.filePath) {
+        return { success: true, data: { saved: false } }
+      }
+      const ok = downloadResearchArtifact(filename, result.filePath)
+      if (!ok) return { success: false, error: 'Failed to write the chosen destination.' }
+      return { success: true, data: { saved: true, path: result.filePath } }
+    } catch (err) {
+      return {
+        success: false,
+        error: (err as Error).message ?? 'research:download failed'
       }
     }
   })

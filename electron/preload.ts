@@ -818,7 +818,9 @@ const api = {
       ipcRenderer.invoke('research:start', request),
     cancel: (runId: string) => ipcRenderer.invoke('research:cancel', runId),
     status: (runId: string) => ipcRenderer.invoke('research:status', runId),
-    list: () => ipcRenderer.invoke('research:list')
+    list: () => ipcRenderer.invoke('research:list'),
+    read: (filename: string) => ipcRenderer.invoke('research:read', filename),
+    download: (filename: string) => ipcRenderer.invoke('research:download', filename)
   },
 
   currentInfo: {

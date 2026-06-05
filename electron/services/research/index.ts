@@ -14,6 +14,7 @@ import { extractAll } from './extractor'
 import { extractClaimsAll } from './claims'
 import { corroborateWithOpposition } from './corroborator'
 import { synthesizeReport, FabricatedCitationError } from './synthesizer'
+import { registerArtifact } from '../research-artifacts-store'
 
 // Public orchestrator entry point for the deep-research pipeline.
 //
@@ -250,6 +251,16 @@ export async function runDeepResearch(opts: RunDeepResearchOpts): Promise<DeepRe
     const filePath = join(dir, filename)
     const writer = deps.writeArtifact ?? ((p, c) => writeFileSync(p, c, 'utf-8'))
     writer(filePath, synth.markdown)
+
+    // D11 — register the artifact so the renderer can list / open /
+    // download it via window.api.research.list / read / download.
+    if (!deps.writeArtifact) {
+      try {
+        registerArtifact(filename, filePath, opts.question, Buffer.byteLength(synth.markdown, 'utf-8'), startedAt)
+      } catch (err) {
+        console.warn('[research] failed to register artifact:', err)
+      }
+    }
 
     emit({ stage: 'done' })
 
