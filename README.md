@@ -21,12 +21,13 @@ Pick one — the `.exe` is the standard installer, the `.zip` is the portable bu
 
 | Format | File | Size | Direct link |
 |---|---|---:|---|
-| **NSIS installer** | `Lamprey-0.3.1-x64.exe` | 230 MB | [Download .exe](https://github.com/USS-Parks/lamprey/releases/download/v0.3.1/Lamprey-0.3.1-x64.exe) |
-| **Portable ZIP** | `Lamprey-0.3.1-x64.zip` | 299 MB | [Download .zip](https://github.com/USS-Parks/lamprey/releases/download/v0.3.1/Lamprey-0.3.1-x64.zip) |
+| **NSIS installer** (Windows) | `Lamprey-0.3.1-x64.exe` | 230 MB | [Download .exe](https://github.com/USS-Parks/lamprey/releases/download/v0.3.1/Lamprey-0.3.1-x64.exe) |
+| **Portable ZIP** (Windows) | `Lamprey-0.3.1-x64.zip` | 299 MB | [Download .zip](https://github.com/USS-Parks/lamprey/releases/download/v0.3.1/Lamprey-0.3.1-x64.zip) |
+| **AppImage** (Linux) | `Lamprey-0.3.1-x86_64.AppImage` | 296 MB | [Download .AppImage](https://github.com/USS-Parks/lamprey/releases/download/v0.3.1/Lamprey-0.3.1-x86_64.AppImage) |
 
 Or browse all releases → <https://github.com/USS-Parks/lamprey/releases>
 
-**Windows 10/11 x64.** Linux + macOS builds are buildable from source (`npm run build:linux` / `npm run build:mac`) but not bundled with this release.
+**Windows 10/11 x64** + **Linux x86_64 AppImage** (built by the `Build Lamprey` CI workflow on the tag push). macOS is buildable from source (`npm run build:mac`) but not bundled with this release.
 
 ---
 
