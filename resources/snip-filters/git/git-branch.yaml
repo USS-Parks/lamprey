@@ -1,0 +1,9 @@
+name: git-branch
+description: Tighten git branch listing to one branch per line, max 50
+match:
+  command: git
+  subcommand: branch
+pipeline:
+  - action: strip_ansi
+  - action: head
+    n: 50

@@ -1,0 +1,16 @@
+name: git-status
+description: Compress git status to a clean-tree message or the changed-file list
+match:
+  command: git
+  subcommand: status
+pipeline:
+  - action: strip_ansi
+  - action: match_output
+    pattern: 'nothing to commit, working tree clean'
+    message: 'git status: clean tree'
+  - action: keep_lines
+    pattern: '^(\?\?|M |A |D |R |C |U | M| A| D| R| C| U|\s+(modified|new file|deleted|renamed|copied|both modified):|git status: clean tree)'
+  - action: on_empty
+    message: 'git status: clean tree'
+  - action: head
+    n: 100

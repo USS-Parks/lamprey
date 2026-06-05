@@ -1,5 +1,18 @@
 # Lamprey Harness Dev Log
 
+## [Snip — Prompt K4] Built-in filter set — git family  —  2026-06-05
+
+**Files changed:**
+- `resources/snip-filters/git/{git-status,git-log,git-diff,git-show,git-add,git-commit,git-push,git-pull,git-fetch,git-branch,git-stash,git-worktree}.yaml` (12 new) — declarative pipelines for the git family. `git-status` short-circuits on "nothing to commit" via `match_output`; `git-log` post-processes with `strip_ansi` + `truncate_lines` + `head 30` (no inject so we can't force `--pretty`); `git-push` / `git-pull` / `git-fetch` strip the Counting/Compressing progress noise; `git-add` substitutes "staged" on empty output; `git-commit` keeps the `[branch hash]` summary line.
+- `electron/services/snip/filters.test.ts` (new) — golden-input regression harness. Scans `resources/snip-filters/` at test time, validates every YAML via `filter-schema`, then runs each named filter through a captured-from-terminal golden input asserting (a) `estimateTokens(out) <= estimateTokens(in)` and (b) the output contains / doesn't contain expected substrings. K5/K6/K7 extend the goldens array — no new test files.
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- vitest electron/services/snip/ ✓ (89 tests — 22 engine + 25 matcher + 20 loader + 22 filter goldens)
+
+**Notes:** two regression-driven design lessons. First, `match_output` substitutes its message into the body but does NOT halt the pipeline — the next step keeps running on the substituted text. So patterns like "short-circuit then format_template" don't work; you need `match_output` + a pipeline that keeps the substituted message intact (or just use `keep_lines` + `on_empty`). Second, without snip-style "inject" pre-execution rewriting, `git log` can't be made one-line-per-commit purely via post-processing — the most honest compression is `head + truncate_lines`. Reserve inject for a v2 phase.
+
 ## [Snip — Prompt K3] YAML filter loader + schema + chokidar hot-reload  —  2026-06-05
 
 **Files changed:**

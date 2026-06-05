@@ -1,0 +1,11 @@
+name: git-stash
+description: Trim verbose stash list / show output
+match:
+  command: git
+  subcommand: stash
+pipeline:
+  - action: strip_ansi
+  - action: head
+    n: 50
+  - action: on_empty
+    message: 'git stash: nothing to show'
