@@ -462,6 +462,7 @@ export function Sidebar() {
   const searchFocusToken = useUiStore((s) => s.searchFocusToken)
   const requestSearchFocus = useUiStore((s) => s.requestSearchFocus)
   const openSettings = useUiStore((s) => s.openSettings)
+  const openCustomize = useUiStore((s) => s.openCustomize)
   const sidebarCollapsed = useUiStore((s) => s.sidebarCollapsed)
   const sidebarWidth = useUiStore((s) => s.sidebarWidth)
   const setSidebarCollapsed = useUiStore((s) => s.setSidebarCollapsed)
@@ -680,6 +681,7 @@ export function Sidebar() {
             handleNewChat={handleNewChat}
             handleSearchClick={handleSearchClick}
             openSettings={openSettings}
+            openCustomize={openCustomize}
             sessionsVisible={sessionsVisible}
             setSessionsVisible={setSessionsVisible}
             filterVisible={filterVisible}
@@ -752,9 +754,9 @@ export function Sidebar() {
           <img src={searchIcon} alt="" aria-hidden className="icon-asset themed-variant-light h-[28px] w-[28px] object-contain" />
         </button>
         <button
-          onClick={() => openSettings('mcp')}
-          title="Plugins"
-          aria-label="Plugins"
+          onClick={() => openCustomize()}
+          title="Customize"
+          aria-label="Customize"
           className="mt-1 rounded-md p-1.5 transition-colors hover:bg-[var(--bg-tertiary)]"
         >
           <img src={pluginsIcon} alt="" aria-hidden className="icon-asset themed-variant-light h-[28px] w-[28px] object-contain" />
@@ -796,6 +798,7 @@ export function Sidebar() {
         handleNewChat={handleNewChat}
         handleSearchClick={handleSearchClick}
         openSettings={openSettings}
+        openCustomize={openCustomize}
         sessionsVisible={sessionsVisible}
         setSessionsVisible={setSessionsVisible}
         filterVisible={filterVisible}
@@ -853,6 +856,7 @@ interface SidebarBodyProps {
   handleNewChat: () => Promise<void> | void
   handleSearchClick: () => void
   openSettings: (tab?: 'mcp' | 'automations') => void
+  openCustomize: () => void
   sessionsVisible: boolean
   setSessionsVisible: (visible: boolean) => void
   filterVisible: boolean
@@ -896,6 +900,7 @@ function SidebarBody(props: SidebarBodyProps) {
     handleNewChat,
     handleSearchClick,
     openSettings,
+    openCustomize,
     sessionsVisible,
     setSessionsVisible,
     filterVisible,
@@ -978,8 +983,8 @@ function SidebarBody(props: SidebarBodyProps) {
         </div>
         <NavRow
           icon={pluginsIcon}
-          label="Plugins"
-          onClick={() => openSettings('mcp')}
+          label="Customize"
+          onClick={() => openCustomize()}
         />
         <NavRow
           icon={sessionsIconUrl}

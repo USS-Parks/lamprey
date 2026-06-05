@@ -10,6 +10,7 @@ import { WorkflowPalette } from '@/components/workflows/WorkflowPalette'
 import { WorktreeManagerModal } from '@/components/worktree/WorktreeManagerModal'
 import { ApiKeyModal } from '@/components/settings/ApiKeyModal'
 import { SettingsDialog } from '@/components/settings/SettingsDialog'
+import { CustomizeView } from '@/components/customize/CustomizeView'
 import { ToolApprovalModal } from '@/components/tools/ToolApprovalModal'
 import { approvalKey, routeApproval } from '@/lib/approval-routing'
 import { useInlineApprovalsStore } from '@/stores/inline-approvals-store'
@@ -58,6 +59,7 @@ function App(): React.ReactElement {
   const settingsOpen = useUiStore((s) => s.settingsOpen)
   const closeSettings = useUiStore((s) => s.closeSettings)
   const openSettings = useUiStore((s) => s.openSettings)
+  const customizeOpen = useUiStore((s) => s.customizeOpen)
   const rightPanelCollapsed = useUiStore((s) => s.rightPanelCollapsed)
   const rightPanelWidth = useUiStore((s) => s.rightPanelWidth)
   const setRightPanelCollapsed = useUiStore((s) => s.setRightPanelCollapsed)
@@ -387,6 +389,8 @@ function App(): React.ReactElement {
       )}
 
       {settingsOpen && <SettingsDialog onClose={closeSettings} />}
+
+      {customizeOpen && <CustomizeView />}
 
       <MemoryModal />
 

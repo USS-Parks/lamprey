@@ -156,11 +156,19 @@ export type SettingsTabId =
   | 'skills'
   | 'automations'
 
+export type CustomizeColumnId = 'skills' | 'connectors' | 'plugins'
+
 interface UiState {
   searchQuery: string
   searchFocusToken: number
   settingsOpen: boolean
   settingsInitialTab: SettingsTabId | null
+  /** Customize Phase C1: a top-level full-window surface (Skills /
+   *  Connectors / Plugins) reachable from the sidebar. Replaces the
+   *  legacy "Plugins" sidebar shortcut that used to deep-link into
+   *  Settings → MCP. */
+  customizeOpen: boolean
+  customizeInitialColumn: CustomizeColumnId | null
   memoryOpen: boolean
   composeDraft: string
   composeSeedToken: number
@@ -213,6 +221,8 @@ interface UiState {
   openSettings: (tab?: SettingsTabId) => void
   closeSettings: () => void
   toggleSettings: () => void
+  openCustomize: (column?: CustomizeColumnId) => void
+  closeCustomize: () => void
   openMemory: () => void
   closeMemory: () => void
   toggleMemory: () => void
@@ -244,6 +254,8 @@ export const useUiStore = create<UiState>((set, get) => ({
   searchFocusToken: 0,
   settingsOpen: false,
   settingsInitialTab: null,
+  customizeOpen: false,
+  customizeInitialColumn: null,
   memoryOpen: false,
   composeDraft: '',
   composeSeedToken: 0,
@@ -280,6 +292,9 @@ export const useUiStore = create<UiState>((set, get) => ({
       settingsOpen: !s.settingsOpen,
       settingsInitialTab: s.settingsOpen ? null : s.settingsInitialTab
     })),
+  openCustomize: (column?: CustomizeColumnId) =>
+    set({ customizeOpen: true, customizeInitialColumn: column ?? null }),
+  closeCustomize: () => set({ customizeOpen: false, customizeInitialColumn: null }),
   openMemory: () => set({ memoryOpen: true }),
   closeMemory: () => set({ memoryOpen: false }),
   toggleMemory: () => set((s) => ({ memoryOpen: !s.memoryOpen })),

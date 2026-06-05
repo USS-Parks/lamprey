@@ -1,5 +1,21 @@
 # Lamprey Harness Dev Log
 
+## 2026-06-05 — Customize Phase / C1 — Surface scaffolding + sidebar entry
+
+Stood up the Customize surface shell and rewired the sidebar's mislabeled "Plugins" button.
+
+**Shipped**
+- `src/components/customize/CustomizeView.tsx` — full-window panel (z-30) with breadcrumb "← Customize", page heading, three-column body (Skills | Connectors | Plugins), three CTA cards at the bottom ("Connect your apps", "Create new skills", "Browse plugins"). CTAs inert this prompt — wired in C4 / C6 / C10.
+- `src/components/customize/{SkillsColumn,ConnectorsColumn,PluginsColumn}.tsx` — placeholder bodies (each replaced in their respective prompts).
+- `src/stores/ui-store.ts` — new `customizeOpen: boolean`, `customizeInitialColumn: CustomizeColumnId | null`, `openCustomize(column?)`, `closeCustomize()`. Column type exported for downstream prompts.
+- `src/components/layout/Sidebar.tsx` — collapsed-rail Plugins button + expanded NavRow both relabeled "Customize" and rewired to `openCustomize()`. SidebarBody props extended with `openCustomize: () => void`; both call sites (narrow drawer + desktop) pass it through.
+- `src/App.tsx` — mounts `<CustomizeView />` when `customizeOpen`.
+
+**Verify**
+- `npx tsc --noEmit -p tsconfig.web.json` → clean.
+- `npx tsc --noEmit -p tsconfig.node.json` → clean.
+- `npx electron-vite build` → built in 4.73s, no warnings.
+
 ## [Deep Research Phase Complete] — 2026-06-05
 
 **Prompts completed:** D1 DuckDuckGo adapter, D2 cascade, D3 intent classifier + auto-trigger routing, D4 query planner, D5 source collector, D6 readable-text extractor, D7 claim extraction, D8 multi-source corroboration, D9 strict-citation synthesizer, D10 orchestrator + IPC, D11 artifact emission + chat surfacing, D12 progress banner.
