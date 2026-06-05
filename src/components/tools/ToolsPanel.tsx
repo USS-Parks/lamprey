@@ -2,11 +2,15 @@ import { useUiStore, type ToolId } from '@/stores/ui-store'
 import filesIcon from '@assets/Lamprey Add File Icon.png'
 import reviewIcon from '@assets/Lamprey Auto-Review Icon.png'
 import chatIcon from '@assets/Lamprey Chat Window Icon.png'
+import planIcon from '@assets/Lamprey Plan Icon.png'
+import backgroundIcon from '@assets/Lamprey Background Tasks Icon.png'
 import { FilesPanel } from './panels/FilesPanel'
 import { SideChatPanel } from './panels/SideChatPanel'
 import { BrowserPanel } from './panels/BrowserPanel'
 import { ReviewPanel } from './panels/ReviewPanel'
 import { TerminalPanel } from './panels/TerminalPanel'
+import { PlanToolPanel } from './panels/PlanToolPanel'
+import { BackgroundTasksPanel } from './panels/BackgroundTasksPanel'
 import { EnvironmentPanel } from '@/components/workspace/EnvironmentPanel'
 import { SourcesPanel } from '@/components/workspace/SourcesPanel'
 import { ArtifactsPanel } from '@/components/workspace/ArtifactsPanel'
@@ -19,7 +23,9 @@ const TOOL_LABELS: Record<ToolId, string> = {
   terminal: 'Terminal',
   environment: 'Environment',
   sources: 'Sources',
-  artifacts: 'Artifacts'
+  artifacts: 'Artifacts',
+  plan: 'Plan',
+  background: 'Background tasks'
 }
 
 function BrowserGlyph(): React.ReactElement {
@@ -95,6 +101,10 @@ function ToolHeaderIcon({ tool }: { tool: ToolId }): React.ReactElement {
           </svg>
         </span>
       )
+    case 'plan':
+      return <img src={planIcon} alt="" aria-hidden className="icon-asset h-7 w-7 object-contain" />
+    case 'background':
+      return <img src={backgroundIcon} alt="" aria-hidden className="icon-asset h-7 w-7 object-contain" />
   }
 }
 
@@ -116,6 +126,10 @@ function renderToolBody(tool: ToolId): React.ReactElement {
       return <SourcesPanel />
     case 'artifacts':
       return <ArtifactsPanel />
+    case 'plan':
+      return <PlanToolPanel />
+    case 'background':
+      return <BackgroundTasksPanel />
   }
 }
 

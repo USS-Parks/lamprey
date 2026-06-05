@@ -459,6 +459,28 @@ export function touchConversation(id: string) {
   if (row?.project_id) touchProject(row.project_id)
 }
 
+/** Pull a leading <think>…</think> block out of an assistant content string
+ *  and route it into the dedicated reasoning column. Models without a native
+ *  reasoning_content streaming channel (everything except DeepSeek's V4-Flash
+ *  thinking mode + the reasoner) emit reasoning inline because the contract
+ *  forces them to lead every turn with <think>. Without this extraction, the
+ *  reasoning would survive in `content` but never light up the Reasoning
+ *  panel — which keys off the dedicated column. We extract at save time so
+ *  the persistence shape is consistent regardless of which channel produced
+ *  the reasoning. If `reasoning` is already populated (native channel did
+ *  its job), leave `content` untouched. */
+function splitInlineReasoning(
+  content: string,
+  reasoning: string | undefined
+): { content: string; reasoning: string | undefined } {
+  if (reasoning && reasoning.length > 0) return { content, reasoning }
+  const closed = content.match(/^\s*<think>([\s\S]*?)<\/think>\s*([\s\S]*)$/)
+  if (closed) {
+    return { content: closed[2], reasoning: closed[1].trim() }
+  }
+  return { content, reasoning }
+}
+
 export function saveMessage(msg: {
   id: string
   conversationId: string
@@ -473,6 +495,13 @@ export function saveMessage(msg: {
 }) {
   const db = getDb()
   const now = Date.now()
+  // Only assistant turns can carry reasoning — user/system/tool rows are
+  // always pass-through so the <think> heuristic doesn't accidentally
+  // mangle user input that happens to start with a literal <think>.
+  const split =
+    msg.role === 'assistant'
+      ? splitInlineReasoning(msg.content, msg.reasoning)
+      : { content: msg.content, reasoning: msg.reasoning }
   const toolCallsJson = msg.toolCalls && msg.toolCalls.length > 0 ? JSON.stringify(msg.toolCalls) : null
   const documentsJson = msg.documents && msg.documents.length > 0 ? JSON.stringify(msg.documents) : null
   db.prepare(
@@ -481,12 +510,12 @@ export function saveMessage(msg: {
     msg.id,
     msg.conversationId,
     msg.role,
-    msg.content,
+    split.content,
     msg.model || null,
     msg.toolCallId || null,
     toolCallsJson,
     msg.draft || null,
-    msg.reasoning || null,
+    split.reasoning || null,
     documentsJson,
     now
   )
@@ -495,19 +524,19 @@ export function saveMessage(msg: {
   // bodies are the ones worth searching; system/tool messages are
   // usually plumbing and would inflate the index with noise.
   if (msg.role === 'user' || msg.role === 'assistant') {
-    ftsInsertMessage(msg.id, msg.conversationId, msg.content)
+    ftsInsertMessage(msg.id, msg.conversationId, split.content)
   }
   return {
     id: msg.id,
     conversationId: msg.conversationId,
     role: msg.role,
-    content: msg.content,
+    content: split.content,
     timestamp: now,
     model: msg.model,
     toolCallId: msg.toolCallId,
     toolCalls: msg.toolCalls,
     draft: msg.draft,
-    reasoning: msg.reasoning,
+    reasoning: split.reasoning,
     documents: msg.documents
   }
 }

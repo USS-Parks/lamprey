@@ -107,20 +107,19 @@ export function MessageList({
   }, [messages, streamingContent, isStreaming])
 
   // Live chain-of-thought streamed off the provider's reasoning channel
-  // (DeepSeek `delta.reasoning_content` / OpenRouter `delta.reasoning`).
-  // Distinct from the visible content stream so the ReasoningBlock can show
-  // up as soon as the FIRST thought arrives — even before any answer body
-  // does. Falls back to the legacy inline-<think> parse for reasoners that
-  // smuggle thinking into the visible content.
+  // (DeepSeek `delta.reasoning_content` / OpenRouter `delta.reasoning` /
+  // DashScope enable_thinking). Distinct from the visible content stream
+  // so the ReasoningBlock can show up as soon as the FIRST thought
+  // arrives — even before any answer body does. Falls back to the
+  // inline-<think> parse for EVERY model now, because the contract
+  // requires every assistant turn to lead with <think>…</think>.
   const streamingReasoning = useChatStore((s) => s.streamingReasoning)
   const streamingDocuments = useChatStore((s) => s.streamingDocuments)
-  const isReasoner = activeModel === 'deepseek-reasoner'
   const parsed = (() => {
     if (streamingReasoning) {
       return { reasoning: streamingReasoning, body: streamingContent, isThinking: true }
     }
-    if (isReasoner) return parseReasoning(streamingContent)
-    return { reasoning: null as string | null, body: streamingContent, isThinking: false }
+    return parseReasoning(streamingContent)
   })()
   // Show the streaming card the moment EITHER channel has activity, not just
   // the body channel. Reasoning often lands first and runs for many seconds

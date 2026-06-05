@@ -20,6 +20,7 @@ import { useChatStore } from '@/stores/chat-store'
 import { useModelStore } from '@/stores/model-store'
 import { useSettingsStore } from '@/stores/settings-store'
 import { useAgentStore } from '@/stores/agent-store'
+import { usePlanStore } from '@/stores/plan-store'
 import { useUiStore, RIGHT_PANEL_BOUNDS } from '@/stores/ui-store'
 import { toast } from '@/stores/toast-store'
 import { useChat } from '@/hooks/useChat'
@@ -194,6 +195,26 @@ function App(): React.ReactElement {
     if (!convId) return
     autoOpenRightPanel(convId, `tool:${activeTool}`)
   }, [activeTool, autoOpenRightPanel])
+
+  // Plan-mode gate engages → surface the Plan card immediately so the
+  // user can't miss the approval requirement. Tracks the previous value
+  // in a ref so the effect only fires on the *transition* into the
+  // gated state; subsequent renders while gated don't re-pop the panel
+  // if the user has manually moved off the Plan card. The plan-store
+  // already enforces plan-mode at the dispatcher level — this is purely
+  // a UI nudge.
+  const planModeActive = usePlanStore((s) => s.planModeActive)
+  const setActiveTool = useUiStore((s) => s.setActiveTool)
+  const prevPlanGateRef = useRef<boolean | null>(null)
+  useEffect(() => {
+    const wasGated = prevPlanGateRef.current === true
+    prevPlanGateRef.current = planModeActive
+    if (planModeActive !== true || wasGated) return
+    const convId = useChatStore.getState().activeConversationId
+    if (!convId) return
+    autoOpenRightPanel(convId, 'plan:gated')
+    setActiveTool('plan')
+  }, [planModeActive, autoOpenRightPanel, setActiveTool])
 
   // Fluidity J11: hydrate the global collapsed flag from the per-conv map
   // every time the active conversation changes. New conversations seed

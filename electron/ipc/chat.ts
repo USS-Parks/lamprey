@@ -755,7 +755,46 @@ export async function runChatRound(
             reject(err)
           }
         },
-        onError: (error) => {
+        onError: (error, partial) => {
+          // Permanently fix data loss on stream errors: if the provider
+          // streamed body or reasoning before failing, persist it as an
+          // assistant message instead of letting it evaporate. Without
+          // this, every stream error silently discarded everything the
+          // user already saw on screen — including thousands of tokens
+          // of chain-of-thought from reasoning models.
+          //
+          // We emit `chat:done` FIRST with the persisted partial so the
+          // renderer transitions the on-screen streaming buffers into a
+          // durable message via finishStream (which adds it to the
+          // messages array and clears the streaming state). Then we emit
+          // `chat:error` so the failure still surfaces as a toast.
+          const hasPartial = !!(
+            partial && (partial.content || partial.reasoning)
+          )
+          if (hasPartial) {
+            try {
+              const documents = drainPendingDocuments(correlationId)
+              const errorMarker = `\n\n_[stream interrupted: ${error}]_`
+              const assistantMsg = convStore.saveMessage({
+                id: randomUUID(),
+                conversationId,
+                role: 'assistant',
+                content: (partial!.content || '') + errorMarker,
+                model,
+                reasoning: partial!.reasoning,
+                documents
+              })
+              if (!suppressDoneEvent) {
+                emitChatEvent('chat:done', {
+                  conversationId,
+                  message: assistantMsg
+                })
+              }
+            } catch (e) {
+              console.error('[chat] failed to persist partial on stream error:', e)
+            }
+          }
+
           emitPhase(conversationId, 'error')
           emitChatEvent('chat:error', { conversationId, error })
           // Mirror provider-side stream errors into the spine. `model.request.failed`

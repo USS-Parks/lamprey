@@ -289,7 +289,16 @@ export interface ChatStreamCallbacks {
     toolCalls?: ToolCallAccumulator[],
     fullReasoning?: string
   ) => void
-  onError: (error: string) => void
+  /** Called when the stream gives up. `partial` carries whatever body +
+   *  reasoning had already arrived before the failure, so the caller can
+   *  persist it as a partial assistant message instead of letting the user's
+   *  on-screen content evaporate. Partial in-flight tool calls are NOT
+   *  exposed because their args may be incomplete and would break the next
+   *  tool round. */
+  onError: (
+    error: string,
+    partial?: { content: string; reasoning?: string }
+  ) => void
 }
 
 export interface ToolCallAccumulator {
@@ -716,7 +725,10 @@ export async function chatStream(
       }
 
       if (err?.status === 401 || err?.status === 403) {
-        callbacks.onError(`Invalid ${PROVIDERS[desc.provider].label} API key`)
+        callbacks.onError(
+          `Invalid ${PROVIDERS[desc.provider].label} API key`,
+          { content: fullContent, reasoning: fullReasoning || undefined }
+        )
         emitModelRequestFailed(desc, audit, {
           streaming: true,
           toolCount: offeredToolCount,
@@ -743,7 +755,10 @@ export async function chatStream(
         continue
       }
 
-      callbacks.onError(err?.message || 'Unknown error')
+      callbacks.onError(
+        err?.message || 'Unknown error',
+        { content: fullContent, reasoning: fullReasoning || undefined }
+      )
       emitModelRequestFailed(desc, audit, {
         streaming: true,
         toolCount: offeredToolCount,

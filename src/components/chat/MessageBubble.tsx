@@ -39,18 +39,26 @@ export function MessageBubble({ message }: MessageBubbleProps) {
 
   // Reasoning comes from one of two places (in priority order):
   // 1) The `reasoning` column — persisted from the provider's
-  //    `delta.reasoning_content` channel for any DeepSeek thinking model.
-  // 2) Legacy inline <think>…</think> tags in the body (older reasoner
-  //    behavior + any model that smuggles thinking into the visible stream).
+  //    `delta.reasoning_content` channel OR from the save-time
+  //    splitInlineReasoning helper that strips the <think>…</think>
+  //    block out of inline content for models without a native channel.
+  // 2) Inline <think>…</think> tags still present in the body — covers
+  //    any historical row written before splitInlineReasoning landed.
+  //    Runs for EVERY model now, not just deepseek-reasoner, because
+  //    the contract forces every model to lead with <think> and we
+  //    want to render that block as the Reasoning panel regardless of
+  //    provider.
   let reasoning: string | null = null
   let body: string = wakeupParts?.body ?? message.content
   if (!isUser) {
     if (message.reasoning && message.reasoning.length > 0) {
       reasoning = message.reasoning
-    } else if (message.model === 'deepseek-reasoner') {
-      const parsed = parseReasoning(message.content)
-      reasoning = parsed.reasoning
-      body = parsed.body
+    } else {
+      const parsed = parseReasoning(body)
+      if (parsed.reasoning) {
+        reasoning = parsed.reasoning
+        body = parsed.body
+      }
     }
   }
 

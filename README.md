@@ -15,14 +15,14 @@
 
 ---
 
-## ⬇ Download v0.2.8
+## ⬇ Download v0.3.1
 
 Pick one — the `.exe` is the standard installer, the `.zip` is the portable bundle (unzip and run `Lamprey.exe` directly, no install required).
 
 | Format | File | Size | Direct link |
 |---|---|---:|---|
-| **NSIS installer** | `Lamprey-0.2.8-x64.exe` | 231 MB | [Download .exe](https://github.com/USS-Parks/lamprey/releases/download/v0.2.8/Lamprey-0.2.8-x64.exe) |
-| **Portable ZIP** | `Lamprey-0.2.8-x64.zip` | 300 MB | [Download .zip](https://github.com/USS-Parks/lamprey/releases/download/v0.2.8/Lamprey-0.2.8-x64.zip) |
+| **NSIS installer** | `Lamprey-0.3.1-x64.exe` | 230 MB | [Download .exe](https://github.com/USS-Parks/lamprey/releases/download/v0.3.1/Lamprey-0.3.1-x64.exe) |
+| **Portable ZIP** | `Lamprey-0.3.1-x64.zip` | 299 MB | [Download .zip](https://github.com/USS-Parks/lamprey/releases/download/v0.3.1/Lamprey-0.3.1-x64.zip) |
 
 Or browse all releases → <https://github.com/USS-Parks/lamprey/releases>
 
@@ -150,7 +150,7 @@ User-defined JavaScript sandbox hooks that fire on lifecycle events:
 
 ## Quick start
 
-1. **Download** the [v0.2.8 installer](https://github.com/USS-Parks/lamprey/releases/download/v0.2.8/Lamprey-0.2.8-x64.exe) and run it.
+1. **Download** the [v0.3.1 installer](https://github.com/USS-Parks/lamprey/releases/download/v0.3.1/Lamprey-0.3.1-x64.exe) and run it.
 2. **Get a key.** Easiest: <https://platform.deepseek.com> → sign up → create key → load $5. Lamprey also accepts Google AI Studio (Gemma), Alibaba DashScope (Qwen), and OpenRouter keys.
 3. **Paste your key** in the first-run modal. It's stored with `safeStorage` (OS keychain) under `userData/keys.json`.
 4. **Type something.** That's it.
@@ -226,7 +226,15 @@ Build history: [DEVLOG.md](DEVLOG.md).
 
 ## Roadmap
 
-Built and shipped (v0.2.8):
+Built and shipped (v0.3.1):
+
+- ✅ Universal chain-of-thought — every model leads each turn with `<think>…</think>`, harness routes it into the dedicated `reasoning` column at save time, Reasoning panel lights up for every provider (not just DeepSeek's native-thinking variants)
+- ✅ Permanent fix for stream-error data loss — partial content + reasoning persist as an interrupted-marked assistant message instead of evaporating on auth fail / retries-exhausted / network drop
+- ✅ Background Tasks card now permanent session tool log — full call history (not just live), each row expandable to args + raw result
+- ✅ Right-sidebar Plan card with editable goals + Approve/Reject; chat-input pip collapses to a one-line `Plan · N/M · gated` jump button; auto-opens on plan-mode gate engage
+- ✅ Contract hardened against false "task complete" — zero-match grep is a stop signal, UI symptoms must be observed in the UI, no "nothing left" until the user's symptom is observably remediated
+
+Earlier line (v0.2.x):
 
 - ✅ Multi-provider routing (DeepSeek / Gemma / Qwen / OpenRouter)
 - ✅ Planner → Coder → Reviewer agent pipeline

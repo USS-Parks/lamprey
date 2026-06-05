@@ -16,7 +16,9 @@ const TOOL_TITLES: Record<ToolId, string> = {
   terminal: 'Terminal',
   environment: 'Environment',
   sources: 'Sources',
-  artifacts: 'Artifacts'
+  artifacts: 'Artifacts',
+  plan: 'Plan',
+  background: 'Background tasks'
 }
 
 interface TitlebarProps {

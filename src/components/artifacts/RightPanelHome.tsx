@@ -5,6 +5,8 @@ import workLocationIcon from '@assets/Lamprey Work Location Icon.png'
 import codeWindowIcon from '@assets/Lamprey Code Window Icon.png'
 import codingIcon from '@assets/Lamprey Coding Icon.png'
 import fullAccessIcon from '@assets/Lamprey Full Access Icon.png'
+import planIcon from '@assets/Lamprey Plan Icon.png'
+import backgroundIcon from '@assets/Lamprey Background Tasks Icon.png'
 
 interface RightPanelHomeProps {
   onCollapse: () => void
@@ -62,6 +64,18 @@ export function RightPanelHome({ onCollapse }: RightPanelHomeProps): React.React
       label: 'Review',
       description: 'Git status, diffs, stage and commit',
       icon: fullAccessIcon
+    },
+    {
+      id: 'plan',
+      label: 'Plan',
+      description: 'Plan goals checklist, approve or reject the gate',
+      icon: planIcon
+    },
+    {
+      id: 'background',
+      label: 'Background tasks',
+      description: 'Live agents, tool calls, wakeups, and scheduled jobs',
+      icon: backgroundIcon
     }
   ]
 

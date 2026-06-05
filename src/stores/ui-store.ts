@@ -30,6 +30,8 @@ export type ToolId =
   | 'environment'
   | 'sources'
   | 'artifacts'
+  | 'plan'
+  | 'background'
 
 export type ShellKind = 'powershell' | 'cmd' | 'git-bash' | 'wsl'
 

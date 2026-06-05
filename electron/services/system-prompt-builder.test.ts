@@ -14,12 +14,14 @@ import {
 // hard-coded string. The modelId-path is exercised by chat.ts at runtime.
 
 const EXPECTED_SECTION_HEADINGS = [
+  'Chain-of-thought (REQUIRED)',
   'Understand intent',
   'Gather context before editing',
   'Use tools as evidence',
   'Protect user work',
   'Verify before claiming done',
   'Progress updates',
+  'Standalone deliverables',
   'Final response'
 ]
 
@@ -39,7 +41,7 @@ describe('renderContract', () => {
     expect(out.endsWith('</contract>')).toBe(true)
   })
 
-  it('emits all seven section headings in order', () => {
+  it('emits all expected section headings in order', () => {
     const out = renderContract()
     let cursor = 0
     for (const heading of EXPECTED_SECTION_HEADINGS) {

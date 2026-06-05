@@ -15,21 +15,26 @@ interface StreamingTextProps {
   model?: string
 }
 
-export function StreamingText({ content, reasoning, isThinking, model }: StreamingTextProps) {
-  // Prefer the provider-side reasoning channel when the caller supplied it.
-  // Fall back to the legacy inline-<think> parse for any model that still
-  // smuggles reasoning into the visible content stream.
+export function StreamingText({ content, reasoning, isThinking, model: _model }: StreamingTextProps) {
+  // Prefer the provider-side reasoning channel when the caller supplied it
+  // (deepseek-reasoner + V4-Flash thinking mode + DashScope enable_thinking).
+  // Fall back to the inline-<think> parse for EVERY model — the system
+  // contract requires every assistant turn to lead with <think>…</think>,
+  // so any model that doesn't expose a native channel still surfaces its
+  // chain-of-thought through this path.
   let displayReasoning: string | null = null
   let displayBody = content
   let stillThinking = !!isThinking
 
   if (reasoning && reasoning.length > 0) {
     displayReasoning = reasoning
-  } else if (model === 'deepseek-reasoner') {
+  } else {
     const parsed = parseReasoning(content)
-    displayReasoning = parsed.reasoning
-    displayBody = parsed.body
-    stillThinking = parsed.isThinking
+    if (parsed.reasoning) {
+      displayReasoning = parsed.reasoning
+      displayBody = parsed.body
+      stillThinking = parsed.isThinking
+    }
   }
 
   return (

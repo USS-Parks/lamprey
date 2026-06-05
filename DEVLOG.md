@@ -1,5 +1,125 @@
 # Lamprey Harness Dev Log
 
+## [Release v0.3.1 Published] — 2026-06-05
+
+First publish on the 0.3.x line. Supersedes the unpublished v0.3.0 staging
+build and is the next published artifact after v0.2.9. Bundles the
+pre-existing uncommitted Plan-card + Background-Tasks-card scaffolding that
+had been sitting in the working tree, plus a dedicated session of
+reasoning-trace + tool-log + contract hardening work in response to a real
+"the thinking block disappeared" complaint and a Reviewer-caught false-success
+failure mode.
+
+**Why this release exists:**
+- A user reported chain-of-thought content vanishing after Lamprey
+  completed a task, with no recoverable record of design choices, tool
+  arguments, or the model's reasoning. Investigation found two root causes:
+  (1) the `onError` path in `electron/services/providers/registry.ts`
+  silently discarded `fullContent` + `fullReasoning` on stream giveup, and
+  (2) the renderer's inline-`<think>` parse fallback was gated on
+  `message.model === 'deepseek-reasoner'`, so non-reasoner models (V4 Pro,
+  Gemma, Qwen) never surfaced their chain-of-thought at all.
+- A Reviewer agent then caught the Coder declaring "task complete" after
+  searching the wrong workspace for the user's UI-symptom question, which
+  exposed a contract weak point: the existing ambiguity bullet was too soft
+  about zero-match search results.
+
+**What changed (chat / streaming):**
+- `electron/services/providers/registry.ts` — `ChatStreamCallbacks.onError`
+  now accepts an optional `partial: { content, reasoning }` payload. Both
+  error paths (`401/403` and retries-exhausted) pass the accumulated
+  `fullContent` + `fullReasoning` through it.
+- `electron/ipc/chat.ts` — `onError` now persists the partial as a real
+  assistant message (with `_[stream interrupted: …]_` appended) and emits
+  `chat:done` BEFORE `chat:error`, so the renderer transitions the
+  streaming buffer into a durable message instead of wiping it.
+- `electron/services/conversation-store.ts` — new `splitInlineReasoning`
+  helper. At every assistant `saveMessage`, if `reasoning` is empty but
+  `content` starts with `<think>…</think>`, the helper extracts the block
+  into `reasoning` and saves the body cleanly into `content`. Unifies the
+  storage shape regardless of which channel produced the reasoning.
+- `src/components/chat/MessageBubble.tsx`,
+  `src/components/chat/StreamingText.tsx`,
+  `src/components/chat/MessageList.tsx` — dropped the
+  `=== 'deepseek-reasoner'` gate. The inline-`<think>` parse runs for every
+  model on persisted rows, streaming buffers, and live rendering.
+
+**What changed (right-sidebar surfaces):**
+- `src/components/tools/panels/BackgroundTasksPanel.tsx` (new) — full
+  session tool-call log as the panel's top section, sorted newest-first
+  with the `transcriptHidden` filter applied. Each row is an expandable
+  button — `Arguments` (pretty-printed JSON) + `Result` (raw payload)
+  reveal on click. Live + historical calls in one surface.
+- `src/components/tools/panels/PlanToolPanel.tsx` (new) — editable plan
+  goals with per-step status cycling, Approve all / Reject, plan-mode gate
+  banner. The chunky surface that used to crowd the chat-input column.
+- `src/components/chat/PlanGoalsPanel.tsx` — collapsed to a single-line pip
+  (`Plan · 5/8 · gated`) that opens the right-sidebar card. The fat
+  editable checklist that grew taller with every step is gone.
+- `src/App.tsx` — watches `usePlanStore.planModeActive`; on the
+  *transition* into a gated state, auto-opens the right panel and selects
+  the Plan card. Effect refs the previous value so subsequent renders
+  while gated don't keep popping the panel if the user navigates away.
+- `src/components/artifacts/RightPanelHome.tsx` — new tiles for Plan and
+  Background tasks, using new `Lamprey Plan Icon.png` and
+  `Lamprey Background Tasks Icon.png` wireframes (light + dark view
+  variants in `ASSETS/`).
+- `src/components/tools/ToolsPanel.tsx`,
+  `src/components/layout/Titlebar.tsx`, `src/stores/ui-store.ts` —
+  routing + tab wiring for the two new panels.
+
+**What changed (contract):**
+- `electron/services/system-prompt-builder.ts` — new
+  `Chain-of-thought (REQUIRED)` section at the very top of the contract.
+  Every assistant turn MUST lead with `<think>…</think>` — no exceptions
+  for tool-only, one-line, error, follow-up, or sub-agent turns. Composer
+  prompt updated the same way so wrap-up turns also carry reasoning.
+  Existing "do not narrate" bullet rewritten to route reasoning *into*
+  the `<think>` block instead of forbidding it.
+- Same file — `intent` section gains three explicit bullets: UI-symptom
+  questions are about the surface the user is looking at, not necessarily
+  the current workspace; **zero matches is a stop signal, not a green
+  light**; the active workspace is one of many possible scopes.
+- Same file — `verification` section gains two explicit bullets: zero-match
+  grep is not verification; UI symptoms must be observed in the UI, not
+  concluded from backend grep.
+- Same file — `final_response` section forbids "task complete" / "nothing
+  left" unless the user's stated symptom has been observably remediated.
+- `electron/services/system-prompt-builder.test.ts` — pinned section
+  heading list extended to include the new `Chain-of-thought (REQUIRED)`
+  and `Standalone deliverables` sections so future regressions get caught.
+
+**Artifacts built locally:**
+- `Lamprey-0.3.1-x64.exe` — 230 MB, NSIS installer (signtool-signed under
+  electron-builder's default signing path; same effectively-unsigned posture
+  as prior releases since no Code Signing certificate is configured).
+- `Lamprey-0.3.1-x64.zip` — 299 MB, portable bundle.
+- `Lamprey-0.3.1-x64.exe.blockmap` — 240 KB, electron-updater delta map.
+- Both Windows-only.
+
+**Release ops:**
+- `package.json` 0.3.0 → 0.3.1. Local `npm run build:win` produced the
+  NSIS + ZIP + blockmap.
+- README download table + Quick Start link bumped to v0.3.1; "Built and
+  shipped" header bumped with a five-bullet v0.3.x highlights block above
+  the prior v0.2.x line.
+- `dist/release-notes-v0.3.1.md` drafted for `gh release create` to attach.
+- `memory/project_build_status.md` to be bumped to mark v0.3.1 as Latest
+  and demote v0.2.8 to Prior published.
+- Release commit + tag + `gh release create` are user-gated — the user is
+  the reviewer + pusher on this repo.
+
+**Verify:**
+- tsc node ✓
+- tsc web ✓
+- vitest ✓ (system-prompt-builder.test.ts — 24/24 with the extended pinned
+  heading list)
+- electron-vite build ✓
+- electron-builder build ✓ (NSIS + ZIP + blockmap)
+
+**Commit:** pending — version bump + contract + reasoning + sidebar work
+all staged but not yet committed at time of writing.
+
 ## [Release v0.2.8 Published] — 2026-06-04
 
 Patch on top of v0.2.7. The chat-pill stop button shipped in v0.2.7
