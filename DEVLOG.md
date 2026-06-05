@@ -1,5 +1,35 @@
 # Lamprey Harness Dev Log
 
+## [Sandbox Parity Phase — COMPLETE] — 2026-06-05
+
+All thirteen prompts landed on `feat/sandbox-parity-phase`. Plan moved to reference-only. Brings `shell_command` to functional parity with Claude Code's Bash tool: per-platform OS sandbox (sandbox-exec / bwrap), explicit bypass flag, shell selector, persistent cwd, anti-polling guard, monitor/list/stop/output aux tools, richer tool description, 2-minute default timeout, `'sandboxBypass'` risk vocabulary.
+
+| Prompt | Title | Commit |
+|---|---|---|
+| S1 | Persistent cwd state across shell calls | `15340f0` |
+| S2 | Shell selector (bash \| powershell \| auto) | `1c2cd53` |
+| S3 | Sandbox profile abstraction layer | `331cfac` |
+| S4 | macOS sandbox-exec profile | `f891ddc` |
+| S5 | Linux bubblewrap profile | `127bc08` |
+| S6 | Windows fallback + sandboxTier on ShellResult | `68e2fc3` |
+| S7 | dangerously_disable_sandbox flag | `170a65a` |
+| S8 | Monitor / list / stop / output aux tools | `4897dbe` |
+| S9 | Rewritten shell_command description + schema | `93d36fc` |
+| S10 | Default timeout 30s → 120s | `e40f7a0` |
+| S11 | Anti-polling sleep guard | `6c90e22` |
+| S12 | sandboxBypass risk tag in vocabulary | `ff812a4` |
+| S13 | DEVLOG + README phase wrap | (this commit) |
+
+**User-verification needed (cross-platform):**
+- S4 integration test `applyDarwinProfile › spawns through real sandbox-exec` skips on Windows. Confirm on a darwin host.
+- S5 integration test `applyLinuxProfile › runs a real bwrap invocation` skips on Windows. Confirm on a Linux host with `bwrap` installed.
+
+**Known limitations carried into the next phase:**
+- `cwdSessions` map grows unbounded — wire a conversation-deletion hook in a follow-up.
+- The `cd` regex only captures the first hop of a chained `cd a && cd b` sequence; the shell still does the right thing in-process, but the session memo will track `a` instead of `b`.
+- bwrap can't enforce `{ allowDomains: [...] }`; that policy variant leaves the network open with a structured note. macOS SBPL has the same restriction.
+- The S11 sleep guard is a regex heuristic — a literal `echo "for fun"; sleep 600` is accepted because the `for` keyword precedes the sleep. Strict lexing is a future tightening.
+
 ## [Sandbox Parity — Prompt S12] sandboxBypass risk tag — 2026-06-05
 
 **Files changed:**
@@ -15,7 +45,7 @@
 
 **Notes:** The two trigger paths (`dangerous: true` boolean and `'sandboxBypass'` in risks) are equivalent at the permission gate. The boolean is more ergonomic at the dispatcher; the risk tag is more discoverable in audit rows + the descriptor model. Both arrive together for `shell_command` bypasses.
 
-**Commit:** S12
+**Commit:** `ff812a4`
 
 ## [Sandbox Parity — Prompt S11] Anti-polling sleep guard — 2026-06-05
 

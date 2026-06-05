@@ -85,6 +85,25 @@ Eleven micro-interactions that close the "feel" gap with Claude Code:
 - **`path:line` autolinking**: bare `src/foo.ts:42` references in assistant prose render as clickable, dotted-underline spans that open the file panel at the right line.
 - **Right panel default-collapsed**: new conversations start with the chat full-width; the panel auto-opens on artifact emit or tool launch, per-trigger and per-conversation, so a single dismiss sticks for that trigger until a different one fires.
 
+### Sandbox parity layer (shell_command)
+
+Thirteen prompts that bring `shell_command` to functional parity with Claude Code's Bash tool:
+
+- **Persistent cwd**: `cd <path>` / `Set-Location <path>` carries forward to the next call within the same conversation. Workspace boundary still enforced — escapes are silently dropped.
+- **Shell selector**: `shell: "auto" | "bash" | "powershell"`. On Windows, `"bash"` resolves to Git Bash → WSL → clean error; on POSIX, `"powershell"` resolves to `pwsh` if installed.
+- **Per-platform OS sandbox**:
+  - macOS → `sandbox-exec` SBPL profile (deny default, workspace + tmpdir writable, configurable network egress).
+  - Linux → `bubblewrap` (read-only system mounts, workspace + tmpdir rw, `--unshare-net` for `deny`).
+  - Windows → no kernel sandbox; the result reports `Sandbox: none (windows host)` so the model and the user both see the weaker tier.
+- **`dangerously_disable_sandbox: true`** opt-out for the rare case the sandbox blocks legitimate work. Forces the approval modal every call (no "always allow" applies), and tags the audit trail with `+sandbox-bypass`.
+- **Monitor / list / stop / output aux tools** mirroring Claude Code's Monitor / TaskList / TaskStop / TaskOutput surface — drives the existing background-shell bus.
+- **2-minute default timeout** (up from 30s) matching Claude Code; ceiling stays 10 minutes.
+- **Anti-polling sleep guard**: solo `sleep N > 30s` outside a loop is rejected with a remediation hint pointing at `shell_monitor` + `untilPattern`. Override with `dangerously_disable_sandbox: true`.
+- **Richer tool description** with PowerShell 5.1 quirks, HEREDOC patterns, no-interactive-command rule, "prefer dedicated tools" guidance, and `gh` for GitHub work.
+- **`'sandboxBypass'` risk tag** in the permission vocabulary so audit rows and renderers can isolate bypass approvals from regular `tool:approval` events.
+
+Spec: [PLANNING/LAMPREY_SANDBOX_PARITY_PLAN.md](PLANNING/LAMPREY_SANDBOX_PARITY_PLAN.md). Build entries: see DEVLOG (the "Sandbox Parity" entries from 2026-06-05).
+
 ### Chat surface
 
 - **Streaming markdown** with syntax-highlighted code (Shiki), reasoning blocks (DeepSeek R1), token ticker, and inline thinking/coding animations (the lamprey icon swap).
