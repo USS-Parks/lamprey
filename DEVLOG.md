@@ -1,5 +1,23 @@
 # Lamprey Harness Dev Log
 
+## [Snip — Prompts K11 + K12] SnipSettings dashboard + Discover panel  —  2026-06-05
+
+**Files changed:**
+- `src/stores/snip-store.ts` (new) — Zustand store. `loadAll` fans out across `stats`/`recent`/`listFilters` IPC; `loadDiscover` pulls the K12 ranking. Toggle helpers re-call `loadAll` so the header card reflects new state without a reload. `formatCount` (1234 → "1.2k") exported for shared use by K13's status-line slot.
+- `src/stores/snip-store.test.ts` (new) — 4 tests covering `formatCount` thresholds + monotonicity.
+- `src/components/settings/SnipSettings.tsx` (new) — dashboard tab. Header card: Enabled + Verbose toggles, three stat blocks (tokens saved, avg %, commands filtered), 14-day sparkline (`Sparkline` renders each bucket's height proportional to the day's max, dim past quiet days). Sections: top filters (table + saved-bar), recent activity (filter + command + saved tokens), Discover panel mount, filter library (collapsed by default, source badge per row + "overridden by user file" marker), reset history (confirm-click pattern).
+- `src/components/settings/SnipDiscoverPanel.tsx` (new) — rtk-discover analogue. Three time windows (7d/30d/90d), table of unmatched commands ranked by token cost with category hint and "Write a filter" button that opens the user filter dir. Empty state when no unfiltered commands in window.
+- `src/components/settings/SettingsDialog.tsx` — registers the Snip tab between RAG and Activity.
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- vitest src/stores/snip-store.test.ts ✓ (4 tests)
+- vitest electron/services/snip/ ✓ (224 tests unchanged from K10)
+- user-verification-needed: open Settings → Snip in a running Electron build, confirm toggles flip state, sparkline renders, filter library shows 120 built-in entries after first launch, Discover panel populates after running a few unmatched shell commands.
+
+**Notes:** the UI follows `RagSettings.tsx`'s visual language exactly — same Section/Toggle/EmptyState shapes, same monospaced 11-12px type scale. K11 mounts the Discover panel inline (not a sub-tab) per the plan; the time-window selector is part of the panel rather than the dashboard header so it stays local. K11 and K12 ship as a **single combined commit** because K11's `SnipSettings.tsx` imports `SnipDiscoverPanel` directly — splitting them into two commits would leave K11 with a broken import and fail its tsc gate. The phase-completion summary table at K14 will list both prompts against this single SHA.
+
 ## [Snip — Prompt K10] IPC + preload bridge + main-process wiring  —  2026-06-05
 
 **Files changed:**
