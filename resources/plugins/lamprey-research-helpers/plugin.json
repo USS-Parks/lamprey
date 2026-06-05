@@ -1,0 +1,8 @@
+{
+  "id": "lamprey-research-helpers",
+  "name": "Lamprey Research Helpers",
+  "description": "Skills that complement the Deep Research pipeline: web-source triage and reading-list summarization.",
+  "version": "0.1.0",
+  "author": "Lamprey Contributors",
+  "category": "Research"
+}

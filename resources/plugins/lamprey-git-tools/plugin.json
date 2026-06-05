@@ -1,0 +1,8 @@
+{
+  "id": "lamprey-git-tools",
+  "name": "Lamprey Git Tools",
+  "description": "Skills + slash commands that help the agent reason about git state: status recaps, log digests, and branch-readiness checks.",
+  "version": "0.1.0",
+  "author": "Lamprey Contributors",
+  "category": "Engineering"
+}

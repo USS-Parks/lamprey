@@ -1,5 +1,24 @@
 # Lamprey Harness Dev Log
 
+## 2026-06-05 — Customize Phase / C9 — Plugins column UI + bundled starter plugins
+
+The third Customize column gains a real list, grouped by category, with per-row toggle + detail drawer. Ships two more bundled starter plugins so the column reads populated on first launch.
+
+**Shipped**
+- `src/components/customize/PluginsColumn.tsx` — full implementation:
+  - Subscribes to `usePluginsStore`; calls `loadPlugins()` on mount and `setPluginsFromEvent` on the chokidar broadcast.
+  - Header: count + "+ Install" button (dispatches a `customize:open-install-plugin` window event; C10 listens).
+  - Grouped by `manifest.category` (alphabetized, uncategorized → "Other").
+  - Per-row: toggle switch (enable/disable), name + version pill, description, asset counts (skills/commands/connectors).
+  - Detail drawer (right-side, 460px): manifest body, asset counts, file path, Remove action with confirm.
+- `resources/plugins/lamprey-git-tools/` — second starter plugin under category "Engineering". Ships one skill (`git-status-recap`) + one slash command (`branch-ready`).
+- `resources/plugins/lamprey-research-helpers/` — third starter plugin under category "Research". Ships one skill (`source-triage`).
+
+**Verify**
+- `npx tsc --noEmit -p tsconfig.web.json` → clean.
+- `npx tsc --noEmit -p tsconfig.node.json` → clean.
+- `npx electron-vite build` → built in 5.38s, no warnings.
+
 ## 2026-06-05 — Customize Phase / C8 — Plugin IPC + Zustand store
 
 Wires the loader to the renderer end-to-end. Surfaces the broadcast event in the store.
