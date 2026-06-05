@@ -72,38 +72,10 @@ export function readDeepResearchSettings(): DeepResearchSettings {
   }
 }
 
-// Minimal inline canonicalizer for D2 — D5 will extract a more thorough
-// version into `research/url-canonicalize.ts` and the cascade will import
-// from there. Until then the rules below catch the most common dupes.
-const TRACKING_PARAM_PREFIXES = ['utm_', 'mc_eid', 'mc_cid']
-const TRACKING_PARAMS_EXACT = new Set([
-  'fbclid', 'gclid', 'msclkid', 'yclid', 'dclid', 'igshid', '_hsenc', '_hsmi'
-])
-
-function quickCanonical(url: string): string {
-  try {
-    const u = new URL(url)
-    u.hostname = u.hostname.toLowerCase()
-    // strip www. for dedup purposes only; we keep the original URL too
-    if (u.hostname.startsWith('www.')) u.hostname = u.hostname.slice(4)
-    u.hash = ''
-    const keep: Array<[string, string]> = []
-    u.searchParams.forEach((v, k) => {
-      if (TRACKING_PARAMS_EXACT.has(k)) return
-      if (TRACKING_PARAM_PREFIXES.some((p) => k.startsWith(p))) return
-      keep.push([k, v])
-    })
-    u.search = ''
-    keep.sort(([a], [b]) => a.localeCompare(b))
-    for (const [k, v] of keep) u.searchParams.append(k, v)
-    if (u.pathname.length > 1 && u.pathname.endsWith('/')) {
-      u.pathname = u.pathname.replace(/\/+$/, '')
-    }
-    return u.toString()
-  } catch {
-    return url
-  }
-}
+// Canonicalisation is shared with the D5 source collector — both must
+// agree on which URLs count as "the same source" so the dedup contract
+// holds end-to-end. The implementation lives in url-canonicalize.ts.
+import { canonicalUrl as quickCanonical } from './url-canonicalize'
 
 export interface CascadeOpts extends WebSearchOpts {
   /** Override the cascade order; defaults to settings.deepResearch.providerCascade. */

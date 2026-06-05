@@ -1,5 +1,23 @@
 # Lamprey Harness Dev Log
 
+## [Deep Research — Prompt D5] Source collector — dedup, curate, rank  —  2026-06-05
+
+**Files changed:**
+- `electron/services/research/url-canonicalize.ts` (new) — `canonicalUrl(url)` strips `www.`, fragments, tracking params (utm_*/mc_eid/mc_cid/fbclid/gclid/msclkid/yclid/dclid/igshid/_hsenc/_hsmi/ref*); sorts remaining query params; trims trailing slash from non-root paths. `registrableDomain(url)` resolves eTLD+1 with a curated multi-segment public-suffix set (`.co.uk`, `.com.au`, `.github.io`, `pages.dev`, `vercel.app`, etc.) so domain-cap counting groups siblings under one publisher. `dedupeByCanonicalUrl` is the shared dedup helper.
+- `electron/services/research/adapter-cascade.ts` — refactored to import `canonicalUrl` from the new shared module (replacing the inline copy from D2). Behavioural contract unchanged; all 23 D2 tests still pass.
+- `electron/services/research/collector.ts` (new) — `collectSources(planned, depth)` runs planner queries through `searchCascade` with a bounded concurrency pool (4 workers), then curates: spam-domain blocklist (conservative set: ezinearticles, hubpages, squidoo, articlesbase, buzzle), canonical-URL dedup across queries/providers, per-domain cap (`≤ 3` configurable), trust ranking (`.gov`/`.edu` → 3; allowlisted major publishers → 2; neutral → 1), top-N by depth tier (`quick`: 12, `standard`: 25, `exhaustive`: 50), and stable 1..N numbering for citation indices. AbortSignal honored between queries and before curation.
+- `electron/services/research/collector.test.ts` (new) — 44 tests across canonicalUrl (15 URL fixtures), registrableDomain (11 fixtures including `news.bbc.co.uk` → `bbc.co.uk`, `someone.github.io` → `someone.github.io`, `*.pages.dev`), dedupe stability, trust-score determinism, spam blocklist behaviour, and collector integration (numbering, domain cap, spam drop, cross-query dedup, depth-cap truncation, trust-rank ordering, error propagation, abort, planner-angle propagation).
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- vitest electron/services/research/ ✓ (137 tests — D2 cascade + D3 intent + D4 planner + D5 collector all green after the cascade refactor)
+- vitest full suite ✓ (1540 passed | 18 skipped — +44 from D4's 1496)
+
+**Notes:** Pulled `quickCanonical` out of D2 cascade into a shared module so the contract between dedup-at-cascade-time and dedup-at-collector-time is one source of truth — without it, two URLs could be "different" to the cascade but "same" to the collector (or vice versa) and the per-domain cap would behave unpredictably. The cascade test suite proved the refactor non-breaking. The eTLD+1 helper uses a small curated multi-segment-TLD list rather than pulling in `publicsuffix-list` (megabytes); covers the 99% case with a clean "last two labels" fallback.
+
+**Commit:** _pending_
+
 ## [Deep Research — Prompt D4] Query planner  —  2026-06-05
 
 **Files changed:**
@@ -14,7 +32,7 @@
 
 **Notes:** First exhaustive-depth fixture had queries like `"query about angle 0"` … `"query about angle 7"` — the only distinguishing token was the digit, and the tokenizer's `length > 1` filter dropped digits, leaving identical token sets that Jaccard dedup collapsed to 1 query. Replaced the fixture with 8 genuinely distinct topical queries. Tokenizer filter is correct (digits are noise on real queries); the fix belonged in the fixture.
 
-**Commit:** _pending_
+**Commit:** `0a25de1`
 
 ## [Deep Research — Prompt D3] Intent classifier + auto-trigger routing  —  2026-06-05
 
