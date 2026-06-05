@@ -1,5 +1,24 @@
 # Lamprey Harness Dev Log
 
+## [Snip — Prompt K9] Interpose — apply.ts + shell wire + flags + bypass + verbose  —  2026-06-05
+
+**Files changed:**
+- `electron/services/snip/apply.ts` (new) — the single integration point. `applySnip(command, result, ctx) → { result, event, bypassed, matchedFilter }`. Walks the seven-path decision tree (master off → bypass → no match → exit-code gate → grew output → record + transform), always returns a ShellResult, never throws.
+- `electron/services/snip/index.ts` (new) — barrel for the snip service. Importers (tool-registry, future IPC, future UI store) pull from here so the file layout can move without ripple.
+- `electron/services/tool-registry.ts` — wired `applySnip` between `executeShellCommand` and `formatShellResultForModel` at the shell_command handler. Read `snipEnabled` from persisted settings (default `true`); read `bypass_snip` from the shell args. Added `bypass_snip` to the descriptor JSON Schema with rtk-proxy-flavored description so the model knows the escape hatch exists.
+- `electron/services/shell-tool.ts` — extended `ShellArgs` interface with `bypass_snip?: boolean`. Documented as the rtk-proxy analogue.
+- `src/lib/types.ts` — extended `AppSettings` with `snipEnabled` + `snipVerbose` flags, both documented inline (incl. Invariant 13 reminder that verbose never decorates model-facing text).
+- `src/stores/settings-store.ts` — defaults: `snipEnabled: true`, `snipVerbose: false`.
+- `electron/ipc/settings.ts` — same defaults in `defaultSettings` so first-launch reads from settings.json return them. Sanitizer is open-by-design (only blocks `__proto__`) so no allowlist update needed.
+- `electron/services/snip/apply.test.ts` (new) — 7 tests covering: master off → no DB writes; per-call bypass → log only; no match → log only; failure exit → pass-through; success → transform + record + preserve exit code; would-grow output → fall back, command_log records matched filter for coverage but no savings event; chain → pass-through.
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- vitest electron/services/snip/ ✓ (224 tests — K1-K8 plus K9's 7)
+
+**Notes:** the layer is now LIVE for the model. After K9, every foreground shell command in a real chat session flows through `applySnip` before `formatShellResultForModel`. The model sees compressed bodies for matched filters; raw output for chains, mismatches, failures, and `bypass_snip: true`. The Invariant 13 split between "in-band verbose markers" (forbidden) and "renderer-side verbose log" (allowed) means `snipVerbose` is a UI-side switch — `applySnip` itself never decorates the body. Settings flow: settings.json → `readSettings()` in tool-registry → `applySnip` ctx. No new IPC channel needed yet (K10 adds the renderer-facing surface).
+
 ## [Snip — Prompt K8] Tracking — SQLite migration + dashboard queries  —  2026-06-05
 
 **Files changed:**

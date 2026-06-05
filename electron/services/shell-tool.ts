@@ -36,6 +36,15 @@ export interface ShellArgs {
    * (e.g. a darwin build that needs to write outside the workspace).
    */
   dangerously_disable_sandbox?: boolean
+  /**
+   * Snip Phase K9: opt out of the snip token-reducing filter for this
+   * single call. When `true`, the model receives the raw shell output
+   * even when a matching filter exists. Mirrors `rtk proxy <cmd>`.
+   * Use for forensic / debugging shell calls where the verbose output
+   * IS the signal (e.g. when you've asked for a `git log` body the
+   * filter would normally compress).
+   */
+  bypass_snip?: boolean
 }
 
 export interface ShellResult {
