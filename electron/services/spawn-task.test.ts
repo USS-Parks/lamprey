@@ -4,6 +4,7 @@ vi.mock('electron', () => ({
   BrowserWindow: { getAllWindows: () => [] },
   app: { getPath: () => 'C:/tmp/lamprey-test-user-data' }
 }))
+vi.mock('@electron-toolkit/utils', () => ({ is: { dev: true } }))
 
 import { spawnTask } from './spawn-task'
 

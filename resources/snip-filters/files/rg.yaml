@@ -1,0 +1,12 @@
+name: rg
+description: Bounded ripgrep output (head 100 + per-line cap)
+match:
+  command: rg
+pipeline:
+  - action: strip_ansi
+  - action: truncate_lines
+    max: 300
+  - action: head
+    n: 100
+  - action: on_empty
+    message: 'rg: no matches'

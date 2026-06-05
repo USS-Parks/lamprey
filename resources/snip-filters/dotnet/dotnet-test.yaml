@@ -1,0 +1,13 @@
+name: dotnet-test
+description: Compress dotnet test to summary + failures
+match:
+  command: dotnet
+  subcommand: test
+pipeline:
+  - action: strip_ansi
+  - action: keep_lines
+    pattern: '(Test Run|Total tests|Passed|Failed|Skipped|Test Execution|error|warning|\[FAIL)'
+  - action: head
+    n: 80
+  - action: on_empty
+    message: 'dotnet test: no output'

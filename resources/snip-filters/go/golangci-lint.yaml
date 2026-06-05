@@ -1,0 +1,12 @@
+name: golangci-lint
+description: Compress golangci-lint output to issue list
+match:
+  command: golangci-lint
+pipeline:
+  - action: strip_ansi
+  - action: keep_lines
+    pattern: '(:\d+:\d+:|level=|issues|error)'
+  - action: head
+    n: 100
+  - action: on_empty
+    message: 'golangci-lint: no issues'

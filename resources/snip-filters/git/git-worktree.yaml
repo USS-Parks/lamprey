@@ -1,0 +1,9 @@
+name: git-worktree
+description: Compact git worktree list / add output
+match:
+  command: git
+  subcommand: worktree
+pipeline:
+  - action: strip_ansi
+  - action: head
+    n: 30

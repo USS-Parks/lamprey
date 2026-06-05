@@ -1,0 +1,12 @@
+name: mvn
+description: Compress maven output to phase summary + errors
+match:
+  command: mvn
+pipeline:
+  - action: strip_ansi
+  - action: keep_lines
+    pattern: '(BUILD SUCCESS|BUILD FAILURE|ERROR|WARN|\[INFO\] Total time|\[INFO\] Finished|---)'
+  - action: head
+    n: 80
+  - action: on_empty
+    message: 'mvn: ok'

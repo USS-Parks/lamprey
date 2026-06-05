@@ -1,0 +1,17 @@
+name: git-diff
+description: Strip ANSI + cap line length on git diff
+match:
+  command: git
+  subcommand: diff
+  excludeFlags:
+    - '--stat'
+    - '--shortstat'
+    - '--numstat'
+    - '--name-only'
+    - '--name-status'
+pipeline:
+  - action: strip_ansi
+  - action: truncate_lines
+    max: 200
+  - action: head
+    n: 400

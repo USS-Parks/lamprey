@@ -1,0 +1,12 @@
+name: gcc
+description: Compress gcc compile output
+match:
+  command: gcc
+pipeline:
+  - action: strip_ansi
+  - action: keep_lines
+    pattern: '(error|warning|note|undefined reference)'
+  - action: head
+    n: 100
+  - action: on_empty
+    message: 'gcc: ok'

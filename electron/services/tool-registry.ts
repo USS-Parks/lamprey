@@ -18,6 +18,8 @@ import {
   formatShellResultForModel,
   type ShellArgs
 } from './shell-tool'
+import { applySnip } from './snip'
+import { readSettings } from './settings-helper'
 import {
   executeShellList,
   executeShellMonitor,
@@ -739,6 +741,11 @@ toolRegistry.registerNative(
           type: 'boolean',
           description:
             'Opt out of the platform sandbox wrapper for this single call. When true, any persisted "always allow" policy is bypassed and the modal re-prompts; the result reports `Sandbox: bypassed`. Use only when the sandbox blocks legitimate work (rare).'
+        },
+        bypass_snip: {
+          type: 'boolean',
+          description:
+            'Opt out of the snip token-reducing filter for this single call. When true, the raw shell output reaches the model even when a matching filter exists (mirrors rtk\'s `rtk proxy <cmd>`). Use for forensic / debugging shell calls where the verbose output IS the signal — e.g. when you specifically want a full git log body that the filter would normally compress.'
         }
       },
       required: ['command']
@@ -749,12 +756,20 @@ toolRegistry.registerNative(
   },
   async (args, ctx) => {
     const workspaceRoot = ctx.workspacePath ?? process.cwd()
-    const r = await executeShellCommand(
-      args as unknown as ShellArgs,
-      workspaceRoot,
-      ctx.conversationId
-    )
-    const result = formatShellResultForModel(r)
+    const shellArgs = args as unknown as ShellArgs
+    const r = await executeShellCommand(shellArgs, workspaceRoot, ctx.conversationId)
+    // Snip Phase K9 interpose. Reads `snipEnabled` from persisted
+    // settings (default true). Honors `bypass_snip: true` per-call.
+    // applySnip is pure-data + best-effort DB write — never throws,
+    // always returns a ShellResult.
+    const settings = readSettings()
+    const snipEnabled = settings.snipEnabled !== false // default true
+    const { result: snipped } = applySnip(shellArgs.command, r, {
+      snipEnabled,
+      bypassThisCall: shellArgs.bypass_snip === true,
+      conversationId: ctx.conversationId
+    })
+    const result = formatShellResultForModel(snipped)
     // A spawn-time failure (no exit code) and any non-zero exit are
     // failures even though the body still renders normally — return the
     // explicit status so the audit log and the UI badge match reality.

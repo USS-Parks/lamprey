@@ -1,0 +1,15 @@
+name: ruff
+description: ruff silent on clean; pass through diagnostics on failures
+match:
+  command: ruff
+pipeline:
+  - action: strip_ansi
+  - action: match_output
+    pattern: 'All checks passed'
+    message: 'ruff: clean'
+  - action: keep_lines
+    pattern: '(error|warning|Found \d+|\.py:\d+|\[\*\])'
+  - action: head
+    n: 100
+  - action: on_empty
+    message: 'ruff: clean'

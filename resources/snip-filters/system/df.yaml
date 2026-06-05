@@ -1,0 +1,9 @@
+name: df
+description: Bound df output
+match:
+  command: df
+pipeline:
+  - action: head
+    n: 30
+  - action: on_empty
+    message: 'df: no output'

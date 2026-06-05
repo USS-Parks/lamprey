@@ -1,0 +1,11 @@
+name: rails-routes
+description: Compress rails routes output
+match:
+  command: rails
+  subcommand: routes
+pipeline:
+  - action: strip_ansi
+  - action: head
+    n: 60
+  - action: on_empty
+    message: 'rails routes: empty'

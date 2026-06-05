@@ -1,0 +1,12 @@
+name: swift
+description: Compress swift compile output
+match:
+  command: swift
+pipeline:
+  - action: strip_ansi
+  - action: keep_lines
+    pattern: '(error|warning|Build complete|Compiling|Linking)'
+  - action: head
+    n: 80
+  - action: on_empty
+    message: 'swift: ok'

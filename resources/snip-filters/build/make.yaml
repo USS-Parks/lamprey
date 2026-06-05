@@ -1,0 +1,12 @@
+name: make
+description: Compress make output to errors + final status
+match:
+  command: make
+pipeline:
+  - action: strip_ansi
+  - action: keep_lines
+    pattern: '(error|Error|warning|Warning|\*\*\* |Nothing to be done|Leaving directory|Entering directory)'
+  - action: head
+    n: 100
+  - action: on_empty
+    message: 'make: ok'

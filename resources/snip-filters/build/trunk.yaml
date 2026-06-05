@@ -1,0 +1,12 @@
+name: trunk
+description: Compress trunk check / fmt output
+match:
+  command: trunk
+pipeline:
+  - action: strip_ansi
+  - action: keep_lines
+    pattern: '(Checked|Fixed|Issues|error|warning|✔|✖)'
+  - action: head
+    n: 80
+  - action: on_empty
+    message: 'trunk: no issues'

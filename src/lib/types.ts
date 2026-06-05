@@ -254,6 +254,21 @@ export interface AppSettings {
   agenticCodingMode: boolean
   agenticCodingSkills: string[]
   agenticCodingComposer: AgenticCodingComposerMode
+  /**
+   * Snip Phase K9: master kill-switch for the shell-output filter
+   * layer. Default `true` — every foreground shell command runs
+   * through the matched YAML filter before reaching the model.
+   * Flipping `false` makes the layer a pure pass-through with no
+   * DB write, no matcher run, no allocation.
+   */
+  snipEnabled: boolean
+  /**
+   * Snip Phase K9: verbose mode for the dashboard. When `true`, the
+   * SnipSettings tab renders a per-filter activity log of recent
+   * matches. NEVER decorates the text the model receives — that
+   * would corrupt structured tool output (Invariant 13).
+   */
+  snipVerbose: boolean
 }
 
 export const DEFAULT_AGENTIC_CODING_SKILLS: string[] = [

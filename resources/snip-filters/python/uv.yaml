@@ -1,0 +1,12 @@
+name: uv
+description: Compress uv install / sync output
+match:
+  command: uv
+pipeline:
+  - action: strip_ansi
+  - action: keep_lines
+    pattern: '(Resolved|Downloaded|Installed|Built|Audited|warning|error)'
+  - action: head
+    n: 50
+  - action: on_empty
+    message: 'uv: ok'

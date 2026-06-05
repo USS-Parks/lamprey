@@ -1,0 +1,13 @@
+name: pytest
+description: Compress pytest output to summary + failed tests
+match:
+  command: pytest
+  viaNpx: true
+pipeline:
+  - action: strip_ansi
+  - action: keep_lines
+    pattern: '(PASSED|FAILED|ERROR|passed|failed|errors|=====|short test summary|Coverage|warnings summary)'
+  - action: head
+    n: 100
+  - action: on_empty
+    message: 'pytest: no output'

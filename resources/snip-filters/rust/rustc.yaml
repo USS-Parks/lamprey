@@ -1,0 +1,12 @@
+name: rustc
+description: Compress rustc output to errors + warnings + Finished line
+match:
+  command: rustc
+pipeline:
+  - action: strip_ansi
+  - action: keep_lines
+    pattern: '(warning:|error\[|error:|Finished|Compiling|note:|help:)'
+  - action: head
+    n: 100
+  - action: on_empty
+    message: 'rustc: ok'

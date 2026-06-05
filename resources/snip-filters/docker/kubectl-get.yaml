@@ -1,0 +1,11 @@
+name: kubectl-get
+description: kubectl get … bounded to 80 rows
+match:
+  command: kubectl
+  subcommand: get
+pipeline:
+  - action: strip_ansi
+  - action: head
+    n: 80
+  - action: on_empty
+    message: 'kubectl get: no resources'

@@ -1,0 +1,10 @@
+name: ssh
+description: Bound ssh remote-command output
+match:
+  command: ssh
+pipeline:
+  - action: strip_ansi
+  - action: head
+    n: 200
+  - action: on_empty
+    message: 'ssh: no remote output'

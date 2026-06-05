@@ -1,0 +1,10 @@
+name: sops
+description: Compress sops encrypt / decrypt output
+match:
+  command: sops
+pipeline:
+  - action: strip_ansi
+  - action: head
+    n: 60
+  - action: on_empty
+    message: 'sops: no output'

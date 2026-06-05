@@ -1,0 +1,13 @@
+name: docker-build
+description: Compress docker build to step list + result
+match:
+  command: docker
+  subcommand: build
+pipeline:
+  - action: strip_ansi
+  - action: keep_lines
+    pattern: '(=> \[|=> exporting|=> ERROR|Step \d+|Successfully|naming to|Sending build context|ERROR|error)'
+  - action: head
+    n: 80
+  - action: on_empty
+    message: 'docker build: ok'

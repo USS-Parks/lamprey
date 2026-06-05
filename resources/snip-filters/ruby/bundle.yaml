@@ -1,0 +1,12 @@
+name: bundle
+description: Compress bundle install / update output
+match:
+  command: bundle
+pipeline:
+  - action: strip_ansi
+  - action: keep_lines
+    pattern: '(Installing|Using|Updating|Bundle (complete|updated)|Could not|error|warn)'
+  - action: head
+    n: 50
+  - action: on_empty
+    message: 'bundle: no output'

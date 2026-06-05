@@ -1,0 +1,13 @@
+name: cargo-build
+description: Compress cargo build to Finished line + warnings/errors
+match:
+  command: cargo
+  subcommand: build
+pipeline:
+  - action: strip_ansi
+  - action: keep_lines
+    pattern: '(Compiling|Finished|warning:|error\[|error:|Some errors|Could not compile|Aborting)'
+  - action: head
+    n: 80
+  - action: on_empty
+    message: 'cargo build: ok'

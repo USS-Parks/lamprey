@@ -574,6 +574,24 @@ const api = {
     availableSlots: () => ipcRenderer.invoke('statusline:availableSlots')
   },
 
+  snip: {
+    stats: () => ipcRenderer.invoke('snip:stats'),
+    recent: (payload?: { limit?: number }) => ipcRenderer.invoke('snip:recent', payload),
+    listFilters: () => ipcRenderer.invoke('snip:listFilters'),
+    setEnabled: (payload: { enabled: boolean }) => ipcRenderer.invoke('snip:setEnabled', payload),
+    setVerbose: (payload: { verbose: boolean }) => ipcRenderer.invoke('snip:setVerbose', payload),
+    reloadFilters: () => ipcRenderer.invoke('snip:reloadFilters'),
+    discover: (payload?: { sinceDays?: number; limit?: number }) =>
+      ipcRenderer.invoke('snip:discover', payload),
+    clearHistory: () => ipcRenderer.invoke('snip:clearHistory'),
+    openFilterDir: () => ipcRenderer.invoke('snip:openFilterDir'),
+    onFiltersChanged: (cb: () => void): (() => void) => {
+      const handler = (): void => cb()
+      ipcRenderer.on('snip:filters-changed', handler)
+      return () => ipcRenderer.removeListener('snip:filters-changed', handler)
+    }
+  },
+
   worktree: {
     list: (args: { cwd?: string }) => ipcRenderer.invoke('worktree:list', args),
     create: (args: { cwd?: string; path: string; branch: string; baseRef?: string }) =>

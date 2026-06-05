@@ -1,0 +1,13 @@
+name: cargo-clippy
+description: Compress clippy lint output
+match:
+  command: cargo
+  subcommand: clippy
+pipeline:
+  - action: strip_ansi
+  - action: keep_lines
+    pattern: '(warning:|error\[|error:|Finished|note:|help:|clippy::)'
+  - action: head
+    n: 100
+  - action: on_empty
+    message: 'cargo clippy: no issues'

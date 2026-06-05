@@ -1,0 +1,10 @@
+name: gt
+description: Compress graphite (gt) CLI output
+match:
+  command: gt
+pipeline:
+  - action: strip_ansi
+  - action: head
+    n: 60
+  - action: on_empty
+    message: 'gt: no output'

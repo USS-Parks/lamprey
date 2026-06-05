@@ -1,0 +1,13 @@
+name: git-fetch
+description: Drop progress lines from fetch; keep ref-update report
+match:
+  command: git
+  subcommand: fetch
+pipeline:
+  - action: strip_ansi
+  - action: remove_lines
+    pattern: '^(remote: (Counting|Compressing|Total|Enumerating|Resolving)|Receiving|Resolving|Counting|Compressing)'
+  - action: head
+    n: 30
+  - action: on_empty
+    message: 'git fetch: up to date'

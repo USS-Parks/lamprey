@@ -1,0 +1,15 @@
+name: mypy
+description: Compress mypy output to error count + diagnostics
+match:
+  command: mypy
+pipeline:
+  - action: strip_ansi
+  - action: match_output
+    pattern: 'Success: no issues found'
+    message: 'mypy: no issues'
+  - action: keep_lines
+    pattern: '(error:|note:|warning:|Found \d+ error)'
+  - action: head
+    n: 100
+  - action: on_empty
+    message: 'mypy: clean'

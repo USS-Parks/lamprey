@@ -38,7 +38,11 @@ const defaultSettings = {
   // files migrate cleanly via the readSettings shallow-merge below.
   agenticCodingMode: false,
   agenticCodingSkills: ['codex-plan', 'codex-context', 'codex-verify'] as string[],
-  agenticCodingComposer: 'auto' as 'auto' | 'always' | 'never'
+  agenticCodingComposer: 'auto' as 'auto' | 'always' | 'never',
+  // Snip Phase K9: master switch + verbose dashboard log. snipEnabled
+  // is on by default so the layer lights up on first launch.
+  snipEnabled: true,
+  snipVerbose: false
 }
 
 function readSettings() {

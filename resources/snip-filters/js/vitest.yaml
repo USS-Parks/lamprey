@@ -1,0 +1,17 @@
+name: vitest
+description: Collapse vitest run to N passed / M failed when all green
+match:
+  command: vitest
+  subcommand: run
+  viaNpx: true
+pipeline:
+  - action: strip_ansi
+  - action: match_output
+    pattern: 'Tests\s+\d+\s+passed.*\nNo failed'
+    message: 'vitest: all passed'
+  - action: keep_lines
+    pattern: '(Test Files|Tests|Duration|FAIL|×|⨯)'
+  - action: head
+    n: 80
+  - action: on_empty
+    message: 'vitest: no output'

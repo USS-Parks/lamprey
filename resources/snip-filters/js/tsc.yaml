@@ -1,0 +1,16 @@
+name: tsc
+description: tsc --noEmit silent on success; stderr passes through on error
+match:
+  command: tsc
+  viaNpx: true
+  excludeFlags:
+    - '--listFiles'
+    - '--listEmittedFiles'
+    - '--traceResolution'
+    - '--diagnostics'
+pipeline:
+  - action: strip_ansi
+  - action: on_empty
+    message: 'tsc: no type errors'
+  - action: head
+    n: 200

@@ -1,0 +1,13 @@
+name: oxlint
+description: Compress oxlint output to summary + warnings
+match:
+  command: oxlint
+  viaNpx: true
+pipeline:
+  - action: strip_ansi
+  - action: keep_lines
+    pattern: '(Finished|warnings|error|Found|×)'
+  - action: head
+    n: 100
+  - action: on_empty
+    message: 'oxlint: no problems'

@@ -1,0 +1,11 @@
+name: docker-ps
+description: docker ps output bounded to 50 rows
+match:
+  command: docker
+  subcommand: ps
+pipeline:
+  - action: strip_ansi
+  - action: head
+    n: 50
+  - action: on_empty
+    message: 'docker ps: no containers'

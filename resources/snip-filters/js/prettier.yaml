@@ -1,0 +1,15 @@
+name: prettier
+description: prettier --check noise → just the failing-file list
+match:
+  command: prettier
+  viaNpx: true
+pipeline:
+  - action: strip_ansi
+  - action: remove_lines
+    pattern: '^\['
+  - action: keep_lines
+    pattern: '(\.ts|\.tsx|\.js|\.jsx|\.json|\.css|\.md|All matched files|Checking formatting)'
+  - action: head
+    n: 100
+  - action: on_empty
+    message: 'prettier: no changes'

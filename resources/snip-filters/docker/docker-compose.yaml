@@ -1,0 +1,12 @@
+name: docker-compose
+description: Compress docker-compose up / pull / build output
+match:
+  command: docker-compose
+pipeline:
+  - action: strip_ansi
+  - action: keep_lines
+    pattern: '(Creating|Pulling|Pulled|Started|Removed|Error|error|warn|=> |Built|Network|Volume)'
+  - action: head
+    n: 80
+  - action: on_empty
+    message: 'docker-compose: ok'

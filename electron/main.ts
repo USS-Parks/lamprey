@@ -16,6 +16,7 @@ import { startLoopWakeups, stopLoopWakeups } from './services/loop-runner'
 import { mcpManager } from './services/mcp-manager'
 import { ensureNodeReplDefaultServer } from './services/node-repl-default-server'
 import { initializeSkillLoader, shutdownSkillLoader } from './services/skill-loader'
+import { initializeFilterLoader, shutdownFilterLoader } from './services/snip'
 import { initializeMemoryStore, shutdownMemoryStore } from './services/memory-store'
 import { backfillSessionsFts } from './services/conversation-store'
 import {
@@ -473,6 +474,14 @@ app.whenReady().then(() => {
     console.error('[main] Skill loader init error:', (err as Error).message)
   }
 
+  // Snip Phase K10 — load YAML filters under resources/snip-filters/
+  // (built-in) and userData/snip/filters/ (user); chokidar hot-reload.
+  try {
+    initializeFilterLoader()
+  } catch (err) {
+    console.error('[main] Snip filter loader init error:', (err as Error).message)
+  }
+
   // Track 2 / C4 — slash commands. Watches userData/slash-commands for
   // live edits; bootstraps the bundled built-ins on first run.
   try {
@@ -537,6 +546,7 @@ app.on('will-quit', () => {
   suppressBoundsPersist = true
   mcpManager.shutdown().catch(() => {})
   shutdownSkillLoader()
+  shutdownFilterLoader()
   shutdownMemoryStore()
   shutdownSlashCommandLoader()
   destroyArtifactSandbox()

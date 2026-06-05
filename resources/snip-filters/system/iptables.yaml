@@ -1,0 +1,9 @@
+name: iptables
+description: Bound iptables list output
+match:
+  command: iptables
+pipeline:
+  - action: head
+    n: 100
+  - action: on_empty
+    message: 'iptables: no output'

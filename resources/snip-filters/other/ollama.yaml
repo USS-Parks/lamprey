@@ -1,0 +1,12 @@
+name: ollama
+description: Compress ollama list / pull output
+match:
+  command: ollama
+pipeline:
+  - action: strip_ansi
+  - action: keep_lines
+    pattern: '(NAME|pulling|success|verifying|writing|removed|error|warn)'
+  - action: head
+    n: 60
+  - action: on_empty
+    message: 'ollama: no output'

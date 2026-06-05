@@ -1,0 +1,11 @@
+name: docker-logs
+description: Tail of docker logs to last 100 lines
+match:
+  command: docker
+  subcommand: logs
+pipeline:
+  - action: strip_ansi
+  - action: tail
+    n: 100
+  - action: on_empty
+    message: 'docker logs: empty'

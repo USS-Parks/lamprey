@@ -1,0 +1,13 @@
+name: prisma
+description: Compress prisma generate / migrate output
+match:
+  command: prisma
+  viaNpx: true
+pipeline:
+  - action: strip_ansi
+  - action: keep_lines
+    pattern: '(Generated|Migration|Applied|Database|Error|warn|Already in sync|Datasource)'
+  - action: head
+    n: 60
+  - action: on_empty
+    message: 'prisma: no output'

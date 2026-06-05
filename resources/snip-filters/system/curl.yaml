@@ -1,0 +1,10 @@
+name: curl
+description: Bound curl output to head
+match:
+  command: curl
+pipeline:
+  - action: strip_ansi
+  - action: head
+    n: 200
+  - action: on_empty
+    message: 'curl: no output'

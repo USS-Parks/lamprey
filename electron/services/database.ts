@@ -619,6 +619,44 @@ function initSchema(db: Database.Database): void {
       ON conversations(archived, updated_at DESC);
     CREATE INDEX IF NOT EXISTS idx_conversations_pinned
       ON conversations(pinned_at DESC);
+
+    -- Snip Phase K8: every successful filter match writes one row here.
+    -- Powers the SnipSettings gain dashboard (totals, sparkline, top-N).
+    CREATE TABLE IF NOT EXISTS snip_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      ts INTEGER NOT NULL,
+      command TEXT NOT NULL,
+      filter_name TEXT NOT NULL,
+      bytes_before INTEGER NOT NULL,
+      bytes_after INTEGER NOT NULL,
+      tokens_before INTEGER NOT NULL,
+      tokens_after INTEGER NOT NULL,
+      duration_ms INTEGER NOT NULL,
+      conversation_id TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_snip_events_ts
+      ON snip_events(ts DESC);
+    CREATE INDEX IF NOT EXISTS idx_snip_events_filter
+      ON snip_events(filter_name, ts DESC);
+
+    -- Snip Phase K8: EVERY shell command run through the foreground
+    -- shell tool writes one row here, whether or not a filter matched.
+    -- Powers the K12 Discover panel: unfiltered commands ranked by
+    -- accumulated token cost surface as "consider writing a filter for
+    -- this" suggestions.
+    CREATE TABLE IF NOT EXISTS snip_command_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      ts INTEGER NOT NULL,
+      command TEXT NOT NULL,
+      command_head TEXT NOT NULL,
+      tokens INTEGER NOT NULL,
+      matched_filter TEXT,
+      conversation_id TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_snip_command_log_ts
+      ON snip_command_log(ts DESC);
+    CREATE INDEX IF NOT EXISTS idx_snip_command_log_head
+      ON snip_command_log(command_head, ts DESC);
   `)
 
   // The sqlite-vec virtual table is created separately and is gated on the

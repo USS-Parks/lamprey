@@ -1,0 +1,16 @@
+name: go-test
+description: Compress go test output to passed/failed counters per package
+match:
+  command: go
+  subcommand: test
+pipeline:
+  - action: strip_ansi
+  - action: keep_lines
+    pattern: '^(ok\s|FAIL\s|---\s+FAIL|PASS|FAIL$|coverage:|--- PASS)'
+  - action: aggregate
+    counters:
+      - { name: ok, pattern: '^ok\s' }
+      - { name: fail, pattern: '^FAIL\s|^--- FAIL' }
+    totalAs: total
+  - action: format_template
+    template: '{{counter:ok}} ok, {{counter:fail}} fail ({{counter:total}} packages)'

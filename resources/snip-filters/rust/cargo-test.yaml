@@ -1,0 +1,13 @@
+name: cargo-test
+description: Compress cargo test output to result counts
+match:
+  command: cargo
+  subcommand: test
+pipeline:
+  - action: strip_ansi
+  - action: keep_lines
+    pattern: '(test result:|running \d+ tests|FAILED|test .* \.\.\. (ok|FAILED|ignored)|---- .* ----|thread .* panicked)'
+  - action: head
+    n: 80
+  - action: on_empty
+    message: 'cargo test: no output'

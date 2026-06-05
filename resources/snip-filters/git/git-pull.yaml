@@ -1,0 +1,13 @@
+name: git-pull
+description: Collapse pull output to summary + file change stats
+match:
+  command: git
+  subcommand: pull
+pipeline:
+  - action: strip_ansi
+  - action: remove_lines
+    pattern: '^(Counting|Compressing|Receiving|Resolving|remote: Counting|remote: Compressing|remote: Total|remote: Enumerating)'
+  - action: keep_lines
+    pattern: '^(From |Already up to date|Updating |Fast-forward|Merge made|\s+\d+\s+files? changed|\s+create mode|\s+delete mode)'
+  - action: head
+    n: 40

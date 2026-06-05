@@ -1,0 +1,15 @@
+name: next
+description: Compress Next.js build / dev startup logs
+match:
+  command: next
+  viaNpx: true
+pipeline:
+  - action: strip_ansi
+  - action: remove_lines
+    pattern: '^\s*(- ready|- info|- wait|- event|▲ Next|▲ next info|Attention)'
+  - action: keep_lines
+    pattern: '(error|warn|compiled|ready in|Local:|Route|Size|First Load JS|ERROR)'
+  - action: head
+    n: 80
+  - action: on_empty
+    message: 'next: build ok'

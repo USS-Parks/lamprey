@@ -1,0 +1,15 @@
+name: yarn
+description: Collapse yarn install progress to summary
+match:
+  command: yarn
+pipeline:
+  - action: strip_ansi
+  - action: match_output
+    pattern: 'Done in \d'
+    message: 'yarn: done'
+  - action: keep_lines
+    pattern: '(success|warning|error|Done in)'
+  - action: head
+    n: 60
+  - action: on_empty
+    message: 'yarn: no output'

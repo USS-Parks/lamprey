@@ -1,0 +1,12 @@
+name: brew
+description: Collapse brew install / upgrade progress to summary
+match:
+  command: brew
+pipeline:
+  - action: strip_ansi
+  - action: keep_lines
+    pattern: '(==>|Installing|Pouring|Successfully|Already installed|Warning:|Error:|Caveats)'
+  - action: head
+    n: 60
+  - action: on_empty
+    message: 'brew: no output'

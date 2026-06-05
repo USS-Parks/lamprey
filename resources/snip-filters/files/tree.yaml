@@ -1,0 +1,10 @@
+name: tree
+description: Bounded tree output
+match:
+  command: tree
+pipeline:
+  - action: strip_ansi
+  - action: head
+    n: 200
+  - action: on_empty
+    message: 'tree: empty'

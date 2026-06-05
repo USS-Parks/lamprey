@@ -1,4 +1,13 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+
+// Snip Phase K9 wired the snip layer into tool-registry; the chain
+// imports filter-loader which pulls in electron + @electron-toolkit.
+vi.mock('electron', () => ({
+  app: { getPath: () => '.tmp-tool-parallelism-test' },
+  BrowserWindow: { getAllWindows: () => [] }
+}))
+vi.mock('@electron-toolkit/utils', () => ({ is: { dev: true } }))
+
 import { isParallelizableDescriptor, type LampreyToolDescriptor } from './tool-registry'
 import {
   partitionToolCallWindows,

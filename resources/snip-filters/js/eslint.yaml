@@ -1,0 +1,16 @@
+name: eslint
+description: eslint silent on clean; aggregate errors + warnings on failures
+match:
+  command: eslint
+  viaNpx: true
+pipeline:
+  - action: strip_ansi
+  - action: on_empty
+    message: 'eslint: no problems'
+  - action: aggregate
+    counters:
+      - { name: errors, pattern: '\d+\s+error' }
+      - { name: warnings, pattern: '\d+\s+warning' }
+    totalAs: lines
+  - action: head
+    n: 200
