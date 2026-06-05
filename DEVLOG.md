@@ -1,5 +1,21 @@
 # Lamprey Harness Dev Log
 
+## 2026-06-05 — Customize Phase / C8 — Plugin IPC + Zustand store
+
+Wires the loader to the renderer end-to-end. Surfaces the broadcast event in the store.
+
+**Shipped**
+- `electron/ipc/plugins.ts` — handlers: `plugins:list`, `plugins:get`, `plugins:enable`, `plugins:disable`, `plugins:remove`, `plugins:installFromDirectory`, `plugins:pickDirectory`. `plugins:installFromUrl` returns a deliberate "lands in C10" error so the preload surface is callable in advance. Native directory picker uses `dialog.showOpenDialog` against the focused BrowserWindow.
+- `electron/ipc/index.ts` — `registerPluginsHandlers()` plugged in after slash, before chapters.
+- `electron/preload.ts` — `window.api.plugins.*` exposed: list, get, enable, disable, remove, installFromDirectory, installFromUrl, pickDirectory, onChanged. The `onChanged` listener returns its own teardown (mirrors the skills bridge).
+- `src/lib/types.ts` — `PluginManifest` + `LoadedPlugin` mirrored to the renderer so the store, columns, and any other surface share one definition.
+- `src/stores/plugins-store.ts` — Zustand store: `loadPlugins`, `setPluginsFromEvent`, `enable`, `disable`, `remove`, `installFromDirectory`, `pickDirectoryAndInstall`. Toast on success/error.
+
+**Verify**
+- `npx tsc --noEmit -p tsconfig.web.json` → clean.
+- `npx tsc --noEmit -p tsconfig.node.json` → clean.
+- `npx electron-vite build` → built in 5.73s, no warnings.
+
 ## 2026-06-05 — Customize Phase / C7 — Plugin manifest + loader (green field)
 
 Shipped the plugin manifest, the on-disk layout contract, and the in-process registry (initialize/scan/watch). No UI yet — IPC + store land in C8, UI in C9, install flow in C10, runtime hookup in C11.

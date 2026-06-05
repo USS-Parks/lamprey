@@ -223,6 +223,23 @@ const api = {
     }
   },
 
+  plugins: {
+    list: () => ipcRenderer.invoke('plugins:list'),
+    get: (id: string) => ipcRenderer.invoke('plugins:get', id),
+    enable: (id: string) => ipcRenderer.invoke('plugins:enable', id),
+    disable: (id: string) => ipcRenderer.invoke('plugins:disable', id),
+    remove: (id: string) => ipcRenderer.invoke('plugins:remove', id),
+    installFromDirectory: (srcPath: string) =>
+      ipcRenderer.invoke('plugins:installFromDirectory', srcPath),
+    installFromUrl: (url: string) => ipcRenderer.invoke('plugins:installFromUrl', url),
+    pickDirectory: () => ipcRenderer.invoke('plugins:pickDirectory'),
+    onChanged: (cb: (entries: unknown[]) => void) => {
+      const handler = (_: unknown, entries: unknown[]) => cb(entries)
+      ipcRenderer.on('plugins:changed', handler)
+      return () => ipcRenderer.removeListener('plugins:changed', handler)
+    }
+  },
+
   mcp: {
     list: () => ipcRenderer.invoke('mcp:list'),
     getStatus: (id: string) => ipcRenderer.invoke('mcp:getStatus', id),

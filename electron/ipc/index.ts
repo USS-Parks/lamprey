@@ -31,6 +31,7 @@ import { registerGitHubHandlers } from './github'
 import { registerEventsHandlers } from './events'
 import { registerRagHandlers } from './rag'
 import { registerSlashHandlers } from './slash'
+import { registerPluginsHandlers } from './plugins'
 import { registerChaptersHandlers } from './chapters'
 import { registerTasksHandlers } from './tasks'
 import { registerWorkflowsHandlers } from './workflows'
@@ -73,6 +74,7 @@ export function registerAllIpcHandlers(): void {
   registerEventsHandlers()
   registerRagHandlers()
   registerSlashHandlers()
+  registerPluginsHandlers()
   registerChaptersHandlers()
   registerTasksHandlers()
   registerWorkflowsHandlers()

@@ -99,6 +99,31 @@ export interface Skill {
   supportingFiles?: string[]
 }
 
+// Customize C7/C8 — plugin manifest mirror, kept in `src/lib/types.ts`
+// so the renderer + Zustand store + UI components share one definition
+// with the main-process loader.
+export interface PluginManifest {
+  id: string
+  name: string
+  description: string
+  version: string
+  author?: string
+  homepage?: string
+  category?: string
+  enabled?: boolean
+}
+
+export interface LoadedPlugin {
+  manifest: PluginManifest
+  enabled: boolean
+  rootPath: string
+  surfaceCounts: {
+    skills: number
+    slashCommands: number
+    connectors: number
+  }
+}
+
 export type MemoryType = 'user' | 'feedback' | 'project' | 'reference'
 
 export interface MemoryEntry {
