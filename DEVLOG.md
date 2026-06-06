@@ -1,5 +1,36 @@
 # Lamprey Harness Dev Log
 
+## [Panels — Prompt P2] Two rounded sidebar panels on transparent chat substrate  —  2026-06-05
+
+**Files changed:** `src/App.tsx`, `src/components/layout/Sidebar.tsx`
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- electron-vite build ✓
+- user-verification-needed: launch Electron and confirm the visible flip lands cleanly:
+  - Outer workspace shell shows `--app-bg` (darker than `--bg-primary` in dark mode; warm cream in light mode)
+  - Left sidebar reads as a rounded `--panel-bg` panel floating on the substrate (both collapsed rail and expanded states)
+  - Right panel reads as a rounded `--panel-bg` panel (both collapsed rail and expanded states; both tool-mode and home-mode)
+  - **Chat column between them is transparent** — messages sit visibly on the warm/dark substrate, not inside a card
+  - Substrate gap visible around all three panels (~8px)
+  - Resize right panel still works; double-click resets
+  - Narrow-viewport drawer (resize window narrow) opens with rounded left edge
+
+**Notes:**
+- App.tsx outer flex: `bg-[var(--bg-primary)]` → `bg-[var(--app-bg)]`.
+- Three-column row (line 414) gained `gap-[var(--panel-gap)] p-[var(--panel-gap)]` — gives 8px substrate inset all around + 8px between panels.
+- Chat surround (line 420) `bg-[var(--bg-secondary)]` → `bg-transparent`. Kept `p-2` for content breathing room.
+- All four right-panel containers (collapsed rail at 429, tool-mode at 445, home-mode at 469, narrow drawer at 500) lose `border-l border-[var(--border)]`, swap `bg-[var(--bg-secondary)]` → `bg-[var(--panel-bg)]`, gain `rounded-[var(--panel-radius)]` (or `rounded-l-` for the drawer). Added `overflow-hidden` so the rounding actually clips child content.
+- Sidebar narrow drawer (666), rail (729), main (787) get the same treatment.
+- SecurityBanner + UpdateBanner stay in their existing slot inside the chat workspace column — they render as substrate-floating ribbons now that the chat surround is transparent. Their own internal styling reads OK on substrate.
+- `FloatingEnvironmentCard` not touched — preserved per plan §2 #4.
+- Right-panel interior cards not touched — preserved per plan §2 #2. Their outer container's rounded corners come from this prompt; interior chrome remains as-is.
+
+**Commit:** _this commit_
+
+---
+
 ## [Panels — Prompt P1] Surface tokens + theme-preset feed-through  —  2026-06-05
 
 **Files changed:** `src/lib/types.ts`, `src/styles/index.css`, `src/styles/theme-presets.ts`, `src/styles/apply-theme.ts`

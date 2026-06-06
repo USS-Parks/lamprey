@@ -663,7 +663,7 @@ export function Sidebar() {
         <aside
           role="dialog"
           aria-label="Navigation"
-          className="fixed bottom-0 left-0 top-0 z-50 flex flex-col border-r border-[var(--border)] bg-[var(--bg-secondary)] shadow-2xl"
+          className="fixed bottom-0 left-0 top-0 z-50 flex flex-col overflow-hidden rounded-r-[var(--panel-radius)] bg-[var(--panel-bg)] shadow-2xl"
           style={{
             width: Math.min(sidebarWidth, window.innerWidth - 48),
             transform: 'translateX(0)',
@@ -726,7 +726,7 @@ export function Sidebar() {
   if (sidebarCollapsed) {
     return (
       <div
-        className="relative flex h-full w-12 flex-col items-center border-r border-[var(--border)] bg-[var(--bg-secondary)] py-3"
+        className="relative flex h-full w-12 flex-col items-center overflow-hidden rounded-[var(--panel-radius)] bg-[var(--panel-bg)] py-3"
         style={transitionStyle}
       >
         <button
@@ -784,7 +784,7 @@ export function Sidebar() {
 
   return (
     <div
-      className="relative flex h-full flex-col border-r border-[var(--border)] bg-[var(--bg-secondary)]"
+      className="relative flex h-full flex-col overflow-hidden rounded-[var(--panel-radius)] bg-[var(--panel-bg)]"
       style={{ width: sidebarWidth, minWidth: sidebarWidth, ...(transitionStyle ?? {}) }}
     >
       <SidebarBody
