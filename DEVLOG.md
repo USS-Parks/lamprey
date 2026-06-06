@@ -1,5 +1,55 @@
 # Lamprey Harness Dev Log
 
+## [Stall & Timeout Phase Complete] — 2026-06-05 (v0.6.1)
+
+Seven prompts (T1–T7) on `claude/interesting-curran-beace7`. The phase addressed the recurring "Lamprey stalls mid research" symptom — agent stuck on "streaming" for tens of minutes with no escape hatch — by stacking four independent caps + a visibility surface + a settings panel.
+
+| Prompt | Title | Commit |
+|---|---|---|
+| T1 | SSE inactivity watchdog in chatStream | `eee5b1d` |
+| T2 | Per-call MCP timeout | `043fb77` |
+| T3 | Per-stage wall-clock budgets in pipeline | `52c152e` |
+| T4 | Streaming-vitals heartbeat in chat pill | `e92a2e0` |
+| T5 | Settings → Streaming & Timeouts panel | `a506fcb` |
+| T6 | DEVLOG + memory pointers | `f9ff8b8` |
+| T7 | Ship 0.6.1 | _T7 commit_ |
+
+**Root cause (from the user's 20-min + 42-min stall screenshots)**
+- Four converging failure modes, none of them lethal alone, but stacking into "the chat goes silent and never returns":
+  1. `chatStream`'s `for await (chunk of stream)` had no inactivity timeout. Provider half-open sockets sat forever.
+  2. `mcpManager.callTool` had no per-call timeout. Slow Ahrefs / browser MCPs blocked the tool round.
+  3. `MAX_TOOL_ROUNDS=50` capped iterations, but not wall-clock. V4-Flash thinking-mode legitimately runs ~60s per round → 50min × 60s ceilings still felt like infinity.
+  4. The renderer's streaming pill showed `~410 tokens · 42m` but no "last chunk Ns ago" — user couldn't tell stuck from thinking.
+
+**Fix stack (each cap is independently configurable; 0 disables)**
+- T1 — `streamInactivityMs` (default 60_000, min 5_000): per-attempt AbortController + setTimeout in `chatStream`. On expiry the SDK abort fires, the catch block reuses the existing retry path (3 retries with exponential backoff), then surfaces `StreamInactivityError` with the partial-persist payload so the user's on-screen content survives.
+- T2 — `mcpCallTimeoutMs` (default 120_000, min 5_000): passed as `{ timeout, resetTimeoutOnProgress: true }` to `Client.callTool`. SDK throws `McpError(RequestTimeout)` on expiry; we translate to `MCPTimeoutError` so `chat.ts:1191-1196` surfaces a clean message the model can recover from.
+- T3 — `stageBudgetMs.{planner,coder,reviewer}` (defaults 120/600/120s, min 10s each): per-stage child `AbortSignal` aborts on parent OR on budget timer. `budgetFired` flag disambiguates user-cancel from budget-expired so a planner budget falls through to coder with a stub plan, while coder/reviewer budget exhaustion surfaces "Coder exceeded budget. Partial work is saved" pointing at Settings → Streaming & Timeouts.
+- T4 — `chat:streaming-vitals` (heartbeat every 2_000ms during a streaming attempt): `lastChunkAt`, `msSinceLastChunk`, `chunkCount`, `tokenEstimate`, `attemptElapsedMs`. Wired through provider → chat.ts → preload → useChat → chat-store → `StreamStatusLine` ("Ns since last chunk" with fresh/warm/stale color thresholds at 10s/30s).
+- T5 — Settings → **Timeouts** tab. One number-input row per cap, all in seconds, with 0=disable affordance, floor-clamped commit-on-blur, inline "reset · Ns" link to defaults, paragraph hints explaining when each cap fires.
+
+**Architecture notes**
+- All four back-end caps read `userData/settings.json` fresh on every invocation — no IPC reload required. The renderer's settings store also writes to that file via the existing `window.api.settings.set` plumbing, so changes take effect on the next chat round.
+- `setUserDataPathProvider` / `setPipelineUserDataPathProvider` injected from `main.ts` so the provider-layer + pipeline-layer modules stay test-friendly (vitest under `environment: 'node'` mocks the injection point instead of `electron`).
+- All four caps have test overrides (`__setStreamInactivityForTesting`, `__setMcpCallTimeoutForTesting`, `__setStageBudgetsForTesting`) so unit tests can pin specific values without disk I/O.
+
+**Test verification**
+- Both tsc configs (`tsconfig.node.json`, `tsconfig.web.json`) clean after every prompt.
+- 6-case vitest on `registry.test.ts` covers stall fires / normal completes / 0 disables / user-cancel wins / error class shape / vitals heartbeat.
+- 5-case vitest on new `mcp-manager.test.ts` covers timeout pass-through / 0 disables / RequestTimeout translation / generic errors stay generic / error shape.
+- 3-case extension to `agent-pipeline.test.ts` covers coder budget aborts signal / fast coder doesn't trip / 0 disables.
+
+**Out of scope (deliberately deferred)**
+- Rewriting V4-Flash thinking-mode for speed.
+- Auto-routing research-style prompts to the `runDeepResearch` orchestrator (would dodge the multi-agent pipeline entirely for citation-heavy turns).
+- Per-server MCP timeout overrides (one global suffices for now).
+
+**Version + release**
+- `package.json` bumped 0.6.0 → 0.6.1 in T7 (Panels Phase took 0.6.0).
+- User is the reviewer + pusher; commits go to `main` per the explicit "STS" directive.
+
+---
+
 ## [Panels Phase Complete] — 2026-06-05 (v0.6.0)
 
 Ten-prompt visual chrome overhaul. Lamprey now matches Claude Code on layout restraint — two rounded sidebar panels float on a warm two-tone substrate, the chat column between them is transparent so content flows directly on the substrate, and the bottom dock pill cluster (prompt input pill + adjacent chips + `FloatingEnvironmentCard`) is the only in-chat chrome. Right-panel interior cards (Recents, tool shortcuts, docked env card) preserved as-is per user constraint; `FloatingEnvironmentCard` untouched entirely.
