@@ -50,6 +50,27 @@ const SPLASH_MIN_MS = 3000
 let suppressBoundsPersist = false
 let boundsPersistTimer: NodeJS.Timeout | null = null
 
+// Duplicate-launch protection. GUI launches must run as a single Electron
+// process — two parallel processes would each open their own SQLite handle
+// on lamprey.db, spin up their own MCP clients, and race on the same userData
+// dirs. Headless CLI invocations (lamprey --headless ...) are exempted: each
+// is a one-shot run that exits cleanly, and the user may legitimately fan
+// them out in parallel from a shell. For GUI launches, the second process
+// exits immediately and the existing window restores + focuses.
+if (!isHeadlessCliArgv(process.argv)) {
+  const gotTheLock = app.requestSingleInstanceLock()
+  if (!gotTheLock) {
+    app.quit()
+    process.exit(0)
+  }
+  app.on('second-instance', () => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore()
+      mainWindow.focus()
+    }
+  })
+}
+
 function reportToRenderer(channel: 'app:error' | 'app:warning', message: string): void {
   try {
     mainWindow?.webContents.send(channel, { message })

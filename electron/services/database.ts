@@ -434,6 +434,17 @@ function initSchema(db: Database.Database): void {
   // explicitly to keep migration of legacy rows a no-op (NULL stays NULL).
   safeAddColumn(db, 'messages', 'stage TEXT')
 
+  // Robustness Hotfix HX3 (v0.8.4): verbatim copy of the assistant row's
+  // body before HX4's `sanitizePseudoTags` rewrite. `content` is the
+  // sanitized text (what every UI surface reads), `content_raw` is the
+  // pre-sanitization original — preserved so the audit trail stays honest
+  // for users who need to inspect what the model actually emitted (e.g.
+  // the v0.8.1 Reasoning-Trace Viewer + RT7's audit-trail export, which
+  // can opt into the raw column in a future RT extension). NULL for
+  // non-assistant rows and for legacy pre-hotfix rows (no backfill — UI
+  // path is unchanged so users see what they always saw).
+  safeAddColumn(db, 'messages', 'content_raw TEXT')
+
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_conversations_project
       ON conversations(project_id, updated_at DESC);

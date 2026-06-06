@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import {
   AGENT_ROLE_PROMPTS,
+  COMPOSER_SYSTEM,
+  PSEUDO_TAG_GUARD,
   buildAgentSystemPrompt,
   buildSystemPrompt,
   getRoleFragment,
@@ -297,5 +299,90 @@ describe('AGENT_ROLE_PROMPTS.reviewer — anti-hallucination guards (RT1)', () =
     expect(out).toContain('<bash>')
     expect(out).toMatch(/fenced Markdown/i)
     expect(out).toContain('SHIP')
+  })
+})
+
+// HX2 — Robustness Hotfix v0.8.4. RT1 added the pseudo-XML guard but only to
+// the reviewer role; the same bash-as-prose defect surfaced on `coder` (see
+// the 2026-06-06 user-reported screenshots). HX2 extracts the guard into a
+// reusable `PSEUDO_TAG_GUARD` constant and applies it across every
+// model-facing role that emits user-visible final text (planner, coder,
+// coworker) + the COMPOSER_SYSTEM block. Reviewer's body must remain
+// byte-identical to pre-HX2 to preserve the RT1 contract.
+describe('PSEUDO_TAG_GUARD — universal anti-hallucination clause (HX2)', () => {
+  it('is a non-empty string with the canonical phrases', () => {
+    expect(typeof PSEUDO_TAG_GUARD).toBe('string')
+    expect(PSEUDO_TAG_GUARD.length).toBeGreaterThan(100)
+    expect(PSEUDO_TAG_GUARD).toMatch(/plain Markdown only/i)
+    expect(PSEUDO_TAG_GUARD).toMatch(/pseudo-XML/i)
+    expect(PSEUDO_TAG_GUARD).toMatch(/fenced Markdown/i)
+  })
+
+  it('forbids the eleven canonical pseudo-tag names', () => {
+    for (const tag of [
+      '<bash>',
+      '<tool>',
+      '<run>',
+      '<shell>',
+      '<execute>',
+      '<command>',
+      '<terminal>',
+      '<output>',
+      '<result>',
+      '<stdout>',
+      '<stderr>'
+    ]) {
+      expect(PSEUDO_TAG_GUARD).toContain(tag)
+    }
+  })
+})
+
+describe('PSEUDO_TAG_GUARD — applied across non-reviewer model-facing roles (HX2)', () => {
+  for (const role of ['planner', 'coder', 'coworker'] as const) {
+    it(`is present in AGENT_ROLE_PROMPTS.${role}`, () => {
+      expect(AGENT_ROLE_PROMPTS[role]).toContain(PSEUDO_TAG_GUARD)
+    })
+
+    it(`propagates through buildAgentSystemPrompt('${role}')`, () => {
+      const out = buildAgentSystemPrompt(role)
+      expect(out).toMatch(/plain Markdown only/i)
+      expect(out).toContain('<bash>')
+      expect(out).toContain('<tool>')
+    })
+  }
+
+  it('is present in COMPOSER_SYSTEM', () => {
+    expect(COMPOSER_SYSTEM).toContain(PSEUDO_TAG_GUARD)
+  })
+
+  // The reader and verifier roles are deliberately NOT touched — they emit
+  // short verdict strings (PASS / FAIL / UNCERTAIN) that won't carry
+  // pseudo-XML in practice. Codifying the omission keeps future refactors
+  // honest.
+  it('is NOT applied to reader / verifier roles (per HX2 scope)', () => {
+    expect(AGENT_ROLE_PROMPTS.reader).not.toContain(PSEUDO_TAG_GUARD)
+    expect(AGENT_ROLE_PROMPTS.verifier).not.toContain(PSEUDO_TAG_GUARD)
+  })
+})
+
+describe('AGENT_ROLE_PROMPTS.reviewer — body byte-identical to RT1 (HX2 invariant)', () => {
+  // Golden snapshot of the reviewer prompt body as it shipped in RT1 / v0.8.0
+  // (the canonical reference state — HX2 must reassemble byte-for-byte from
+  // PSEUDO_TAG_GUARD without drift).
+  const RT1_REVIEWER_GOLDEN =
+    'You are the Reviewer. Critique the Coder output for correctness, regressions, edge cases, ' +
+    'and dead code. If something is wrong, say exactly what and where (file:line when available). ' +
+    'If it is good, say SHIP.\n' +
+    'You have no tools available in this stage — do not emit tool calls, do not pretend to run ' +
+    'commands, do not fabricate command output.\n' +
+    'Output format: plain Markdown only. Never wrap commentary in pseudo-XML or angle-bracketed ' +
+    'pseudo-tags such as <bash>, <tool>, <run>, <shell>, <execute>, <command>, <terminal>, ' +
+    '<output>, <result>, <stdout>, <stderr>, or similar — those tags read as fabricated tool ' +
+    'invocations and break the audit trail. If you need to reference a command or code snippet, ' +
+    'put it in a fenced Markdown block with a language tag (```bash, ```ts, ```diff, etc.). ' +
+    'Inline code uses single backticks. Reasoning belongs in your <think> block, not in prose.'
+
+  it('reassembles byte-for-byte from PSEUDO_TAG_GUARD', () => {
+    expect(AGENT_ROLE_PROMPTS.reviewer).toBe(RT1_REVIEWER_GOLDEN)
   })
 })

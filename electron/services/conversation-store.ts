@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto'
 import { getDb } from './database'
 import { touchProject } from './projects-store'
 import { clearConversationState } from './plan-goal-store'
+import { sanitizePseudoTags } from './sanitize-pseudo-tags'
 
 export interface ConversationRow {
   id: string
@@ -40,6 +41,11 @@ export interface MessageRow {
    *  set by the pipeline / composer save sites. Coder rows stay NULL
    *  (the implicit default) so legacy rows don't need backfill. */
   stage: string | null
+  /** Robustness Hotfix HX4 (v0.8.4) — verbatim pre-sanitization copy of
+   *  the assistant row's body. NULL on pre-hotfix legacy rows + non-
+   *  assistant rows. UI continues to read `content` (sanitized); this
+   *  column exists for the audit / export surface (RT-Viewer extension). */
+  content_raw: string | null
 }
 
 /** Allowed values for `MessageRow.stage`. Kept as a string union so
@@ -555,15 +561,26 @@ export function saveMessage(msg: {
     msg.role === 'assistant'
       ? splitInlineReasoningWithDraft(msg.content, msg.reasoning, msg.draft)
       : { content: msg.content, reasoning: msg.reasoning }
+  // Robustness Hotfix HX4 (v0.8.4) — pseudo-XML sanitisation. Assistant
+  // rows occasionally emit `<bash>find …</bash>` (or `<tool>`, `<run>`,
+  // `<shell>`, etc.) as final prose instead of invoking a real tool. The
+  // chat bubble would render the pseudo-XML as literal text and the user
+  // has to re-prompt. We persist the sanitised text in `content` (what
+  // every UI surface reads) and the verbatim original in `content_raw`
+  // for the audit trail. Non-assistant rows pass through unchanged.
+  const sanitizedContent =
+    msg.role === 'assistant' ? sanitizePseudoTags(split.content) : split.content
+  const contentRaw =
+    msg.role === 'assistant' && sanitizedContent !== split.content ? split.content : null
   const toolCallsJson = msg.toolCalls && msg.toolCalls.length > 0 ? JSON.stringify(msg.toolCalls) : null
   const documentsJson = msg.documents && msg.documents.length > 0 ? JSON.stringify(msg.documents) : null
   db.prepare(
-    'INSERT INTO messages (id, conversation_id, role, content, model, tool_call_id, tool_calls, draft, reasoning, documents, stage, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    'INSERT INTO messages (id, conversation_id, role, content, model, tool_call_id, tool_calls, draft, reasoning, documents, stage, content_raw, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
   ).run(
     msg.id,
     msg.conversationId,
     msg.role,
-    split.content,
+    sanitizedContent,
     msg.model || null,
     msg.toolCallId || null,
     toolCallsJson,
@@ -571,20 +588,24 @@ export function saveMessage(msg: {
     split.reasoning || null,
     documentsJson,
     msg.stage || null,
+    contentRaw,
     now
   )
   touchConversation(msg.conversationId)
   // E3: keep the cross-session FTS index in sync. User/assistant
   // bodies are the ones worth searching; system/tool messages are
-  // usually plumbing and would inflate the index with noise.
+  // usually plumbing and would inflate the index with noise. We index
+  // the sanitised content so search matches what the user sees in the
+  // bubble, not the pseudo-XML.
   if (msg.role === 'user' || msg.role === 'assistant') {
-    ftsInsertMessage(msg.id, msg.conversationId, split.content)
+    ftsInsertMessage(msg.id, msg.conversationId, sanitizedContent)
   }
   return {
     id: msg.id,
     conversationId: msg.conversationId,
     role: msg.role,
-    content: split.content,
+    content: sanitizedContent,
+    contentRaw: contentRaw ?? undefined,
     timestamp: now,
     model: msg.model,
     toolCallId: msg.toolCallId,
@@ -638,7 +659,11 @@ export function getMessages(conversationId: string) {
       // Reasoning Audit Phase R1 — multi-agent pipeline stage discriminator.
       // NULL on legacy rows + Coder rows reaches the renderer as `undefined`,
       // which MessageBubble (R7) treats as "no chip, no toggle".
-      stage: (row.stage ?? undefined) as MessageStage | undefined
+      stage: (row.stage ?? undefined) as MessageStage | undefined,
+      // Robustness Hotfix HX4 (v0.8.4) — verbatim pre-sanitisation copy of
+      // the assistant body. NULL on legacy + non-assistant + already-clean
+      // assistant rows. Renderer ignores it; audit / export surfaces opt in.
+      contentRaw: row.content_raw ?? undefined
     }
   })
 }

@@ -1,5 +1,172 @@
 # Lamprey Harness Dev Log
 
+## [Robustness Hotfix — Phase Complete] v0.8.4 — duplicate-app + bash-as-prose ghost-reply closed  —  2026-06-06
+
+**Two user-reported defects closed end-to-end.** The 2026-06-06 screenshots showed (a) Lamprey occasionally opens a second app instance of itself and (b) the user often has to re-prompt to actually get the model to perform a duty (coder emitted `<bash>find …</bash>` as final prose). HX1-HX5 closes both, ships as **v0.8.4**.
+
+### Shipped commits
+
+- **HX1 `f48a79a`** — `app.requestSingleInstanceLock()` in `electron/main.ts`. Headless CLI exempted via `isHeadlessCliArgv`.
+- **HX2 `2fd31d1`** — shared `PSEUDO_TAG_GUARD` constant applied across planner / coder / reviewer / coworker + `COMPOSER_SYSTEM`. Reviewer body byte-identical to RT1 (golden snapshot).
+- **HX3 `4b33433`** — `content_raw TEXT` column on `messages` (idempotent `safeAddColumn`) + pure `sanitize-pseudo-tags.ts` rewriter + 22 vitest cases.
+- **HX4 `2ba44c6`** — wired sanitiser into `saveMessage` (assistant rows only); `Message.contentRaw?` exposed renderer-side; FTS indexes sanitised content; 5 round-trip tests (skip under same `NODE_MODULE_VERSION` mismatch that skips `snip/apply.test.ts`).
+- **HX5** _this commit_ — DEVLOG phase summary + README per `feedback_readme_is_part_of_ship` + CLAUDE.md Current State + memory updates + `package.json` 0.8.3 → 0.8.4 + ship arc (build / push / tag / release / CDN).
+
+### Final verify gate
+
+- tsc node ✓
+- tsc web ✓
+- electron-vite build ✓
+- vitest full suite: **1996 passed | 43 skipped (133 files)** — vs baseline 1963/38/131. No regressions. +33 passing (HX2 +13, HX3 +22 = +35; −2 from existing reviewer tests rolling under the new HX2 constant scope). +5 skipped (HX4's round-trip tests, native-binding constraint).
+- npm run lint ✓
+- npm run build:win ✓ — `Lamprey-0.8.4-x64.exe` + `Lamprey-0.8.4-x64.exe.blockmap` + `Lamprey-0.8.4-x64.zip` + `latest.yml` produced in worktree `dist/`, then moved into primary repo `dist/` per `feedback_release_artifacts_in_primary_dist`.
+
+### Ship arc
+
+- Push `claude/cool-wescoff-726885` → `main` (fast-forward merge).
+- Push tag `v0.8.4`.
+- `gh release create v0.8.4` with the four artifacts attached.
+- CDN evergreen rename + overwrite-upload `Lamprey-x64.exe` + `Lamprey-x64.zip` to the Cloudflare R2 bucket fronting `cdn.islandmountain.io` per `feedback_cdn_evergreen_artifacts`.
+
+### Honest limits (per `feedback_no_fake_polish`)
+
+- **HX1 single-instance lock**: marked **user-verification-needed** because the OS-level double-launch behaviour can only be observed by running the installed Lamprey from the desktop launcher. The tsc/build gate confirms the code path compiles + integrates; the actual second-process-exits behaviour is for the user to verify on the v0.8.4 installer.
+- **HX4 round-trip tests skip**: same `NODE_MODULE_VERSION` mismatch (better-sqlite3 v133 vs vitest's Node v137) that's been skipping `snip/apply.test.ts`. The 5 tests are written, mock `./database` with an in-memory better-sqlite3 instance, and will run when the binding matches.
+- **Reasoning-trace `<think>` reference in `PSEUDO_TAG_GUARD`**: the guard keeps "Reasoning belongs in your `<think>` block, not in prose." across all five roles where it's appended. Planner / coder / coworker may not natively emit `<think>` blocks; the instruction is ignored harmlessly when they don't. This was a conscious choice to keep the reviewer-byte-identical invariant.
+
+### Companion to
+
+- **RT1** (Reasoning-Trace Phase) — HX2 completes the rollout RT1 started but scoped to the reviewer only.
+- **HX3+HX4** — belt-and-braces for HX2: even when a model ignores `PSEUDO_TAG_GUARD`, the persist-side sanitiser cleans the bubble. `content_raw` keeps the audit trail honest.
+
+**Plan:** [PLANNING/LAMPREY_ROBUSTNESS_HOTFIX_PLAN.md](PLANNING/LAMPREY_ROBUSTNESS_HOTFIX_PLAN.md).
+
+---
+
+## [Robustness Hotfix — Prompt HX4] Wire `sanitizePseudoTags` into `saveMessage`; expose `content_raw` in reads  —  2026-06-06
+
+**The wiring.** In `electron/services/conversation-store.ts`:
+- Imported `sanitizePseudoTags` from HX3.
+- Added `content_raw: string | null` to the `MessageRow` interface.
+- In `saveMessage`, after the existing `splitInlineReasoning(content, reasoning, draft)` split, compute `sanitizedContent` (assistant rows only) and `contentRaw` (only when sanitiser actually rewrote something — NULL otherwise to avoid bloating the DB with redundant duplicates of already-clean rows).
+- Extended the `INSERT INTO messages (…)` SQL with the `content_raw` column + bound parameter.
+- `getMessages` now reads `row.content_raw` and exposes it as `contentRaw` on the returned shape.
+- FTS index now uses `sanitizedContent` instead of `split.content` — search matches what the user sees in the bubble.
+- `saveMessage` return value gains `contentRaw?: string | undefined`.
+
+**Renderer type.** Added `contentRaw?: string | null` to `src/lib/types.ts` `Message` interface so renderer-side typings compile. **The UI does not consume it yet** — that's an opt-in for a future RT-Viewer audit-surface extension.
+
+**Sanitisation policy.**
+- `role === 'assistant'` → run `sanitizePseudoTags(split.content)`. If the result differs from input, persist `content = sanitized`, `content_raw = original`. If identical (no pseudo-tags), persist `content = original`, `content_raw = NULL`.
+- `role === 'user' | 'system' | 'tool'` → pass through unchanged, `content_raw = NULL`. A user pasting `<bash>` into the prompt area must not have their input rewritten.
+
+**Tests.** New `electron/services/conversation-store-sanitize.test.ts` — 5 round-trip cases through an in-memory better-sqlite3 mock of `./database` (recreates only the columns saveMessage touches): assistant-with-tags → fenced + raw preserved; assistant-no-tags → contentRaw NULL; user-with-tag-like-text → unchanged + contentRaw NULL; system + tool rows → pass-through + contentRaw NULL; idempotency on re-save of already-cleaned content.
+
+**Honest test-count note (per `feedback_no_fake_polish`).** The 5 HX4 round-trip cases SKIP in this vitest environment under the same `NODE_MODULE_VERSION` mismatch that skips `electron/services/snip/apply.test.ts` and friends: better-sqlite3's native binding is compiled for Electron (v133) but vitest runs under Node (v137). The cases are written + exercise the real `saveMessage` code path when the binding is available; the test count moved 1963 → 1996 (+33; HX2 added 13, HX3 added 22 = 35; the −2 delta is two existing reviewer tests rolling under the new HX2 constant scope). Skipped file count moved 4 → 5 (matches the +1 HX4 file). **The integration smoke at runtime is the real coverage**: user-verification-needed below.
+
+**Files changed:** `electron/services/conversation-store.ts`, `electron/services/conversation-store-sanitize.test.ts` (new), `src/lib/types.ts`.
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- electron-vite build ✓
+- vitest full suite: 1996 passed | 43 skipped (vs baseline 1963 | 38) ✓
+- user-verification-needed: launch app + run a multi-agent turn that historically emitted `<bash>` in coder output → confirm the chat bubble shows a clean fenced ```bash code block instead of pseudo-XML prose.
+
+**Notes.** Two reasons we don't auto-populate `content_raw` on every assistant row even when the sanitiser was a no-op:
+1. DB bloat — half the assistant turns are already clean; doubling their bodies adds GBs on long sessions.
+2. The semantic is "the model emitted something the sanitiser had to rewrite." NULL says "no rewrite happened — what you see IS what the model emitted." That's the audit signal a future RT-Viewer wants.
+
+**Commit:** _this commit_
+
+---
+
+## [Robustness Hotfix — Prompt HX3] `content_raw` column + pure `sanitizePseudoTags` module  —  2026-06-06
+
+**Setup for HX4.** This prompt lands the data layer + the rewriter without touching the save path. HX4 then wires them together.
+
+**Migration.** Added `safeAddColumn(db, 'messages', 'content_raw TEXT')` in `electron/services/database.ts` `initSchema`, right after the R1 `stage TEXT` add (line 435). The existing `safeAddColumn` helper swallows the "duplicate column name" error on re-run, so the migration is idempotent on already-migrated DBs. NULL on pre-hotfix rows + non-assistant rows; HX4 sets it on assistant writes.
+
+**Pure rewriter.** New `electron/services/sanitize-pseudo-tags.ts` exports `sanitizePseudoTags(text: string): string`. Behaviour:
+- Shell-shaped tags (`<bash>` / `<tool>` / `<run>` / `<shell>` / `<execute>` / `<command>` / `<terminal>`) → ` ```bash ` fences.
+- Output-shaped tags (`<output>` / `<result>` / `<stdout>` / `<stderr>`) → ` ```text ` fences (deliberately not `bash` — would lie about content).
+- Case-insensitive tag names; body case + whitespace preserved verbatim.
+- Multi-line bodies preserved.
+- Fence-aware: pseudo-tags already inside an existing ` ``` … ``` ` block are left alone.
+- Unbalanced-safe: open-without-close → left intact (under-rewrite over corrupt).
+- Idempotent: `sanitize(sanitize(x)) === sanitize(x)` (covered by 3 explicit tests).
+- Non-string input returns input verbatim (defensive guard for malformed callers).
+
+**Tests.** 22 cases in `electron/services/sanitize-pseudo-tags.test.ts` — basic shell rewrites, output rewrites, case-insensitive matching, multi-tag strings, fence-awareness, unbalanced/edge cases, idempotency, plus the real-world 2026-06-06 user-reported bash-as-prose ghost-reply (asserts the canonical defective coder output cleans up correctly).
+
+**Files changed:** `electron/services/database.ts`, `electron/services/sanitize-pseudo-tags.ts` (new), `electron/services/sanitize-pseudo-tags.test.ts` (new).
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- electron-vite build ✓
+- vitest (`sanitize-pseudo-tags`): 22 / 22 ✓
+- user-verification-needed: `PRAGMA table_info(messages)` against an existing `lamprey.db` snapshot to confirm the column lands once and re-launch is a no-op.
+
+**Notes.** The renderer strips a single leading + trailing newline from the body when materialising the fence — the typical model emission is `<bash>\nls\n</bash>` and a doubled newline at fence start would look scruffy. Inner newlines are preserved.
+
+**Commit:** _this commit_
+
+---
+
+## [Robustness Hotfix — Prompt HX2] `PSEUDO_TAG_GUARD` constant generalised across model-facing roles  —  2026-06-06
+
+**Defect.** RT1 added the pseudo-XML guard ("never wrap commentary in `<bash>`, `<tool>`, `<run>`, …") but only on the Reviewer role. The same bash-as-prose defect surfaced on `coder` (per the 2026-06-06 user-reported screenshots) and is structurally possible on `planner` / `coworker` / composer too.
+
+**Fix.** Extracted the guard from its inline position in `AGENT_ROLE_PROMPTS.reviewer` into a top-level `export const PSEUDO_TAG_GUARD` placed just before `COMPOSER_SYSTEM` (so the composer-array literal can append it). Re-spliced into:
+- `AGENT_ROLE_PROMPTS.planner` (appended after "no code.")
+- `AGENT_ROLE_PROMPTS.coder` (appended after "Use tools when they exist.")
+- `AGENT_ROLE_PROMPTS.reviewer` (replaces the inline copy — body reassembles byte-identical to pre-HX2)
+- `AGENT_ROLE_PROMPTS.coworker` (appended after "avoid restating the obvious.")
+- `COMPOSER_SYSTEM` array (final entry, after "Keep it short and concrete.")
+
+`reader` and `verifier` are deliberately untouched — they emit short verdict strings (PASS / FAIL / UNCERTAIN) and won't carry pseudo-XML in practice. The HX2 test suite codifies that omission so a future refactor doesn't accidentally widen the surface.
+
+**Reviewer byte-identical invariant.** A new test `'reassembles byte-for-byte from PSEUDO_TAG_GUARD'` snapshots the exact RT1 reviewer body and asserts `AGENT_ROLE_PROMPTS.reviewer === RT1_REVIEWER_GOLDEN`. The refactor preserves the SHIP / file:line / no-tools contract verbatim.
+
+**Files changed:** `electron/services/system-prompt-builder.ts`, `electron/services/system-prompt-builder.test.ts`.
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- electron-vite build ✓
+- vitest (`system-prompt-builder`): 40 / 40 ✓ (13 new HX2 tests + 27 prior)
+
+**Notes.** Belt-and-braces — the persist-side sanitizer in HX3/HX4 catches the case where a model ignores the prompt guard anyway. The guard itself isn't blocking the bash-as-prose defect; it's making it less likely upstream.
+
+**Commit:** _this commit_
+
+---
+
+## [Robustness Hotfix — Prompt HX1] Single-instance lock blocks duplicate Lamprey processes  —  2026-06-06
+
+**Defect.** Double-clicking the desktop launcher (or any re-launch firing while the splash is up) spawned a second independent Electron process. Each duplicate opened its own SQLite handle on `lamprey.db`, its own MCP clients, its own watchers — at minimum confusing, at worst a write-race on shared `userData/`.
+
+**Root cause.** `electron/main.ts` never called `app.requestSingleInstanceLock()`. Standard Electron defect for any app that doesn't add the pattern explicitly.
+
+**Fix.** Added the lock at the top of `electron/main.ts`, just after the `mainWindow` declarations and before any other `app.on(...)` handlers register. If the lock isn't acquired, the second process calls `app.quit()` + `process.exit(0)` immediately — no IPC handlers register, no DB opens, no MCP boots. On `second-instance` event, the primary process restores the existing `BrowserWindow` if minimized and focuses it.
+
+**Headless exempted.** `isHeadlessCliArgv(process.argv)` short-circuits the lock check entirely. Each `lamprey --headless …` is a one-shot CLI run that exits cleanly via `stopLoopWakeups()` + `stopAutomations()` already in the headless branch, so parallel headless invocations from a shell stay legitimate.
+
+**Files changed:** `electron/main.ts`, `PLANNING/LAMPREY_ROBUSTNESS_HOTFIX_PLAN.md` (the plan itself).
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- electron-vite build ✓
+- user-verification-needed: double-click desktop launcher with Lamprey already open, confirm no second window appears + the existing window comes to front.
+
+**Notes.** `mainWindow` is declared with `let` immediately before the lock block, so the closure inside `app.on('second-instance', …)` resolves cleanly — at registration time the binding exists, at fire time it's assigned. No TypeScript "used before declaration" complaint.
+
+**Commit:** _this commit_
+
+---
+
 ## [Hotfix] v0.8.3 — Right-panel polish round 2  —  2026-06-06
 
 **Three follow-up fixes flagged from the v0.8.2 build.**

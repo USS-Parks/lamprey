@@ -20,6 +20,12 @@ export interface Message {
    *  off the streaming `delta.reasoning_content` channel and persisted
    *  alongside the visible body. Rendered by ReasoningBlock. */
   reasoning?: string
+  /** Robustness Hotfix HX4 (v0.8.4) — verbatim pre-sanitization copy of
+   *  the assistant row's body. `content` is the sanitized text (what every
+   *  UI surface reads), `contentRaw` preserves what the model actually
+   *  emitted so audit / export consumers can inspect it. Undefined on
+   *  legacy pre-hotfix rows and non-assistant rows. */
+  contentRaw?: string | null
   /** Standalone documents the model produced for this turn via the
    *  `create_document` native tool. Rendered as cards below the message
    *  body — separate from tool-call cards because these are deliverables,
