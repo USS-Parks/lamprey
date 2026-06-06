@@ -46,7 +46,7 @@ npx electron-vite build
 - `dist/` is electron-builder *output* and is gitignored, so a fresh clone never contains it.
 - The signed Windows NSIS `.exe` is produced ONLY by `npm run build:win` on the user's **Windows machine**, or by the **`build.yml` CI** on a `windows-latest` runner.
 - **Tag-push path (`v*`)** → CI builds `.exe` (Windows) + `.AppImage` (Linux) and attaches them to a **draft** GitHub release. **Branch-push to `main`** → CI builds the same artifacts but uploads them only as **workflow artifacts** (14-day retention), with NO release.
-- **Known environment limit:** this remote git proxy **rejects tag pushes (HTTP 403)** — branch pushes work, tag pushes do not. So from a cloud session: bump + commit + push `main` is doable, but **creating the `v*` tag (and thus the release) must be done by the user** (local `git push origin vX.Y.Z` or the GitHub "Draft a new release" UI).
+- **Environment note:** branch + tag pushes both work from this Windows session (verified 2026-06-06 on v0.8.2: `git push origin v0.8.2` succeeded first try, then `gh release create v0.8.2 ... --notes-file <file>` published the release with all four artifacts attached). When the user says "ship", "tag it", "release it", or "update the repo page", the ship arc INCLUDES `git push origin vX.Y.Z` + `gh release create vX.Y.Z` with the four Windows artifacts — do not defer either step. (Older sessions on cloud-Linux git proxies hit HTTP 403 on tag pushes; if that recurs in a future cloud session, fall back gracefully and flag it then — never decline pre-emptively here.)
 
 ## Architecture
 - **Main process**: `electron/main.ts` → `electron/ipc/` handlers → `electron/services/` business logic
