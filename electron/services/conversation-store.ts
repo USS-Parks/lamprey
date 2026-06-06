@@ -35,7 +35,17 @@ export interface MessageRow {
   /** JSON-encoded array of StoredDocument. NULL for turns with no
    *  create_document calls. */
   documents: string | null
+  /** Reasoning Audit Phase R1 — multi-agent pipeline stage discriminator.
+   *  NULL = legacy or single-agent. 'planner' | 'reviewer' | 'composer'
+   *  set by the pipeline / composer save sites. Coder rows stay NULL
+   *  (the implicit default) so legacy rows don't need backfill. */
+  stage: string | null
 }
+
+/** Allowed values for `MessageRow.stage`. Kept as a string union so
+ *  callers can pass `undefined` to mean "not a multi-agent row".
+ *  Coder rows intentionally stay NULL — see database.ts R1 migration. */
+export type MessageStage = 'planner' | 'reviewer' | 'composer'
 
 export interface StoredToolCall {
   id: string
@@ -521,6 +531,10 @@ export function saveMessage(msg: {
   draft?: string
   reasoning?: string
   documents?: StoredDocument[]
+  /** Reasoning Audit Phase R1 — multi-agent pipeline stage discriminator.
+   *  Pass 'planner' / 'reviewer' / 'composer' from agent-pipeline.ts +
+   *  chat.ts composer path. Omit (NULL) for single-agent + Coder rows. */
+  stage?: MessageStage
 }) {
   const db = getDb()
   const now = Date.now()
@@ -544,7 +558,7 @@ export function saveMessage(msg: {
   const toolCallsJson = msg.toolCalls && msg.toolCalls.length > 0 ? JSON.stringify(msg.toolCalls) : null
   const documentsJson = msg.documents && msg.documents.length > 0 ? JSON.stringify(msg.documents) : null
   db.prepare(
-    'INSERT INTO messages (id, conversation_id, role, content, model, tool_call_id, tool_calls, draft, reasoning, documents, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    'INSERT INTO messages (id, conversation_id, role, content, model, tool_call_id, tool_calls, draft, reasoning, documents, stage, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
   ).run(
     msg.id,
     msg.conversationId,
@@ -556,6 +570,7 @@ export function saveMessage(msg: {
     msg.draft || null,
     split.reasoning || null,
     documentsJson,
+    msg.stage || null,
     now
   )
   touchConversation(msg.conversationId)
@@ -576,7 +591,8 @@ export function saveMessage(msg: {
     toolCalls: msg.toolCalls,
     draft: msg.draft,
     reasoning: split.reasoning,
-    documents: msg.documents
+    documents: msg.documents,
+    stage: msg.stage
   }
 }
 
@@ -618,7 +634,11 @@ export function getMessages(conversationId: string) {
       compressedInto: row.compressed_into ?? undefined,
       toolCalls,
       reasoning: row.reasoning ?? undefined,
-      documents
+      documents,
+      // Reasoning Audit Phase R1 — multi-agent pipeline stage discriminator.
+      // NULL on legacy rows + Coder rows reaches the renderer as `undefined`,
+      // which MessageBubble (R7) treats as "no chip, no toggle".
+      stage: (row.stage ?? undefined) as MessageStage | undefined
     }
   })
 }

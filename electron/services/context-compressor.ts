@@ -20,6 +20,12 @@ export interface CompressorMessage {
   draft?: string
   compressedInto?: string
   toolCalls?: StoredToolCall[]
+  /** Reasoning Audit Phase R8 — chain-of-thought persisted on this row.
+   *  Flows through to `buildApiMessagesFromStoredMessages` which prepends
+   *  it as a leading `<think>` block when the
+   *  `includePastReasoningInContext` setting is on. NULL for legacy rows
+   *  + Coder rows + any row whose model didn't emit reasoning. */
+  reasoning?: string
 }
 
 // Track 2 / E5 — auto context compressor.
@@ -263,7 +269,7 @@ export function getEffectiveMessages(conversationId: string): CompressorMessage[
   const rows = db
     .prepare(
       `SELECT id, conversation_id, role, content, model, tool_call_id,
-              tool_calls, draft, created_at, compressed_into
+              tool_calls, draft, reasoning, created_at, compressed_into
          FROM messages
         WHERE conversation_id = ?
           AND compressed_into IS NULL
@@ -274,6 +280,7 @@ export function getEffectiveMessages(conversationId: string): CompressorMessage[
       tool_call_id: string | null
       tool_calls: string | null
       draft: string | null
+      reasoning: string | null
     }>
   return rows.map((r) => {
     let toolCalls: StoredToolCall[] | undefined
@@ -294,6 +301,10 @@ export function getEffectiveMessages(conversationId: string): CompressorMessage[
       model: r.model ?? undefined,
       toolCallId: r.tool_call_id ?? undefined,
       draft: r.draft ?? undefined,
+      // R8 — surface reasoning so buildApiMessagesFromStoredMessages can
+      // re-feed it as a leading <think> block on the next turn (gated
+      // by the includePastReasoningInContext setting).
+      reasoning: r.reasoning ?? undefined,
       // `tool_calls` lives off-type on the renderer mirror but the
       // dispatcher's chat-history builder reads it through the same
       // store. We surface it on the message body for compatibility

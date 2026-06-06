@@ -18,7 +18,8 @@ const TOOL_TITLES: Record<ToolId, string> = {
   sources: 'Sources',
   artifacts: 'Artifacts',
   plan: 'Plan',
-  background: 'Background tasks'
+  background: 'Background tasks',
+  reasoning: 'Reasoning trace'
 }
 
 interface TitlebarProps {

@@ -67,7 +67,8 @@ export async function planQueries(
 ): Promise<PlanResult> {
   const target = DEPTH_TARGET_COUNT[depth]
   const model = modelOverride ?? readDeepResearchSettings().classifierModel ?? DEFAULT_PLANNER_MODEL
-  const call = deps.callLlm ?? ((m, mod) => chatOnce(m, mod))
+  // R2: chatOnce returns {content, reasoning?}; planner consumes body only.
+  const call = deps.callLlm ?? ((m, mod) => chatOnce(m, mod).then((r) => r.content))
 
   const baseMessages: ChatCompletionMessageParam[] = [
     { role: 'system', content: PLANNER_SYSTEM_PROMPT(target) },

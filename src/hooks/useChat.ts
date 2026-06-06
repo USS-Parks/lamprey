@@ -94,6 +94,20 @@ export function useChat(): void {
       if (!stillRunning) useAgentStore.getState().clearRun()
     })
 
+    // Reasoning Audit Phase R4 — Planner audit row arriving mid-pipeline
+    // (between Planner and Coder stages). Append to messages without
+    // disrupting streaming state; R7 will attach it to the Coder bubble
+    // behind the "Show pipeline trace" toggle at render time.
+    const onPlannerMessage = (window.api.chat as {
+      onPlannerMessage?: (cb: (e: { conversationId: string; message: unknown }) => void) => void
+    }).onPlannerMessage
+    if (onPlannerMessage) {
+      onPlannerMessage((e) => {
+        if (!matchesActive(e as { conversationId?: string })) return
+        useChatStore.getState().appendPlannerMessage(e.message as any)
+      })
+    }
+
     window.api.chat.onError((e) => {
       if (!matchesActive(e)) return
       flushNow()

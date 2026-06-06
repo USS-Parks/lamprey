@@ -426,7 +426,7 @@ function App(): React.ReactElement {
             collapsed, full panel when expanded). On narrow viewports it's
             lifted out into a fixed slide-over drawer (see block below). */}
         {!isNarrow && rightPanelCollapsed && (
-          <div className="flex h-full w-8 flex-col items-center rounded-[var(--panel-radius)] bg-[var(--panel-bg)] py-2">
+          <div className="panel-shadow flex h-full w-8 flex-col items-center rounded-[var(--panel-radius)] bg-[var(--panel-bg)] py-2">
             <button
               onClick={() => setRightPanelCollapsed(false)}
               title="Expand artifacts panel"
@@ -442,7 +442,7 @@ function App(): React.ReactElement {
         )}
         {!isNarrow && !rightPanelCollapsed && activeTool && (
           <div
-            className="relative flex flex-col overflow-hidden rounded-[var(--panel-radius)] bg-[var(--panel-bg)]"
+            className="panel-shadow relative flex flex-col overflow-hidden rounded-[var(--panel-radius)] bg-[var(--panel-bg)]"
             style={{ width: rightPanelWidth, minWidth: rightPanelWidth }}
           >
             <div
@@ -466,7 +466,7 @@ function App(): React.ReactElement {
         )}
         {!isNarrow && !rightPanelCollapsed && !activeTool && !artifactOpen && (
           <div
-            className="relative flex flex-col overflow-hidden rounded-[var(--panel-radius)] bg-[var(--panel-bg)]"
+            className="panel-shadow relative flex flex-col overflow-hidden rounded-[var(--panel-radius)] bg-[var(--panel-bg)]"
             style={{ width: rightPanelWidth, minWidth: rightPanelWidth }}
           >
             <div

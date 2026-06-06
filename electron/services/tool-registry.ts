@@ -656,6 +656,57 @@ toolRegistry.registerNative({
   enabled: true
 })
 
+// RT4 — get_conversation_history. Read-only model-callable lookup into the
+// user's own conversation DB so the model can explicitly ask "show me turn
+// N's reasoning" by name. Adjacent to R8's API stack rehydration (which
+// makes prior reasoning implicitly available); this tool makes the same
+// surface explicit and addressable by index. Risk classification: 'read' —
+// no network, no mutation, scoped to one conversation at a time.
+toolRegistry.registerNative({
+  id: 'get_conversation_history',
+  name: 'get_conversation_history',
+  title: 'Get conversation history',
+  description:
+    'Look up turns from the current (or a specified) conversation. Use this when you need to reference a specific earlier turn — its visible body, its reasoning, its tool calls, or its per-stage token cost — without paging the entire history into context. By default returns the most recent 20 turns of the active conversation with reasoning included. Pass `turn_index` to select a single turn. Pass `include_stage_metrics: true` to attach per-stage token + duration rows (planner/coder/reviewer/single). Pass `include_tool_calls: true` to include the assistant tool-call list for each turn. Read-only — never modifies state.',
+  providerKind: 'native',
+  providerId: 'internal',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      conversation_id: {
+        type: 'string',
+        description: 'Conversation id to read from. Defaults to the active conversation.'
+      },
+      turn_index: {
+        type: 'number',
+        description: 'Single 0-based turn index to fetch. When set, `limit` is ignored.'
+      },
+      limit: {
+        type: 'number',
+        description: 'Max turns to return (default 20, max 200). Most recent first.'
+      },
+      include_reasoning: {
+        type: 'boolean',
+        description: 'Include the per-turn reasoning text. Default true.'
+      },
+      include_stage_metrics: {
+        type: 'boolean',
+        description: 'Include per-stage token + duration rows. Default false.'
+      },
+      include_tool_calls: {
+        type: 'boolean',
+        description: 'Include the assistant tool-call list per turn. Default false.'
+      }
+    },
+    additionalProperties: false
+  },
+  risks: ['read'],
+  requiresApproval: false,
+  enabled: true,
+  mutates: false,
+  parallelizable: true
+})
+
 // shell_command — PowerShell on Windows, bash elsewhere. The workspace
 // boundary is also enforced inside the handler so a missing approval gate
 // cannot escape the tree (defense in depth). S3-S7 added platform sandbox

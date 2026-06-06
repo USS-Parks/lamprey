@@ -612,12 +612,26 @@ export async function verifyCatalog(): Promise<CatalogVerificationReport> {
   }
 }
 
+/** Reasoning Audit Phase R2 — chatOnce now returns BOTH the visible body
+ *  and any chain-of-thought the provider emitted alongside it. Reads the
+ *  two field names different OpenAI-compatible APIs use:
+ *    - `message.reasoning`         (OpenRouter, some DeepSeek variants)
+ *    - `message.reasoning_content` (DashScope qwen, deepseek-reasoner on
+ *                                   non-streamed responses)
+ *  Both are stripped + trimmed; if both are populated, `reasoning` wins.
+ *  Undefined when neither is set or both are empty. Callers that only
+ *  care about the body destructure `{ content }`. */
+export interface ChatOnceResult {
+  content: string
+  reasoning?: string
+}
+
 export async function chatOnce(
   messages: ChatCompletionMessageParam[],
   modelId: string,
   signal?: AbortSignal,
   audit?: ModelRequestAudit
-): Promise<string> {
+): Promise<ChatOnceResult> {
   const desc = resolveModel(modelId)
   const client = getClientForProvider(desc.provider)
   const startedAt = Date.now()
@@ -642,12 +656,25 @@ export async function chatOnce(
       },
       signal ? { signal } : undefined
     )
-    const content = response.choices[0]?.message?.content || ''
+    const message = response.choices[0]?.message as
+      | { content?: string | null; reasoning?: string | null; reasoning_content?: string | null }
+      | undefined
+    const content = message?.content || ''
+    // Provider field-name variance — see ChatOnceResult docstring. Take
+    // the first populated value; trim whitespace; treat empty as absent.
+    const rawReasoning =
+      (typeof message?.reasoning === 'string' && message.reasoning.length > 0
+        ? message.reasoning
+        : typeof message?.reasoning_content === 'string' && message.reasoning_content.length > 0
+          ? message.reasoning_content
+          : '') ?? ''
+    const reasoning = rawReasoning.trim().length > 0 ? rawReasoning.trim() : undefined
     const finishReason = response.choices[0]?.finish_reason ?? undefined
     trace('chatOnce.complete', {
       traceId,
       durationMs: Date.now() - startedAt,
       contentLen: content.length,
+      reasoningLen: reasoning?.length ?? 0,
       finishReason
     })
     emitModelRequestCompleted(desc, audit, {
@@ -658,7 +685,7 @@ export async function chatOnce(
       finishReason,
       cancelled: signal?.aborted ?? false
     })
-    return content
+    return { content, reasoning }
   } catch (err: any) {
     trace('chatOnce.error', {
       traceId,

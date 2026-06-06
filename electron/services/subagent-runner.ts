@@ -48,8 +48,27 @@ export interface ForkAgentRunnerInput {
   worktreePath?: string
 }
 
+/** Reasoning Audit Phase R3 — the fork-agent runner may now return either
+ *  the legacy plain-string body OR an object carrying both the body and
+ *  any chain-of-thought the underlying model emitted alongside it.
+ *  Existing test runners (`async () => 'ok'`) keep working unchanged
+ *  through the string branch; production paths that adapt `chatOnce`
+ *  (which returns `{content, reasoning?}`) can return the object form
+ *  so reasoning flows through to `ForkAgentResult.rawReasoning`. */
+export type ForkAgentRunnerOutput = string | { output: string; reasoning?: string }
+
 export interface ForkAgentRunner {
-  (input: ForkAgentRunnerInput): Promise<string>
+  (input: ForkAgentRunnerInput): Promise<ForkAgentRunnerOutput>
+}
+
+/** Normalise a `ForkAgentRunnerOutput` to `{raw, rawReasoning}` so internal
+ *  call sites always see the same shape regardless of which runner form
+ *  the caller used. */
+export function normalizeForkRunnerOutput(
+  result: ForkAgentRunnerOutput
+): { raw: string; rawReasoning?: string } {
+  if (typeof result === 'string') return { raw: result }
+  return { raw: result.output, rawReasoning: result.reasoning }
 }
 
 export interface SubagentTypeResolver {
@@ -151,6 +170,14 @@ export interface ForkAgentResult<T = string | Record<string, unknown>> {
   label: string
   output: T
   rawOutput: string
+  /** Reasoning Audit Phase R3 — chain-of-thought the underlying model
+   *  emitted alongside `rawOutput`. Populated when the runner returned
+   *  the object form `{output, reasoning?}` AND reasoning was non-empty.
+   *  Undefined for runners that returned a plain string, or for runners
+   *  that returned no reasoning. Consumers that care (agent-pipeline +
+   *  multi-agent-run-tool) plumb this into the saved row's `reasoning`
+   *  column; the model-callable `multi_agent_run` tool path drops it. */
+  rawReasoning?: string
   elapsedMs: number
   tokensUsedEstimate: number
 }
@@ -535,7 +562,10 @@ export function forkAgent<T = string | Record<string, unknown>>(
       // times with the validation error appended; on exhaustion we surface
       // the last error. When opts.schema is unset, this is a single straight
       // pass through deps.runner.
+      // R3: deps.runner may return string OR {output, reasoning?}; the last
+      // pass's reasoning (if any) is carried out on rawReasoning.
       let raw: string
+      let rawReasoning: string | undefined
       let output: string | Record<string, unknown>
       if (opts.schema) {
         let attempt = 0
@@ -543,7 +573,10 @@ export function forkAgent<T = string | Record<string, unknown>>(
         let currentMessages: ChatCompletionMessageParam[] = runnerInput.messages
         while (true) {
           attempt++
-          raw = await deps.runner({ ...runnerInput, messages: currentMessages })
+          const runResult = await deps.runner({ ...runnerInput, messages: currentMessages })
+          const normalised = normalizeForkRunnerOutput(runResult)
+          raw = normalised.raw
+          rawReasoning = normalised.rawReasoning
           const payload = extractJsonPayload(raw)
           try {
             const parsed = JSON.parse(payload) as unknown
@@ -577,7 +610,10 @@ export function forkAgent<T = string | Record<string, unknown>>(
           }
         }
       } else {
-        raw = await deps.runner(runnerInput)
+        const runResult = await deps.runner(runnerInput)
+        const normalised = normalizeForkRunnerOutput(runResult)
+        raw = normalised.raw
+        rawReasoning = normalised.rawReasoning
         output = raw
       }
       const elapsedMs = Math.max(0, clock() - startedAt)
@@ -634,6 +670,7 @@ export function forkAgent<T = string | Record<string, unknown>>(
         label,
         output: output as T,
         rawOutput: raw,
+        rawReasoning,
         elapsedMs,
         tokensUsedEstimate: approxTokens(raw)
       }

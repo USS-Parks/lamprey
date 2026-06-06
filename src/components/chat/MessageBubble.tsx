@@ -8,9 +8,17 @@ import { ReasoningBlock } from './ReasoningBlock'
 import { MessageActions } from './MessageActions'
 import { WakeupPill } from './WakeupPill'
 import { DocumentCardRow } from './DocumentCardRow'
+import { StageTokenChips } from './StageTokenChips'
 
 interface MessageBubbleProps {
   message: Message
+  /** Reasoning Audit Phase R7 — Planner audit row attached to this
+   *  bubble per Invariant §2.9. When supplied, the bubble grows a
+   *  "Show pipeline trace ▾" toggle that reveals the attached
+   *  Planner's reasoning + plan text inline below the body. Coder /
+   *  Composer / single-agent bubbles can carry one; Reviewer +
+   *  user/system/tool bubbles never do. */
+  attachedPlanner?: Message
 }
 
 const REMEMBER_MAX = 280
@@ -26,11 +34,14 @@ function truncateForMemory(content: string): string {
   return trimmed.slice(0, REMEMBER_MAX).trimEnd() + '…'
 }
 
-export function MessageBubble({ message }: MessageBubbleProps) {
+export function MessageBubble({ message, attachedPlanner }: MessageBubbleProps) {
   const isUser = message.role === 'user'
   const isTool = message.role === 'tool'
   const addMemory = useMemoryStore((s) => s.addMemory)
   const [saving, setSaving] = useState(false)
+  // R7 — collapsed by default. Click "Show pipeline trace ▾" to expand
+  // the inline panel showing the attached Planner row's reasoning + plan.
+  const [traceOpen, setTraceOpen] = useState(false)
 
   if (isTool) return null
 
@@ -103,6 +114,45 @@ export function MessageBubble({ message }: MessageBubbleProps) {
           <>
             {reasoning && <ReasoningBlock content={reasoning} />}
             <MarkdownRenderer content={body} />
+            <StageTokenChips messageId={message.id} />
+            {/* R7 — "Show pipeline trace ▾" toggle. Reveals the attached
+                Planner row (stage='planner', hidden in the main thread per
+                Invariant §2.9) as an inline collapsed panel with its own
+                ReasoningBlock + plan text. Renders ONLY when a Planner
+                row is attached to this bubble. */}
+            {attachedPlanner && (
+              <div className="mt-3">
+                <button
+                  type="button"
+                  onClick={() => setTraceOpen((v) => !v)}
+                  className="flex items-center gap-1.5 text-[12px] uppercase tracking-wider text-[var(--text-muted)] transition-colors hover:text-[var(--text-secondary)]"
+                  title={traceOpen ? 'Hide planner trace' : 'Show planner trace'}
+                >
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden>
+                    {traceOpen ? <path d="M6 9l6 6 6-6" /> : <path d="M9 6l6 6-6 6" />}
+                  </svg>
+                  <span>{traceOpen ? 'Hide' : 'Show'} pipeline trace</span>
+                  {attachedPlanner.model && (
+                    <span className="ml-1 rounded bg-[var(--bg-tertiary)]/60 px-1 py-0.5 text-[10px] normal-case tracking-normal text-[var(--text-muted)]">
+                      planner · {attachedPlanner.model}
+                    </span>
+                  )}
+                </button>
+                {traceOpen && (
+                  <div className="mt-2 rounded-lg bg-[var(--bg-tertiary)]/40 p-3">
+                    {attachedPlanner.reasoning && (
+                      <ReasoningBlock content={attachedPlanner.reasoning} />
+                    )}
+                    <div className="mt-1 text-[12px] uppercase tracking-wider text-[var(--text-muted)]">
+                      Plan
+                    </div>
+                    <div className="mt-1 whitespace-pre-wrap text-[13px] text-[var(--text-secondary)]">
+                      {attachedPlanner.content}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </>
         )}
         <div className="mt-1 flex items-center gap-2 text-[12px] text-[var(--text-muted)] opacity-0 transition-opacity group-hover:opacity-100">
@@ -110,6 +160,26 @@ export function MessageBubble({ message }: MessageBubbleProps) {
           {message.model && (
             <span className="rounded bg-[var(--bg-primary)] px-1">
               {message.model === 'deepseek-reasoner' ? 'R1' : 'V3'}
+            </span>
+          )}
+          {/* R7 — stage chip. Reviewer rows get a small purple "Reviewer"
+              chip; Composer rows get a muted "Composer" chip. Coder /
+              single-agent rows render no chip (default). Orphan Planner
+              rows that fell through to standalone render get a blue
+              "Planner" chip so the audit trail is never lost. */}
+          {message.stage === 'reviewer' && (
+            <span className="rounded bg-purple-500/15 px-1 text-purple-400 dark:text-purple-300">
+              Reviewer
+            </span>
+          )}
+          {message.stage === 'composer' && (
+            <span className="rounded bg-[var(--bg-tertiary)]/60 px-1 text-[var(--text-muted)]">
+              Composer
+            </span>
+          )}
+          {message.stage === 'planner' && (
+            <span className="rounded bg-sky-500/15 px-1 text-sky-400 dark:text-sky-300">
+              Planner (orphan)
             </span>
           )}
           <button

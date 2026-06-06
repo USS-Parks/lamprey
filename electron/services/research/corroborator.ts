@@ -205,7 +205,8 @@ export async function corroborateWithOpposition(
   embeddings: EmbeddingProvider,
   opts: CorroborateOpts = {}
 ): Promise<ClaimSet> {
-  const callLlm = opts.callLlm ?? ((m, mod) => chatOnce(m, mod))
+  // R2: chatOnce returns {content, reasoning?}; corroborator consumes body only.
+  const callLlm = opts.callLlm ?? ((m, mod) => chatOnce(m, mod).then((r) => r.content))
   return corroborate(claims, sources, embeddings, { ...opts, callLlm })
 }
 

@@ -420,6 +420,20 @@ function initSchema(db: Database.Database): void {
   // for turns that produced none. Rendered as cards below the message body.
   safeAddColumn(db, 'messages', 'documents TEXT')
 
+  // Reasoning Audit Phase R1: per-stage discriminator for assistant rows.
+  // NULL on legacy rows + single-agent runs (default semantic = "the single
+  // assistant row of the turn"). Multi-agent pipeline sets one of:
+  //   'planner'   — saved by agent-pipeline post-planner (R4); rendered
+  //                  attached to the next Coder/Composer bubble behind a
+  //                  "Show pipeline trace" toggle (R7).
+  //   'reviewer'  — saved by agent-pipeline post-reviewer (R5).
+  //   'composer'  — saved by chat.ts when the Final Response Composer runs,
+  //                  carrying the cumulative per-round reasoning trail (R6).
+  // 'coder' is implicit: any assistant row from the multi-agent pipeline that
+  // isn't planner/reviewer/composer is the Coder. We don't write 'coder'
+  // explicitly to keep migration of legacy rows a no-op (NULL stays NULL).
+  safeAddColumn(db, 'messages', 'stage TEXT')
+
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_conversations_project
       ON conversations(project_id, updated_at DESC);
@@ -657,6 +671,28 @@ function initSchema(db: Database.Database): void {
       ON snip_command_log(ts DESC);
     CREATE INDEX IF NOT EXISTS idx_snip_command_log_head
       ON snip_command_log(command_head, ts DESC);
+  `)
+
+  // Reasoning-Trace Phase / RT2 — per-stage token + duration metrics for
+  // multi-agent pipelines. One row per (message, stage) so the Reasoning
+  // Trace Viewer and StageTokenChips can render planner/coder/reviewer
+  // costs separately. Single-agent turns get one row with stage='single'
+  // so the audit surface is uniform. FK→messages.id with ON DELETE CASCADE
+  // means a deleted conversation cleans up its metrics transitively.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS message_stage_metrics (
+      id                TEXT PRIMARY KEY,
+      message_id        TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+      stage             TEXT NOT NULL CHECK(stage IN ('planner','coder','reviewer','single')),
+      model             TEXT,
+      prompt_tokens     INTEGER,
+      completion_tokens INTEGER,
+      duration_ms       INTEGER,
+      created_at        INTEGER NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_message_stage_metrics_message
+      ON message_stage_metrics(message_id, created_at ASC);
   `)
 
   // The sqlite-vec virtual table is created separately and is gated on the

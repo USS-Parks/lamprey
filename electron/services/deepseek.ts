@@ -27,7 +27,11 @@ export class DeepSeekClient {
   }
 
   async chat(messages: ChatCompletionMessageParam[], model: string): Promise<string> {
-    return chatOnce(messages, model)
+    // R2: chatOnce now returns {content, reasoning?}. This legacy wrapper
+    // surfaces only the body (it's used by tests + a couple of legacy
+    // callers); reasoning preservation goes through the chat.ts paths.
+    const result = await chatOnce(messages, model)
+    return result.content
   }
 
   async chatStream(

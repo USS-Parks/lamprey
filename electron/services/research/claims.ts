@@ -68,7 +68,10 @@ export async function extractClaims(
   if (page.status !== 'ok' || !page.fullText) return []
 
   const model = modelOverride ?? readDeepResearchSettings().classifierModel ?? DEFAULT_CLAIMS_MODEL
-  const call = deps.callLlm ?? ((m, mod) => chatOnce(m, mod))
+  // R2: chatOnce returns {content, reasoning?}. Research callers consume
+  // body only — reasoning preservation is a chat-mode concern, not a
+  // research-claim-extraction concern.
+  const call = deps.callLlm ?? ((m, mod) => chatOnce(m, mod).then((r) => r.content))
 
   const userMessage = `Source title: ${page.title}\nSource URL: ${page.url}\n\nPage content (extracted main text):\n${page.fullText}`
   const messages: ChatCompletionMessageParam[] = [

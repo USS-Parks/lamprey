@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useChatStore } from '../../stores/chat-store'
+import { useAgentStore } from '../../stores/agent-store'
 
 interface StreamStatusLineProps {
   startedAt: number | null
@@ -28,6 +29,11 @@ export function StreamStatusLine({ startedAt, content, reasoning }: StreamStatus
   // "last chunk Ns ago" line. Falls back gracefully when no heartbeat
   // has arrived (e.g. the very first second of a stream).
   const vitals = useChatStore((s) => s.streamingVitals)
+  // RT3 — when multi-agent mode is active, show which stage is currently
+  // running. This is the live counterpart to the persistent StageTokenChips
+  // on the assistant bubble.
+  const agentMode = useAgentStore((s) => s.mode)
+  const activeRun = useAgentStore((s) => s.activeRun)
 
   useEffect(() => {
     if (!startedAt) return
@@ -65,12 +71,21 @@ export function StreamStatusLine({ startedAt, content, reasoning }: StreamStatus
         ? 'text-[var(--warning,#eab308)]'
         : ''
 
+  const runningStage =
+    agentMode === 'multi' ? activeRun.find((r) => r.state === 'running')?.role : undefined
+
   return (
     <div className="mt-2 flex items-center gap-2 font-mono text-[11px] text-[var(--text-muted)]">
       <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--accent)]" />
       <span>{elapsed}</span>
       <span aria-hidden>·</span>
       <span>{phase}</span>
+      {runningStage && (
+        <>
+          <span aria-hidden>·</span>
+          <span className="text-[var(--accent)]">stage:{runningStage}</span>
+        </>
+      )}
       <span aria-hidden>·</span>
       <span>~{outputTokens.toLocaleString()} tokens</span>
       {sinceLastChunkLabel && (

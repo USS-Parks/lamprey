@@ -316,6 +316,34 @@ describe('executeMultiAgentRun', () => {
     expect(out.results[0].output).toBe('ok')
     expect(MULTI_AGENT_DEFAULT_TIMEOUT_MS).toBeGreaterThan(1000)
   })
+
+  // Reasoning Audit Phase R3 — sub-agent runner may return the object
+  // form `{output, reasoning?}`; reasoning must propagate through
+  // forkAgent → SubAgentResult so agent-pipeline can persist it.
+  it('R3: propagates reasoning when runner returns {output, reasoning}', async () => {
+    const out = await executeMultiAgentRun({
+      args: { tasks: [{ role: 'planner', prompt: 'plan', context: '' }] },
+      defaultModel: 'm',
+      runner: async () => ({
+        output: 'PLAN: do the thing',
+        reasoning: 'I weighed three options and picked this one'
+      })
+    })
+    expect(out.results[0].output).toBe('PLAN: do the thing')
+    expect(out.results[0].reasoning).toBe('I weighed three options and picked this one')
+  })
+
+  // Backwards-compat — every existing string-return runner keeps working
+  // and produces `reasoning: undefined` on the SubAgentResult.
+  it('R3: plain-string runner produces undefined reasoning', async () => {
+    const out = await executeMultiAgentRun({
+      args: { tasks: [{ role: 'reader', prompt: 'p', context: '' }] },
+      defaultModel: 'm',
+      runner: async () => 'plain body'
+    })
+    expect(out.results[0].output).toBe('plain body')
+    expect(out.results[0].reasoning).toBeUndefined()
+  })
 })
 
 describe('classifyMultiAgentRunResult', () => {

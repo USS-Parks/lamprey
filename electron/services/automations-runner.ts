@@ -103,7 +103,7 @@ async function runOne(autoId: string): Promise<void> {
     startedAt
   })
   try {
-    const reply = await chatOnce(
+    const replyResult = await chatOnce(
       [{ role: 'user', content: a.prompt }] as any,
       model,
       undefined,
@@ -112,6 +112,7 @@ async function runOne(autoId: string): Promise<void> {
       // automation.started → model.request.* → automation.completed.
       { correlationId, purpose: 'other', role: 'automation' }
     )
+    const reply = replyResult.content
     recordRun(a.id, reply.slice(0, 4000))
     emitAutomationEvent('automation.completed', {
       automationId: a.id,

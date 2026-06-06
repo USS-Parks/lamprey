@@ -208,7 +208,8 @@ export async function classifyResearchIntent(
   deps: ClassifierDeps = {}
 ): Promise<ResearchIntent | null> {
   const model = modelOverride ?? readDeepResearchSettings().classifierModel ?? DEFAULT_CLASSIFIER_MODEL
-  const call = deps.callLlm ?? ((m, mod) => chatOnce(m, mod))
+  // R2: chatOnce returns {content, reasoning?}; intent classifier needs body only.
+  const call = deps.callLlm ?? ((m, mod) => chatOnce(m, mod).then((r) => r.content))
   const messages: ChatCompletionMessageParam[] = [
     { role: 'system', content: CLASSIFIER_SYSTEM_PROMPT },
     { role: 'user', content: body }

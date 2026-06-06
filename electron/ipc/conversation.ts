@@ -2,6 +2,7 @@ import { ipcMain } from 'electron'
 import { randomUUID } from 'crypto'
 import * as store from '../services/conversation-store'
 import { chatOnce } from '../services/providers/registry'
+import { listStageMetrics } from '../services/stage-metrics-store'
 
 export function registerConversationHandlers(): void {
   ipcMain.handle('conversation:list', async () => {
@@ -109,6 +110,18 @@ export function registerConversationHandlers(): void {
     }
   })
 
+  // RT3 — per-stage token + duration metrics for an assistant message.
+  // Single-agent turns return one row (stage='single'); multi-agent turns
+  // return planner + coder on the coder message id, reviewer on the
+  // reviewer message id.
+  ipcMain.handle('conversation:listStageMetrics', async (_event, messageId: string) => {
+    try {
+      return { success: true, data: listStageMetrics(messageId) }
+    } catch (err: any) {
+      return { success: false, error: err.message }
+    }
+  })
+
   ipcMain.handle('conversation:appendSystem', async (_event, id, content) => {
     try {
       const msg = store.saveMessage({
@@ -181,7 +194,8 @@ export function registerConversationHandlers(): void {
             content: m.content
           }))
       ]
-      const summary = await chatOnce(summaryReq as any, conv.model)
+      const summaryResult = await chatOnce(summaryReq as any, conv.model)
+      const summary = summaryResult.content
       if (!summary?.trim()) {
         return { success: false, error: 'Summarizer returned empty output.' }
       }

@@ -1,4 +1,4 @@
-import { appendFileSync, existsSync, statSync, renameSync } from 'fs'
+import { appendFileSync, existsSync, statSync, renameSync, readFileSync } from 'fs'
 import { join } from 'path'
 
 // Diagnostic trace writer for the Stall & Timeout phase follow-up. Writes
@@ -45,14 +45,15 @@ function isEnabled(): boolean {
     return false
   }
   try {
-    // Lazy require so the module can be imported in tests without electron.
-    const fs = require('fs') as typeof import('fs')
+    // `fs` is statically imported at the top of this module — see the
+    // standalone-no-cycle note above. Lazy require was a holdover and the
+    // ESLint rule @typescript-eslint/no-require-imports forbids it.
     const settingsPath = join(userDataPathProvider(), 'settings.json')
-    if (!fs.existsSync(settingsPath)) {
+    if (!existsSync(settingsPath)) {
       enabledCache = false
       return false
     }
-    const raw = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as { debugTrace?: unknown }
+    const raw = JSON.parse(readFileSync(settingsPath, 'utf-8')) as { debugTrace?: unknown }
     enabledCache = raw.debugTrace === true
     return enabledCache
   } catch {

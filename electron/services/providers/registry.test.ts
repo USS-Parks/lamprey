@@ -30,6 +30,7 @@ vi.mock('../event-log', () => ({
 
 import {
   chatStream,
+  chatOnce,
   StreamInactivityError,
   __setStreamInactivityForTesting,
   resetProviderClients
@@ -336,4 +337,124 @@ describe('chatStream — streaming-vitals heartbeat (T4)', () => {
 
     __setStreamInactivityForTesting(null)
   }, 10_000)
+})
+
+// Reasoning Audit Phase R2 — chatOnce now returns BOTH the visible body
+// and any chain-of-thought the provider emitted alongside it. These tests
+// pin the SDK response-shape contract: both `message.reasoning` and
+// `message.reasoning_content` (the two field names different OpenAI-
+// compatible APIs use) must be picked up. Without this pin, a future
+// refactor could silently drop reasoning at the boundary again.
+describe('chatOnce — reasoning channel extraction (R2)', () => {
+  it('returns body only when neither reasoning field is set', async () => {
+    mockCreate.mockResolvedValueOnce({
+      choices: [
+        {
+          message: { content: 'plain body' },
+          finish_reason: 'stop'
+        }
+      ]
+    })
+    const result = await chatOnce(
+      [{ role: 'user', content: 'q' }],
+      'deepseek-v4-pro'
+    )
+    expect(result.content).toBe('plain body')
+    expect(result.reasoning).toBeUndefined()
+  })
+
+  it('extracts reasoning from message.reasoning (OpenRouter shape)', async () => {
+    mockCreate.mockResolvedValueOnce({
+      choices: [
+        {
+          message: {
+            content: 'final answer',
+            reasoning: 'I thought through it like this'
+          },
+          finish_reason: 'stop'
+        }
+      ]
+    })
+    const result = await chatOnce(
+      [{ role: 'user', content: 'q' }],
+      'deepseek-v4-pro'
+    )
+    expect(result.content).toBe('final answer')
+    expect(result.reasoning).toBe('I thought through it like this')
+  })
+
+  it('extracts reasoning from message.reasoning_content (DashScope / DeepSeek shape)', async () => {
+    mockCreate.mockResolvedValueOnce({
+      choices: [
+        {
+          message: {
+            content: 'final answer',
+            reasoning_content: 'CoT on the other field name'
+          },
+          finish_reason: 'stop'
+        }
+      ]
+    })
+    const result = await chatOnce(
+      [{ role: 'user', content: 'q' }],
+      'deepseek-v4-pro'
+    )
+    expect(result.content).toBe('final answer')
+    expect(result.reasoning).toBe('CoT on the other field name')
+  })
+
+  it('prefers message.reasoning when both fields are populated', async () => {
+    mockCreate.mockResolvedValueOnce({
+      choices: [
+        {
+          message: {
+            content: 'final answer',
+            reasoning: 'primary CoT',
+            reasoning_content: 'duplicate CoT'
+          },
+          finish_reason: 'stop'
+        }
+      ]
+    })
+    const result = await chatOnce(
+      [{ role: 'user', content: 'q' }],
+      'deepseek-v4-pro'
+    )
+    expect(result.reasoning).toBe('primary CoT')
+  })
+
+  it('treats whitespace-only reasoning as absent', async () => {
+    mockCreate.mockResolvedValueOnce({
+      choices: [
+        {
+          message: { content: 'body', reasoning: '   \n  ' },
+          finish_reason: 'stop'
+        }
+      ]
+    })
+    const result = await chatOnce(
+      [{ role: 'user', content: 'q' }],
+      'deepseek-v4-pro'
+    )
+    expect(result.reasoning).toBeUndefined()
+  })
+
+  it('trims surrounding whitespace from preserved reasoning', async () => {
+    mockCreate.mockResolvedValueOnce({
+      choices: [
+        {
+          message: {
+            content: 'body',
+            reasoning: '  actual reasoning  \n'
+          },
+          finish_reason: 'stop'
+        }
+      ]
+    })
+    const result = await chatOnce(
+      [{ role: 'user', content: 'q' }],
+      'deepseek-v4-pro'
+    )
+    expect(result.reasoning).toBe('actual reasoning')
+  })
 })

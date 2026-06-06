@@ -90,7 +90,8 @@ export async function synthesizeReport(
   deps: SynthesizeDeps = {}
 ): Promise<SynthesisOutput> {
   const model = input.modelOverride ?? readDeepResearchSettings().synthesizerModel ?? DEFAULT_SYNTH_MODEL
-  const call = deps.callLlm ?? ((m, mod) => chatOnce(m, mod))
+  // R2: chatOnce returns {content, reasoning?}; synthesizer consumes body only.
+  const call = deps.callLlm ?? ((m, mod) => chatOnce(m, mod).then((r) => r.content))
   const accessedAt = deps.accessedAt ?? input.accessedAt
 
   const validIndices = new Set(input.sources.map((s) => s.n))

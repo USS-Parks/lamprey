@@ -128,18 +128,23 @@ async function runConversationTurn(conversationId: string): Promise<HeadlessRunR
     systemPrompt,
     storedMessages
   ) as ChatCompletionMessageParam[]
-  const output = await chatOnce(apiMessages, conv.model, undefined, {
+  const result = await chatOnce(apiMessages, conv.model, undefined, {
     correlationId: randomUUID(),
     conversationId,
     purpose: 'main',
     role: 'headless'
   })
+  const output = result.content
   const message = saveMessage({
     id: randomUUID(),
     conversationId,
     role: 'assistant',
     content: output,
-    model: conv.model
+    model: conv.model,
+    // R2: headless runs preserve reasoning the model emitted on this call,
+    // so the audit trail is consistent with interactive runs. Composer
+    // pass + per-stage chips don't apply in headless mode.
+    reasoning: result.reasoning
   })
   return {
     success: true,

@@ -176,37 +176,79 @@ export function MessageList({
         <div className={CHAT_COLUMN_CLASS}>
           {/* D12 — Deep Research Banner pinned at top of MessageList */}
           {activeConvId && <DeepResearchBanner conversationId={activeConvId} />}
-          {messages.map((msg, i) => {
-            // Track 2 / E5 — messages that were folded into a summary
-            // by the compressor are not rendered here (the summary
-            // message replaces them). The renderer's effective view
-            // SHOULD already filter, but we double-guard to keep the
-            // pill from showing alongside its originals if the chat
-            // store ever ships the raw view.
-            if (msg.compressedInto) return null
-            const compressed = isCompressedSummaryMessage(msg)
-            return (
-              <div key={msg.id} data-message-id={msg.id}>
-                {byBefore[i]?.map((c) => (
-                  <ChapterDivider key={c.id} chapter={c} />
-                ))}
-                {noticesByBefore[i]?.map((n) => (
-                  <TranscriptNotice
-                    key={n.id}
-                    notice={n}
-                    onDismiss={() => dismissNotice(n.conversationId, n.id)}
-                  />
-                ))}
-                {compressed ? (
-                  <CompressedRegionPill message={msg} />
-                ) : msg.role === 'system' ? (
-                  <SystemMarker content={msg.content} />
-                ) : (
-                  <MessageBubble message={msg} />
-                )}
-              </div>
-            )
-          })}
+          {(() => {
+            // Reasoning Audit Phase R7 — pre-walk messages to attach each
+            // Planner row to the next downstream Coder/Composer bubble.
+            // Planner rows are NOT rendered as their own bubbles per
+            // Invariant §2.9; the next assistant bubble grows a "Show
+            // pipeline trace ▾" toggle that reveals the attached Planner's
+            // reasoning + plan text. Orphan Planner rows (no downstream
+            // bubble — e.g. pipeline aborted before Coder) fall back to
+            // rendering standalone with a "Planner" chip so they're never
+            // silently lost.
+            const renderItems: Array<
+              | { kind: 'msg'; msg: Message; index: number; attachedPlanner?: Message }
+              | { kind: 'plannerOrphan'; msg: Message; index: number }
+            > = []
+            let pendingPlanner: Message | null = null
+            for (let i = 0; i < messages.length; i++) {
+              const m = messages[i]
+              if (m.compressedInto) continue
+              if (m.role === 'assistant' && m.stage === 'planner') {
+                pendingPlanner = m
+                continue
+              }
+              if (m.role === 'assistant' && pendingPlanner) {
+                renderItems.push({ kind: 'msg', msg: m, index: i, attachedPlanner: pendingPlanner })
+                pendingPlanner = null
+                continue
+              }
+              renderItems.push({ kind: 'msg', msg: m, index: i })
+            }
+            // If a Planner row never landed on a downstream bubble, render
+            // it standalone at the end so the audit trail is preserved.
+            if (pendingPlanner) {
+              renderItems.push({
+                kind: 'plannerOrphan',
+                msg: pendingPlanner,
+                index: messages.indexOf(pendingPlanner)
+              })
+            }
+
+            return renderItems.map((item) => {
+              const i = item.index
+              const msg = item.msg
+              if (item.kind === 'plannerOrphan') {
+                return (
+                  <div key={msg.id} data-message-id={msg.id}>
+                    <MessageBubble message={msg} />
+                  </div>
+                )
+              }
+              const compressed = isCompressedSummaryMessage(msg)
+              return (
+                <div key={msg.id} data-message-id={msg.id}>
+                  {byBefore[i]?.map((c) => (
+                    <ChapterDivider key={c.id} chapter={c} />
+                  ))}
+                  {noticesByBefore[i]?.map((n) => (
+                    <TranscriptNotice
+                      key={n.id}
+                      notice={n}
+                      onDismiss={() => dismissNotice(n.conversationId, n.id)}
+                    />
+                  ))}
+                  {compressed ? (
+                    <CompressedRegionPill message={msg} />
+                  ) : msg.role === 'system' ? (
+                    <SystemMarker content={msg.content} />
+                  ) : (
+                    <MessageBubble message={msg} attachedPlanner={item.attachedPlanner} />
+                  )}
+                </div>
+              )
+            })
+          })()}
           {afterAll.map((c) => (
             <ChapterDivider key={c.id} chapter={c} />
           ))}

@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest'
 import {
   COMPOSER_DRAFT_CAP,
   COMPOSER_TOOL_RESULT_CAP,
+  MAX_REASONING_BYTES,
   buildComposerPrompt,
   composeFinalResponse,
+  concatReasoningTrail,
   shouldComposeFinalResponse,
   summarizeRun,
   truncateForComposer
@@ -133,18 +135,91 @@ describe('composeFinalResponse', () => {
         seen.push(model)
         seen.push(String(messages[0].content))
         seen.push(String(messages[1].content))
-        return '  composed  '
+        return { content: '  composed  ' }
       }
     })
-    expect(out).toBe('composed')
+    expect(out.content).toBe('composed')
+    expect(out.reasoning).toBeUndefined()
     expect(seen[0]).toBe('model-a')
     expect(seen[1]).toContain('final-response composer')
     expect(seen[2]).toContain('Model draft reply')
+  })
+
+  // R2 — composer's own reasoning is preserved on the result so R6 can
+  // fold it into the cumulative round-trail. Trim happens on content
+  // only; reasoning is passed through as-supplied by chatOnce (which
+  // already trimmed it at the SDK boundary).
+  it('preserves composer reasoning on the result', async () => {
+    const out = await composeFinalResponse({
+      model: 'model-b',
+      summary: { userGoal: 'goal', toolCalls: [], draftReply: 'draft' },
+      runner: async () => ({
+        content: 'composed body',
+        reasoning: 'rewrote the draft to lead with the answer'
+      })
+    })
+    expect(out.content).toBe('composed body')
+    expect(out.reasoning).toBe('rewrote the draft to lead with the answer')
   })
 })
 
 describe('truncateForComposer', () => {
   it('leaves short strings unchanged', () => {
     expect(truncateForComposer('abc', 10)).toBe('abc')
+  })
+})
+
+// Reasoning Audit Phase R6 — cumulative per-round reasoning concat helper.
+describe('concatReasoningTrail', () => {
+  it('returns undefined when no rounds and no composer reasoning', () => {
+    expect(concatReasoningTrail([], undefined)).toBeUndefined()
+    expect(concatReasoningTrail([undefined, undefined], undefined)).toBeUndefined()
+    expect(concatReasoningTrail(['', '  ', ''], undefined)).toBeUndefined()
+  })
+
+  it('emits a single round with no composer section', () => {
+    const out = concatReasoningTrail(['thought A'], undefined)
+    expect(out).toBe('--- round 1 ---\nthought A')
+  })
+
+  it('renumbers surviving rounds when some are empty / undefined', () => {
+    const out = concatReasoningTrail(
+      ['thought A', undefined, '', 'thought B'],
+      undefined
+    )
+    // Empty entries skipped BEFORE numbering; surviving rounds renumbered.
+    expect(out).toBe(
+      '--- round 1 ---\nthought A\n\n--- round 2 ---\nthought B'
+    )
+  })
+
+  it('appends composer section at the bottom with the same separator', () => {
+    const out = concatReasoningTrail(
+      ['round-A thought', 'round-B thought'],
+      'composer rewrote it'
+    )
+    expect(out).toBe(
+      '--- round 1 ---\nround-A thought' +
+        '\n\n--- round 2 ---\nround-B thought' +
+        '\n\n--- composer ---\ncomposer rewrote it'
+    )
+  })
+
+  it('emits only the composer section when no rounds have reasoning', () => {
+    const out = concatReasoningTrail([undefined, ''], 'composer alone')
+    expect(out).toBe('--- composer ---\ncomposer alone')
+  })
+
+  it('truncates with an honest marker when over MAX_REASONING_BYTES', () => {
+    // Build a single round that on its own is bigger than the cap so the
+    // truncation path is hit deterministically.
+    const oversized = 'x'.repeat(MAX_REASONING_BYTES + 5_000)
+    const out = concatReasoningTrail([oversized], undefined)
+    expect(out).toBeDefined()
+    expect(out!.length).toBeLessThanOrEqual(MAX_REASONING_BYTES)
+    // Honest marker present, with a kb-count >= 1.
+    expect(out).toMatch(/\[truncated for length — \d+ kb omitted\]$/)
+    // The pre-truncation prefix made it in.
+    expect(out!.startsWith('--- round 1 ---\nxxx')).toBe(true)
   })
 })

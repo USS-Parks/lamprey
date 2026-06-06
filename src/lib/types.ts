@@ -36,6 +36,18 @@ export interface Message {
     type: 'function'
     function: { name: string; arguments: string }
   }>
+  /** Reasoning Audit Phase R1 — multi-agent pipeline stage discriminator.
+   *  Undefined on legacy rows + single-agent runs + Coder rows (the
+   *  default semantic = "the single assistant row of the turn"). Set to
+   *  'planner' / 'reviewer' / 'composer' by agent-pipeline.ts + chat.ts
+   *  composer save sites. MessageBubble (R7) reads this to decide:
+   *    - stage === 'planner'    → row hidden in main thread; attached to
+   *                               next Coder/Composer bubble behind a
+   *                               "Show pipeline trace" toggle.
+   *    - stage === 'reviewer'   → render with a small "Reviewer" chip.
+   *    - stage === 'composer'   → render with a muted "Composer" chip.
+   *    - stage undefined        → default render (Coder / single-agent). */
+  stage?: 'planner' | 'reviewer' | 'composer'
 }
 
 /** Standalone deliverable a model produced inside a single assistant turn —
@@ -55,6 +67,23 @@ export interface DocumentAttachment {
   /** Byte length of `content` at create time. */
   sizeBytes: number
   /** Epoch ms when the model emitted the document. */
+  createdAt: number
+}
+
+/** Reasoning-Trace RT2/RT3 — one row per (message, stage) for the per-stage
+ *  token + duration audit surface. Multi-agent turns produce planner + coder
+ *  rows on the coder message id and a reviewer row on the reviewer message id.
+ *  Single-agent turns produce one row with stage='single'. */
+export type StageKey = 'planner' | 'coder' | 'reviewer' | 'single'
+
+export interface StageMetric {
+  id: string
+  messageId: string
+  stage: StageKey
+  model: string | null
+  promptTokens: number | null
+  completionTokens: number | null
+  durationMs: number | null
   createdAt: number
 }
 
@@ -362,6 +391,16 @@ export interface AppSettings {
     coder?: number
     reviewer?: number
   }
+  /**
+   * Reasoning Audit Phase R8 — when on (default), past assistant rows
+   * with persisted reasoning get re-fed into the next turn's API stack
+   * as a leading `<think>…</think>` block so the model can see its own
+   * prior chain-of-thought. Trade-off: each rehydrated `<think>` block
+   * inflates context tokens; turn off if a long conversation hits the
+   * model's context limit. Closes the "no session history tool exists"
+   * gap surfaced by the Cascadian Shadow debug-session audit.
+   */
+  includePastReasoningInContext?: boolean
 }
 
 export const DEFAULT_AGENTIC_CODING_SKILLS: string[] = [

@@ -38,6 +38,18 @@ export interface ChatDonePayload {
   message: unknown
 }
 
+/** Reasoning Audit Phase R4 — emitted by the multi-agent pipeline right
+ *  after the Planner row is persisted (stage='planner'). Same payload
+ *  shape as `chat:done` but on a separate channel so the renderer can
+ *  treat the Planner row as an "audit row" (R7 hides it by default and
+ *  attaches it to the next downstream Coder/Composer bubble via the
+ *  "Show pipeline trace" toggle) without changing the chat:done
+ *  semantics for the user-visible Coder reply. */
+export interface ChatPlannerMessagePayload {
+  conversationId: string
+  message: unknown
+}
+
 export interface ChatErrorPayload {
   conversationId: string
   error: string
@@ -244,6 +256,7 @@ export interface ChatEventMap {
   'chat:chunk': ChatChunkPayload
   'chat:reasoning': ChatReasoningPayload
   'chat:done': ChatDonePayload
+  'chat:planner-message': ChatPlannerMessagePayload
   'chat:error': ChatErrorPayload
   'chat:phase': ChatPhasePayload
   'chat:streaming-vitals': ChatStreamingVitalsPayload

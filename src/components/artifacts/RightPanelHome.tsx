@@ -83,6 +83,12 @@ export function RightPanelHome({ onCollapse }: RightPanelHomeProps): React.React
       label: 'Background tasks',
       description: 'Live agents, tool calls, wakeups, and scheduled jobs',
       icon: backgroundIcon
+    },
+    {
+      id: 'reasoning',
+      label: 'Reasoning trace',
+      description: 'Per-stage reasoning + token cost for every assistant turn',
+      icon: planIcon
     }
   ]
 

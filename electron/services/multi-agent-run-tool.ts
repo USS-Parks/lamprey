@@ -47,6 +47,12 @@ export interface MultiAgentRunArgs {
 export interface SubAgentResult {
   role: SubAgentRole | string
   output: string | null
+  /** Reasoning Audit Phase R3 — chain-of-thought the sub-agent model
+   *  emitted. Populated when the runner returned the `{output, reasoning?}`
+   *  object form (agent-pipeline does; the model-callable `multi_agent_run`
+   *  tool does not). Undefined otherwise. agent-pipeline.ts plumbs this
+   *  into Planner / Reviewer rows' `reasoning` column. */
+  reasoning?: string
   error?: string
   elapsedMs: number
   tokensUsedEstimate?: number
@@ -166,12 +172,22 @@ export function approximateTokenCount(text: string | null | undefined): number {
   return Math.ceil(text.length / 4)
 }
 
+/** Reasoning Audit Phase R3 — the SubAgentRunner contract now accepts
+ *  either the legacy plain-string return OR `{output, reasoning?}`.
+ *  agent-pipeline.ts adapts `chatOnce` (which returns `{content, reasoning?}`)
+ *  to the object form so Planner + Reviewer reasoning flows through
+ *  forkAgent → SubAgentResult.reasoning → the saved DB row. The
+ *  model-callable `multi_agent_run` tool path keeps using the string form
+ *  (it doesn't need reasoning preservation — reasoning is the chat-mode
+ *  pipeline's concern, not the model-callable tool's). */
+export type SubAgentRunnerOutput = string | { output: string; reasoning?: string }
+
 export interface SubAgentRunner {
   (
     messages: ChatCompletionMessageParam[],
     modelId: string,
     signal: AbortSignal
-  ): Promise<string>
+  ): Promise<SubAgentRunnerOutput>
 }
 
 export interface MonotonicClock {
@@ -270,6 +286,10 @@ export async function executeMultiAgentRun(
       const result = await handle.promise
       const elapsedMs = Math.max(0, clock() - taskStart)
       const raw = result.rawOutput
+      // R3: reasoning is preserved on ForkAgentResult.rawReasoning when
+      // the runner returned the object form; pass it through so
+      // agent-pipeline can persist it on the Planner / Reviewer row.
+      const reasoning = result.rawReasoning
       if (detectSubAgentToolUseAttempt(raw)) {
         return {
           role: task.role,
@@ -283,6 +303,7 @@ export async function executeMultiAgentRun(
       return {
         role: task.role,
         output: raw,
+        reasoning,
         elapsedMs,
         tokensUsedEstimate: approximateTokenCount(raw),
         callId

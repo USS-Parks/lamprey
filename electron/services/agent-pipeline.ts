@@ -12,9 +12,11 @@ import {
   type EventType
 } from './event-log'
 import {
+  approximateTokenCount,
   executeMultiAgentRun,
   type SubAgentRunner
 } from './multi-agent-run-tool'
+import { saveStageMetrics } from './stage-metrics-store'
 import { summarizeRun } from './final-response-composer'
 import { trace } from './debug-trace'
 
@@ -225,12 +227,20 @@ export interface PipelineEmitter {
   }): void
   done(payload: { conversationId: string; message: unknown }): void
   error(payload: { conversationId: string; error: string }): void
+  /** Reasoning Audit Phase R4 — emitted when the pipeline persists the
+   *  Planner row (stage='planner'). Optional so tests + non-default
+   *  emitters can no-op. The renderer hydrates the row via this event
+   *  instead of waiting for a conversation reload. R7 attaches the
+   *  hydrated row to the next downstream Coder/Composer bubble for the
+   *  "Show pipeline trace" toggle. */
+  plannerMessage?(payload: { conversationId: string; message: unknown }): void
 }
 
 const defaultEmitter: PipelineEmitter = {
   status: (p) => emitChatEvent('agent:status', p),
   done: (p) => emitChatEvent('chat:done', p),
-  error: (p) => emitChatEvent('chat:error', p)
+  error: (p) => emitChatEvent('chat:error', p),
+  plannerMessage: (p) => emitChatEvent('chat:planner-message', p)
 }
 
 export interface CoderRoundRunner {
@@ -306,16 +316,27 @@ function buildCoderUserContent(userContent: string, planText: string): string {
   ].join('\n')
 }
 
-function takeOutput(result: { results: { output: string | null; error?: string }[] }): {
+/** Take the first sub-agent result and surface its output + any error.
+ *  R3: also passes through `reasoning` so the pipeline can persist
+ *  Planner / Reviewer chain-of-thought on their saved rows (R4 + R5).
+ *  Empty-string output with no error is still treated as "no output". */
+function takeOutput(result: {
+  results: { output: string | null; reasoning?: string; error?: string }[]
+}): {
   output: string
+  reasoning?: string
   error?: string
 } {
   const first = result.results[0]
   if (!first) return { output: '', error: 'no sub-agent result' }
   if (first.error || first.output == null) {
-    return { output: first.output ?? '', error: first.error ?? 'sub-agent returned no output' }
+    return {
+      output: first.output ?? '',
+      reasoning: first.reasoning,
+      error: first.error ?? 'sub-agent returned no output'
+    }
   }
-  return { output: first.output }
+  return { output: first.output, reasoning: first.reasoning }
 }
 
 export async function runAgentPipeline(opts: RunAgentPipelineOptions): Promise<void> {
@@ -380,6 +401,15 @@ export async function runAgentPipeline(opts: RunAgentPipelineOptions): Promise<v
     })
   }
 
+  // RT2 — pending stage metrics captured pre-message. The planner stage
+  // produces no persisted message of its own (its output is folded into
+  // the coder's user message), so we stash its metrics here and write
+  // them against the coder's message id once it's persisted.
+  const pendingPlannerMetric: {
+    durationMs: number | null
+    tokensEstimate: number | null
+  } = { durationMs: null, tokensEstimate: null }
+
   // PLANNER ------------------------------------------------------------
   emitter.status({ conversationId, role: 'planner', model: roster.planner, state: 'running' })
   stageStarted('planner', roster.planner)
@@ -390,6 +420,11 @@ export async function runAgentPipeline(opts: RunAgentPipelineOptions): Promise<v
   // user message). ESLint's no-useless-assignment correctly flags an
   // initial `= ''`.
   let planText: string
+  // Reasoning Audit Phase R4 — chain-of-thought the Planner model emitted.
+  // Captured here so it can be persisted on the Planner row after the
+  // try/catch resolves (success + budget-exhausted-but-partial paths both
+  // produce a planText; the pure-error paths return and skip the save).
+  let plannerReasoning: string | undefined
   try {
     const planResult = await executeMultiAgentRun({
       args: {
@@ -407,6 +442,7 @@ export async function runAgentPipeline(opts: RunAgentPipelineOptions): Promise<v
       runner: opts.subAgentRunner
     })
     const taken = takeOutput(planResult)
+    plannerReasoning = taken.reasoning
     if (taken.error) {
       // Budget-exhausted planner: continue with a stub plan rather than
       // erroring the whole turn. The coder will still try to satisfy the
@@ -439,6 +475,12 @@ export async function runAgentPipeline(opts: RunAgentPipelineOptions): Promise<v
       }
     } else {
       planText = taken.output
+      // RT2 — capture planner stage cost. SubAgentResult.tokensUsedEstimate
+      // is an approximation over the output text only; record it as the
+      // completion-token estimate and leave promptTokens null.
+      const plannerSub = planResult.results[0]
+      pendingPlannerMetric.durationMs = plannerSub?.elapsedMs ?? null
+      pendingPlannerMetric.tokensEstimate = plannerSub?.tokensUsedEstimate ?? approximateTokenCount(planText)
       emitter.status({
         conversationId,
         role: 'planner',
@@ -478,6 +520,33 @@ export async function runAgentPipeline(opts: RunAgentPipelineOptions): Promise<v
     }
   }
   plannerBudget.cleanup()
+
+  // R4 — persist the Planner row. Saved as `role: 'assistant'`, `stage:
+  // 'planner'`, model = roster.planner, content = planText, reasoning =
+  // plannerReasoning. Per Invariant §2.9 the row is HIDDEN by default in
+  // the chat thread (R7 attaches it to the next Coder/Composer bubble
+  // behind a "Show pipeline trace ▾" toggle); for now the row just
+  // exists, audit-accessible and unchanged for any caller of getMessages.
+  // We don't emit a chat:done event for it — the Coder bubble is the
+  // user-facing reply that gets the chat:done. We DO emit a custom
+  // 'chat:planner-message' so the renderer can hydrate the row mid-run
+  // (R7) instead of waiting for a reload.
+  try {
+    const plannerMsg = convStore.saveMessage({
+      id: randomUUID(),
+      conversationId,
+      role: 'assistant',
+      content: planText,
+      model: roster.planner,
+      reasoning: plannerReasoning,
+      stage: 'planner'
+    })
+    emitter.plannerMessage?.({ conversationId, message: plannerMsg })
+  } catch (err) {
+    // Saving the audit row failing should not abort the pipeline — the
+    // user still gets the Coder reply. Log and continue.
+    console.error('[agent-pipeline] R4 planner saveMessage failed (continuing):', err)
+  }
 
   if (signal.aborted) {
     emitter.error({ conversationId, error: 'Pipeline aborted before Coder stage' })
@@ -580,13 +649,41 @@ export async function runAgentPipeline(opts: RunAgentPipelineOptions): Promise<v
   }
   coderBudget.cleanup()
   emitter.status({ conversationId, role: 'coder', model: roster.coder, state: 'done' })
-  stageDone(
-    'coder',
-    roster.coder,
-    typeof (coderMessage.message as { content?: unknown }).content === 'string'
-      ? ((coderMessage.message as { content: string }).content)
-      : ''
-  )
+  const coderContent = typeof (coderMessage.message as { content?: unknown }).content === 'string'
+    ? ((coderMessage.message as { content: string }).content)
+    : ''
+  stageDone('coder', roster.coder, coderContent)
+
+  // RT2 — write the planner + coder stage metrics against the coder
+  // message id. The planner has no message of its own, so its row rides
+  // on the coder message (StageTokenChips will show both chips on the
+  // coder bubble). Coder duration is the stage wall clock the existing
+  // event spine already tracked.
+  const coderMsgId = (coderMessage.message as { id?: string }).id
+  if (coderMsgId) {
+    const coderStartedAt = stageStartedAt['coder']
+    const coderDurationMs = coderStartedAt !== undefined ? Date.now() - coderStartedAt : null
+    try {
+      if (pendingPlannerMetric.durationMs !== null || pendingPlannerMetric.tokensEstimate !== null) {
+        saveStageMetrics(coderMsgId, {
+          stage: 'planner',
+          model: roster.planner,
+          promptTokens: null,
+          completionTokens: pendingPlannerMetric.tokensEstimate,
+          durationMs: pendingPlannerMetric.durationMs
+        })
+      }
+      saveStageMetrics(coderMsgId, {
+        stage: 'coder',
+        model: roster.coder,
+        promptTokens: null,
+        completionTokens: approximateTokenCount(coderContent),
+        durationMs: coderDurationMs
+      })
+    } catch (err) {
+      console.warn('[agent-pipeline] saveStageMetrics(planner/coder) failed:', err)
+    }
+  }
 
   if (signal.aborted) {
     // Coder finished but we were cancelled before Reviewer; emit the
@@ -662,13 +759,35 @@ export async function runAgentPipeline(opts: RunAgentPipelineOptions): Promise<v
       reviewerBudget.cleanup()
       return
     }
+    // R5 — Reviewer save now persists reasoning + stage. The Reviewer's
+    // chain-of-thought reaches us via `taken.reasoning` from R3's
+    // takeOutput destructure. Inline `<think>` blocks in the body still
+    // get hoisted to the reasoning column by splitInlineReasoning at the
+    // saveMessage layer (conversation-store.ts), so this works for both
+    // native-channel models (deepseek-reasoner, V4 Flash thinking,
+    // DashScope enable_thinking) and inline-emitting models.
     const reviewerMessage = convStore.saveMessage({
       id: randomUUID(),
       conversationId,
       role: 'assistant',
       content: taken.output,
-      model: roster.reviewer
+      model: roster.reviewer,
+      reasoning: taken.reasoning,
+      stage: 'reviewer'
     })
+    // RT2 — reviewer stage metric rides on the reviewer message id.
+    const reviewerSub = reviewResult.results[0]
+    try {
+      saveStageMetrics(reviewerMessage.id, {
+        stage: 'reviewer',
+        model: roster.reviewer,
+        promptTokens: null,
+        completionTokens: reviewerSub?.tokensUsedEstimate ?? approximateTokenCount(taken.output),
+        durationMs: reviewerSub?.elapsedMs ?? null
+      })
+    } catch (err) {
+      console.warn('[agent-pipeline] saveStageMetrics(reviewer) failed:', err)
+    }
     emitter.status({
       conversationId,
       role: 'reviewer',

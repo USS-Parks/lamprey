@@ -92,7 +92,13 @@ toolRegistry.registerNative(
       defaultModel: ctx.model,
       parentSignal: ctx.signal,
       parentCallId,
-      runner: (messages, modelId, signal) => chatOnce(messages, modelId, signal)
+      // R2: chatOnce returns {content, reasoning?}. R3 will widen the
+      // SubAgentRunner contract to propagate reasoning through this seam
+      // into agent-pipeline. For now this in-context multi_agent_run path
+      // (model-callable tool, not the chat-mode pipeline) keeps the
+      // body-only return.
+      runner: (messages, modelId, signal) =>
+        chatOnce(messages, modelId, signal).then((r) => r.content)
     })
 
     // Persist a synthetic audit row per sub-agent, linked back to the
