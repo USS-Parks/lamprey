@@ -15,18 +15,18 @@
 
 ---
 
-## ⬇ Download v0.6.0
+## ⬇ Download v0.8.0
 
 Pick one — the `.exe` is the standard installer, the `.zip` is the portable bundle (unzip and run `Lamprey.exe` directly, no install required).
 
 | Format | File | Direct link |
 |---|---|---|
-| **NSIS installer** (Windows) | `Lamprey-0.6.0-x64.exe` | [Download .exe](https://github.com/USS-Parks/lamprey/releases/download/v0.6.0/Lamprey-0.6.0-x64.exe) |
-| **Portable ZIP** (Windows) | `Lamprey-0.6.0-x64.zip` | [Download .zip](https://github.com/USS-Parks/lamprey/releases/download/v0.6.0/Lamprey-0.6.0-x64.zip) |
+| **NSIS installer** (Windows) | `Lamprey-0.8.0-x64.exe` | [Download .exe](https://github.com/USS-Parks/lamprey/releases/download/v0.8.0/Lamprey-0.8.0-x64.exe) |
+| **Portable ZIP** (Windows) | `Lamprey-0.8.0-x64.zip` | [Download .zip](https://github.com/USS-Parks/lamprey/releases/download/v0.8.0/Lamprey-0.8.0-x64.zip) |
 
 Or browse all releases → <https://github.com/USS-Parks/lamprey/releases>
 
-**New in v0.6.0 — Panels Phase (Claude-Code-style chrome restraint):** ten-prompt visual overhaul replaces Lamprey's border-heavy "boxed cells" look with a two-tone substrate + two rounded sidebar panels (left + right). The chat column between them is **transparent** — messages flow directly on a warm cream / dark substrate, with the bottom dock pill cluster (prompt input pill + adjacent chips + `FloatingEnvironmentCard`) as the only in-chat chrome. Right-panel interior cards (Recents, tool shortcuts, docked env card) preserved as-is; `FloatingEnvironmentCard` untouched. Zero `border-[var(--border)]` structural chrome remains — softened to a low-alpha `--panel-border` everywhere allow-list (popovers, modals, form controls, semantic stripes) requires an edge. See [the spec](PLANNING/LAMPREY_PANELS_PLAN.md).
+**New in v0.8.0 — Reasoning Audit Phase (every model thought, kept on disk):** ten-prompt phase that closes a quiet data-loss path in the multi-agent pipeline. Before this release, chain-of-thought emitted by Planner and Reviewer models was silently dropped at the SDK boundary, and the composer-final row only carried the last round's thought. Now: (1) `chatOnce` reads both `message.reasoning` (OpenRouter) and `message.reasoning_content` (DashScope / deepseek-reasoner), so native-channel emitters survive; (2) Planner output is persisted as its own DB row with `stage='planner'`, hidden by default in the chat thread but surfaced behind a new **"Show pipeline trace ▾"** toggle on the Coder/Composer bubble below it; (3) Reviewer rows persist their chain-of-thought with a small "Reviewer" chip; (4) the composer-final row carries the **cumulative per-round reasoning trail** — `--- round 1 ---` / `--- round 2 ---` / `--- composer ---` separators, capped at 64 KB with an honest `[truncated for length — N kb omitted]` marker; (5) past reasoning is re-fed into follow-up turns as `<think>…</think>` blocks (toggle in Settings → Reasoning Audit, default ON). Single-agent mode unchanged. Bonus: matched soft drop-shadow under both sidebars in Light Mode. See [the spec](PLANNING/LAMPREY_REASONING_AUDIT_PLAN.md).
 
 **Windows 10/11 x64.** Linux and macOS are buildable from source (`npm run build:linux` / `npm run build:mac`).
 
@@ -204,7 +204,7 @@ User-defined JavaScript sandbox hooks that fire on lifecycle events:
 
 ## Quick start
 
-1. **Download** the [v0.3.6 installer](https://github.com/USS-Parks/lamprey/releases/download/v0.3.6/Lamprey-0.3.6-x64.exe) and run it.
+1. **Download** the [v0.8.0 installer](https://github.com/USS-Parks/lamprey/releases/download/v0.8.0/Lamprey-0.8.0-x64.exe) and run it.
 2. **Get a key.** Easiest: <https://platform.deepseek.com> → sign up → create key → load $5. Lamprey also accepts Google AI Studio (Gemma), Alibaba DashScope (Qwen), and OpenRouter keys.
 3. **Paste your key** in the first-run modal. It's stored with `safeStorage` (OS keychain) under `userData/keys.json`.
 4. **Type something.** That's it.
@@ -279,6 +279,18 @@ Build history: [DEVLOG.md](DEVLOG.md).
 ---
 
 ## Roadmap
+
+Built and shipped (v0.8.0):
+
+- ✅ **Reasoning Audit** — every model-emitted chain-of-thought (Planner, Coder per-round + cumulative, Reviewer, Composer) preserved on disk, surfaced in the chat UI behind a "Show pipeline trace ▾" toggle on the Coder/Composer bubble, and re-fed into the API stack on follow-up turns (gated, default ON). Closes the "no session history tool exists" gap. SDK-boundary fix: `chatOnce` now reads both `message.reasoning` (OpenRouter) and `message.reasoning_content` (DashScope / deepseek-reasoner).
+
+Built and shipped (v0.7.x):
+
+- ✅ Skill import from Claude Code (v0.7.0) — read-only on-disk discovery + per-skill enabled chips + "ext" warning chips
+- ✅ Research reliability — Tavily promoted to primary in the cascade (`tavily → brave → serpapi → wikipedia → duckduckgo`), Wikipedia adapter as zero-key floor
+- ✅ Panels Phase (v0.6.0) — Claude-Code-style two-tone substrate with two rounded sidebar panels; chat column transparent
+- ✅ Stall & Timeout Phase — SSE inactivity watchdog + per-call MCP timeout + per-stage wall-clock budgets + streaming-vitals heartbeat
+- ✅ Soft drop-shadow under both sidebars in Light Mode (v0.8.0)
 
 Built and shipped (v0.3.1):
 
