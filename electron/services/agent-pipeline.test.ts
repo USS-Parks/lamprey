@@ -6,7 +6,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 // every saveMessage call to assert the Reviewer-message persistence path.
 
 const recorded = vi.hoisted(() => ({
-  savedMessages: [] as Array<{ role: string; content: string; model?: string }>
+  savedMessages: [] as Array<{
+    role: string
+    content: string
+    model?: string
+    stage?: string
+    reasoning?: string
+  }>
 }))
 
 vi.mock('electron', () => ({
@@ -20,7 +26,13 @@ vi.mock('@electron-toolkit/utils', () => ({
 
 vi.mock('./conversation-store', () => ({
   saveMessage: (msg: { role: string; content: string; model?: string; id: string; conversationId: string }) => {
-    recorded.savedMessages.push({ role: msg.role, content: msg.content, model: msg.model })
+    recorded.savedMessages.push({
+      role: msg.role,
+      content: msg.content,
+      model: msg.model,
+      stage: msg.stage,
+      reasoning: msg.reasoning
+    })
     return {
       id: msg.id,
       conversationId: msg.conversationId,
@@ -188,9 +200,65 @@ describe('runAgentPipeline — happy path', () => {
     // The Reviewer output is on both reviewer:done AND persisted as a row.
     const reviewerDone = status.find((s) => s.role === 'reviewer' && s.state === 'done')
     expect(reviewerDone?.output).toBe('review-text-output')
+    // R4: pipeline now saves the Planner row in addition to the Reviewer
+    // row. Planner: stage='planner', model=roster.planner, content=planText.
+    // Reviewer save still lacks stage (R5 lands stage='reviewer').
     expect(recorded.savedMessages).toEqual([
-      { role: 'assistant', content: 'review-text-output', model: reviewer }
+      {
+        role: 'assistant',
+        content: 'plan-text-output',
+        model: planner,
+        stage: 'planner',
+        reasoning: undefined
+      },
+      {
+        role: 'assistant',
+        content: 'review-text-output',
+        model: reviewer,
+        stage: undefined,
+        reasoning: undefined
+      }
     ])
+  })
+
+  // R4 — Planner reasoning emitted by the model (sub-agent returns the
+  // object form `{output, reasoning}` per R3) must land on the saved
+  // Planner row's `reasoning` field so MessageBubble can render the
+  // pill inside the "Show pipeline trace" toggle on the Coder bubble.
+  it('R4: persists Planner reasoning when the sub-agent returns the object form', async () => {
+    const subAgentRunner: SubAgentRunner = async (_m, modelId) => {
+      if (modelId === planner) {
+        return {
+          output: 'PLAN: do steps 1-3',
+          reasoning: 'I considered three approaches and picked the simplest'
+        }
+      }
+      return 'review-text-output'
+    }
+    const coderRunner = vi.fn(async () => ({ message: { content: 'coder reply' } }))
+    const { emitter } = makeEmitter()
+    const signal = new AbortController().signal
+
+    await runAgentPipeline({
+      conversationId: 'c1',
+      roster: validRoster,
+      userContent: 'do stuff',
+      systemPrompt: '<system>',
+      priorMessages: [],
+      tools: undefined,
+      workspacePath: '/tmp/proj',
+      signal,
+      subAgentRunner,
+      coderRunner,
+      emitter
+    })
+
+    const plannerRow = recorded.savedMessages.find((m) => m.stage === 'planner')
+    expect(plannerRow).toBeDefined()
+    expect(plannerRow?.content).toBe('PLAN: do steps 1-3')
+    expect(plannerRow?.reasoning).toBe(
+      'I considered three approaches and picked the simplest'
+    )
   })
 
   it('emits reviewer:running BEFORE the first chat:done so the renderer keeps the banner up', async () => {

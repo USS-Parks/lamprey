@@ -1,5 +1,27 @@
 # Lamprey Harness Dev Log
 
+## [Reasoning Audit — Prompt R4] Save Planner as its own row with `stage: 'planner'`  —  2026-06-06
+
+**Files changed:** `electron/services/agent-pipeline.ts` (Planner saveMessage + plannerReasoning capture + new `plannerMessage` emitter), `electron/services/chat-events.ts` (`ChatPlannerMessagePayload` + `chat:planner-message` in `ChatEventMap`), `electron/preload.ts` (`onPlannerMessage` subscription + `offAll` list), `src/stores/chat-store.ts` (`appendPlannerMessage` action — idempotent on id), `src/hooks/useChat.ts` (`onPlannerMessage` wiring), `electron/services/agent-pipeline.test.ts` (recorded savedMessages now tracks stage + reasoning; existing happy-path expectation widened to 2 rows; new "Planner reasoning is preserved" case)
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- vitest ✓ (1902 pass / 38 skip — 28/28 in `agent-pipeline.test.ts` including the new R4 reasoning-preservation case)
+- electron-vite build ✓ (6.90s)
+- user-verification-needed: end-to-end multi-agent turn in Electron — confirm `PRAGMA table_info(messages)` shows 2 rows (planner + coder/composer) for the turn, planner row has `stage='planner'` + the model's reasoning when the model emits one; right-panel chat thread looks unchanged for now (R7 will hide the Planner row and surface it via the "Show pipeline trace" toggle).
+
+**Notes:**
+- Planner row persists ONLY when the pipeline produced a `planText` (success branch + budget-exhausted-but-partial recovery branch). Pure error returns skip the save — same as before, with no audit row generated.
+- The Planner save is wrapped in its own try/catch — if `saveMessage` throws, the pipeline continues to Coder (the user reply trumps the audit row).
+- Per Invariant §2.9: row is saved but R7 hides it inline. The chat event `chat:planner-message` is on a separate channel from `chat:done` so the renderer knows to treat it as audit-only (no stream-state side effects, no `chat:done` semantics for the AgentRunBanner). The store's `appendPlannerMessage` is idempotent on `message.id` — duplicate events drop.
+- Reviewer save (line 665) still passes neither `stage` nor `reasoning` — R5 owns those.
+- Composer-final save (chat.ts:789-798) still uses last-round reasoning only — R6 owns the cumulative concat.
+
+**Commit:** _pending — current commit_
+
+---
+
 ## [Reasoning Audit — Prompt R3] `subAgentRunner` propagates `{output, reasoning}`  —  2026-06-06
 
 **Files changed:** `electron/services/subagent-runner.ts`, `electron/services/multi-agent-run-tool.ts`, `electron/services/multi-agent-run-tool.test.ts`, `electron/services/agent-pipeline.ts` (takeOutput), `electron/ipc/chat.ts` (subAgentRunner closure), `electron/services/spine-events-prompt4.test.ts` (mock typing)

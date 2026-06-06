@@ -225,12 +225,20 @@ export interface PipelineEmitter {
   }): void
   done(payload: { conversationId: string; message: unknown }): void
   error(payload: { conversationId: string; error: string }): void
+  /** Reasoning Audit Phase R4 — emitted when the pipeline persists the
+   *  Planner row (stage='planner'). Optional so tests + non-default
+   *  emitters can no-op. The renderer hydrates the row via this event
+   *  instead of waiting for a conversation reload. R7 attaches the
+   *  hydrated row to the next downstream Coder/Composer bubble for the
+   *  "Show pipeline trace" toggle. */
+  plannerMessage?(payload: { conversationId: string; message: unknown }): void
 }
 
 const defaultEmitter: PipelineEmitter = {
   status: (p) => emitChatEvent('agent:status', p),
   done: (p) => emitChatEvent('chat:done', p),
-  error: (p) => emitChatEvent('chat:error', p)
+  error: (p) => emitChatEvent('chat:error', p),
+  plannerMessage: (p) => emitChatEvent('chat:planner-message', p)
 }
 
 export interface CoderRoundRunner {
@@ -401,6 +409,11 @@ export async function runAgentPipeline(opts: RunAgentPipelineOptions): Promise<v
   // user message). ESLint's no-useless-assignment correctly flags an
   // initial `= ''`.
   let planText: string
+  // Reasoning Audit Phase R4 — chain-of-thought the Planner model emitted.
+  // Captured here so it can be persisted on the Planner row after the
+  // try/catch resolves (success + budget-exhausted-but-partial paths both
+  // produce a planText; the pure-error paths return and skip the save).
+  let plannerReasoning: string | undefined
   try {
     const planResult = await executeMultiAgentRun({
       args: {
@@ -418,6 +431,7 @@ export async function runAgentPipeline(opts: RunAgentPipelineOptions): Promise<v
       runner: opts.subAgentRunner
     })
     const taken = takeOutput(planResult)
+    plannerReasoning = taken.reasoning
     if (taken.error) {
       // Budget-exhausted planner: continue with a stub plan rather than
       // erroring the whole turn. The coder will still try to satisfy the
@@ -489,6 +503,33 @@ export async function runAgentPipeline(opts: RunAgentPipelineOptions): Promise<v
     }
   }
   plannerBudget.cleanup()
+
+  // R4 — persist the Planner row. Saved as `role: 'assistant'`, `stage:
+  // 'planner'`, model = roster.planner, content = planText, reasoning =
+  // plannerReasoning. Per Invariant §2.9 the row is HIDDEN by default in
+  // the chat thread (R7 attaches it to the next Coder/Composer bubble
+  // behind a "Show pipeline trace ▾" toggle); for now the row just
+  // exists, audit-accessible and unchanged for any caller of getMessages.
+  // We don't emit a chat:done event for it — the Coder bubble is the
+  // user-facing reply that gets the chat:done. We DO emit a custom
+  // 'chat:planner-message' so the renderer can hydrate the row mid-run
+  // (R7) instead of waiting for a reload.
+  try {
+    const plannerMsg = convStore.saveMessage({
+      id: randomUUID(),
+      conversationId,
+      role: 'assistant',
+      content: planText,
+      model: roster.planner,
+      reasoning: plannerReasoning,
+      stage: 'planner'
+    })
+    emitter.plannerMessage?.({ conversationId, message: plannerMsg })
+  } catch (err) {
+    // Saving the audit row failing should not abort the pipeline — the
+    // user still gets the Coder reply. Log and continue.
+    console.error('[agent-pipeline] R4 planner saveMessage failed (continuing):', err)
+  }
 
   if (signal.aborted) {
     emitter.error({ conversationId, error: 'Pipeline aborted before Coder stage' })

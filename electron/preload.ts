@@ -17,6 +17,15 @@ const api = {
       ipcRenderer.on('chat:reasoning', (_, e) => cb(e)),
     onDone: (cb: (e: { conversationId: string; message: unknown }) => void) =>
       ipcRenderer.on('chat:done', (_, e) => cb(e)),
+    /** Reasoning Audit Phase R4 — Planner row persisted during a
+     *  multi-agent pipeline turn. Renderer treats it as audit-only:
+     *  the row is appended to the conversation message list but R7's
+     *  MessageList attaches it to the next downstream Coder/Composer
+     *  bubble behind a "Show pipeline trace" toggle instead of
+     *  rendering it as its own visible message bubble. */
+    onPlannerMessage: (
+      cb: (e: { conversationId: string; message: unknown }) => void
+    ) => ipcRenderer.on('chat:planner-message', (_, e) => cb(e)),
     onError: (cb: (e: { conversationId: string; error: string }) => void) =>
       ipcRenderer.on('chat:error', (_, e) => cb(e)),
     onToolCall: (cb: (e: unknown) => void) => ipcRenderer.on('chat:tool-call', (_, e) => cb(e)),
@@ -66,6 +75,7 @@ const api = {
         'chat:chunk',
         'chat:reasoning',
         'chat:done',
+        'chat:planner-message',
         'chat:error',
         'chat:tool-call',
         'chat:tool-call-result',
