@@ -1,5 +1,49 @@
 # Lamprey Harness Dev Log
 
+## [Skill Import Phase Complete] — 2026-06-05 — v0.7.0
+
+All eight prompts of the Skill Import Phase landed on `claude/kind-noyce-f4eeca`. The phase gave Lamprey a first-class **"Import from Claude Code"** path inside the Customize → Browse Plugins surface so users can adopt their on-disk Claude Code skill bundles without hand-copying files. See `PLANNING/LAMPREY_SKILL_IMPORT_PLAN.md` for the full plan.
+
+| Prompt | Title | Commit |
+|---|---|---|
+| I1 | CC skill-bundle disk discovery service | `831c7c6` |
+| I2 | CC bundle → Lamprey plugin importer (idempotent, autoInvoke-rewriting) | `38d6c8a` |
+| I3 | `ccImport:*` IPC handlers + preload surface | `2f863a7` |
+| I4 | Renderer types + cc-import Zustand store | `817a87e` |
+| I5 | "From Claude Code" tab in InstallPluginFlow | `70d3484` |
+| I6 | "↓ Import" button on SkillsColumn opens cc-import tab | `00a8d76` |
+| I7 | Eject affordance + supporting-files drawer summary | `b40474e` |
+| I8 | merge main, v0.7.0 bump, governance + build + push | _this commit_ |
+
+**Architecture summary**
+- **Discovery** (`electron/services/cc-skill-discovery.ts`): pure read-only scan of `%APPDATA%\Claude\local-agent-mode-sessions\skills-plugin\` (+ macOS / Linux equivalents + user-pickable extra roots). Walks up to two levels deep looking for `.claude-plugin/plugin.json`. Returns shape `{sourcePath, pluginName, version, description, skills: [{slug, name, description, enabled, supportingFileCount}]}`. The `enabled` flag is read from the sibling `manifest.json` (defaults to true when missing).
+- **Importer** (`electron/services/cc-skill-importer.ts`): copies a discovered bundle into `<userData>/plugins/<slugified-name>/`. Synthesises a Lamprey-compatible root `plugin.json` (`{id, name, version, description, category: "Imported from Claude Code"}`), copies the `skills/` tree verbatim, then for each `SKILL.md` writes a lowercase `skill.md` companion — and if CC's manifest flags the skill as disabled, rewrites the frontmatter to add `autoInvoke: false`. Idempotent on re-import with `overwrite: true`. Stamps `.cc-import.json` metadata so the UI can show "imported on <date> from <path>".
+- **Eject** (same service): copy a plugin-sourced skill back into `<userData>/skills/<slug>/` with the full supporting tree. The plugin copy stays in place — the user copy becomes editable through the existing wizard / drawer. Auto-renames with `-ejected` suffix when the target slug already exists, so we never silently clobber a user skill.
+- **IPC** (`electron/ipc/cc-skill-import.ts`): four handlers — `ccImport:discover`, `ccImport:install`, `ccImport:eject`, `ccImport:pickExtraRoot`. Wired into `electron/preload.ts` typed `window.api.ccImport` surface.
+- **Renderer** (`src/stores/cc-import-store.ts`): Zustand store with on-demand discovery (`refresh()`), per-bundle install pending state, and last-result memo. Discovery doesn't auto-tick on a timer; the user-triggered refresh + the chokidar event from plugin-loader keep state fresh.
+- **UI**:
+  - `InstallPluginFlow.tsx` grows a fourth tab — **"From Claude Code"**. Each discovered bundle renders as a card showing plugin name, version, source path, total skill count, "installed" badge (when already imported), per-skill chips with enabled dot + supporting-file count + an "ext" warning chip for skills that shell out (docx, pdf, pptx, xlsx, web-artifacts-builder). The Install button label flips to **Re-sync** for bundles already imported (calls install with `overwrite: true`).
+  - `SkillsColumn.tsx` gains a **"↓ Import"** button next to "+ New" that opens the same dialog focused on the CC tab (via a new `initialTab` prop wired through `CustomizeView`).
+  - Plugin-sourced skill rows gain a hover **Eject** action (upward arrow icon, confirm dialog, toast on success).
+  - The EditDrawer shows a collapsible **Supporting files** summary when the skill carries siblings — with a note that the listing is shallow and the body may reference nested paths.
+
+**Merge note (I8).** The phase branched off `v0.5.3` (main commit `39f898b`) but main advanced to `v0.6.1` during the phase with Panels (P1–P10) + Stall & Timeout (T1–T7) shipping back-to-back. I8 merged main forward (no source conflicts — both shipped phases touched disjoint surfaces) and bumped to `v0.7.0` since `v0.6.x` is the Panels + Stall lineage and Skill Import is a feature add, not a patch.
+
+**Verified the live bundle.** The on-disk Anthropic skills bundle (12 skills: consolidate-memory, docx, im-blog-post, im-investor-update, pdf, pptx, schedule, setup-cowork, skill-creator, theme-factory, web-artifacts-builder, xlsx) lands cleanly via the importer fixture tests (11 discovery + 11 importer cases, all green).
+
+**Known limitations** (also documented in the plan §3):
+- Skills bundled inside `claude.exe` itself (verify, code-review, simplify, run, init, review, security-review, deep-research, claude-api, loop, schedule, update-config, keybindings-help, fewer-permission-prompts) live inside the binary and aren't importable as files. Several have Lamprey-shipped equivalents under `resources/skills/`. The CC-tab disclosure block points users at them.
+- Imported skills that shell out (docx, pdf, pptx, xlsx) depend on external tools (`pandoc`, `python`, `extract-text`). The importer surfaces the dependency in the bundle's "What you're getting" card; Lamprey does not bundle the tooling.
+- `supportingFileCount` and the EditDrawer summary list only files at the canonical sibling depth, not deeper subtrees. The agent still reads referenced paths by explicit path.
+
+**Files touched**
+- New: `electron/services/cc-skill-discovery.ts` + `.test.ts`; `electron/services/cc-skill-importer.ts` + `.test.ts`; `electron/ipc/cc-skill-import.ts`; `src/stores/cc-import-store.ts`; `PLANNING/LAMPREY_SKILL_IMPORT_PLAN.md`.
+- Edited: `electron/ipc/index.ts`, `electron/preload.ts`, `src/lib/types.ts`, `src/components/customize/InstallPluginFlow.tsx`, `src/components/customize/CustomizeView.tsx`, `src/components/customize/SkillsColumn.tsx`, `package.json` (0.6.1 → 0.7.0), `DEVLOG.md`, `CLAUDE.md`.
+
+**Verify gate** — both `tsc -p tsconfig.node.json` and `tsc -p tsconfig.web.json` clean across every prompt; `electron-vite build` succeeds; 22 fresh vitest cases pass (11 discovery + 11 importer); Windows installer + zip + blockmap + latest.yml produced into the primary repo `dist/`.
+
+---
+
 ## [Stall & Timeout Phase Complete] — 2026-06-05 (v0.6.1)
 
 Seven prompts (T1–T7) on `claude/interesting-curran-beace7`. The phase addressed the recurring "Lamprey stalls mid research" symptom — agent stuck on "streaming" for tens of minutes with no escape hatch — by stacking four independent caps + a visibility surface + a settings panel.
