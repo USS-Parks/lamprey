@@ -45,6 +45,7 @@ import { classifyToolResult } from '../services/tool-result-status'
 import { dispatchNativeTool } from '../services/native-dispatch'
 import { emitChatEvent } from '../services/chat-events'
 import { readDeepResearchSettings } from '../services/research/adapter-cascade'
+import { trace } from '../services/debug-trace'
 import { routeChatTurn } from '../services/research/intent'
 import { runDeepResearch, FabricatedCitationError, DeepResearchCancelledError } from '../services/research'
 import {
@@ -632,6 +633,15 @@ export async function runChatRound(
   suppressDoneEvent: boolean = false,
   correlationId?: string
 ): Promise<RunChatRoundResult> {
+  trace('runChatRound.enter', {
+    conversationId,
+    correlationId,
+    model,
+    round,
+    messagesCount: messages.length,
+    toolsCount: tools?.length ?? 0,
+    parentSignalAborted: signal.aborted
+  })
   if (round >= MAX_TOOL_ROUNDS) {
     emitPhase(conversationId, 'error')
     emitChatEvent('chat:error', {
@@ -674,6 +684,13 @@ export async function runChatRound(
           })
         },
         onDone: async (fullContent, toolCalls, fullReasoning) => {
+          trace('runChatRound.onDone', {
+            conversationId,
+            round,
+            contentLen: fullContent.length,
+            reasoningLen: fullReasoning?.length ?? 0,
+            toolCallsCount: toolCalls?.length ?? 0
+          })
           if (!toolCalls || toolCalls.length === 0) {
             let finalContent = fullContent
             let draft: string | undefined
@@ -841,6 +858,13 @@ export async function runChatRound(
           }
         },
         onError: (error, partial) => {
+          trace('runChatRound.onError', {
+            conversationId,
+            round,
+            errorPreview: String(error).slice(0, 200),
+            partialContentLen: partial?.content?.length ?? 0,
+            partialReasoningLen: partial?.reasoning?.length ?? 0
+          })
           // Permanently fix data loss on stream errors: if the provider
           // streamed body or reasoning before failing, persist it as an
           // assistant message instead of letting it evaporate. Without
@@ -936,6 +960,12 @@ async function resolveSingleToolCall(
   }
 
   const startTime = Date.now()
+  trace('resolveToolCall.enter', {
+    callId: tc.id,
+    conversationId,
+    toolName,
+    parentSignalAborted: signal.aborted
+  })
 
   const earlyDescriptor = toolRegistry.getById(toolName)
   emitChatEvent('chat:tool-call', {
@@ -1240,6 +1270,13 @@ async function resolveSingleToolCall(
     result,
     duration,
     status: auditStatus === 'done' ? 'success' : auditStatus
+  })
+  trace('resolveToolCall.return', {
+    callId: tc.id,
+    toolName,
+    duration,
+    status: auditStatus,
+    resultLen: result.length
   })
 
   return { callId: tc.id, result }

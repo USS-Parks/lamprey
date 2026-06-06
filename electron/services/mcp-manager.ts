@@ -5,7 +5,9 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { McpError, ErrorCode } from '@modelcontextprotocol/sdk/types.js'
 import { readFileSync, writeFileSync, existsSync } from 'fs'
 import { join } from 'path'
+import { randomUUID } from 'crypto'
 import * as keychain from './keychain'
+import { trace } from './debug-trace'
 
 // T2 — Per-call MCP timeout. The SDK has built-in `RequestOptions.timeout`
 // support (it throws McpError with code RequestTimeout on expiry). We pass
@@ -450,6 +452,16 @@ export class McpManager {
     }
 
     const timeoutMs = readMcpCallTimeoutMs()
+    const traceId = randomUUID().slice(0, 8)
+    const startedAt = Date.now()
+    trace('mcp.callTool.enter', {
+      traceId,
+      serverId,
+      toolName,
+      timeoutMs,
+      argsKeys: Object.keys(args ?? {}),
+      argsPreview: JSON.stringify(args ?? {}).slice(0, 200)
+    })
     let result
     try {
       // 3rd arg `options.timeout`: SDK throws McpError(RequestTimeout) on
@@ -463,8 +475,26 @@ export class McpManager {
           ? { timeout: timeoutMs, resetTimeoutOnProgress: true }
           : undefined
       )
-    } catch (err) {
-      if (err instanceof McpError && err.code === ErrorCode.RequestTimeout) {
+      trace('mcp.callTool.complete', {
+        traceId,
+        serverId,
+        toolName,
+        durationMs: Date.now() - startedAt,
+        isError: result?.isError ?? false
+      })
+    } catch (err: any) {
+      const isTimeout = err instanceof McpError && err.code === ErrorCode.RequestTimeout
+      trace('mcp.callTool.error', {
+        traceId,
+        serverId,
+        toolName,
+        durationMs: Date.now() - startedAt,
+        isTimeout,
+        errName: err?.name,
+        errCode: err instanceof McpError ? err.code : undefined,
+        errMessage: String(err?.message ?? err).slice(0, 200)
+      })
+      if (isTimeout) {
         throw new MCPTimeoutError(serverId, toolName, timeoutMs > 0 ? timeoutMs : 60_000)
       }
       throw err

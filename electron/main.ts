@@ -13,6 +13,12 @@ import { destroyAllMonitors } from './services/monitor-service'
 import { fireHooks } from './services/hooks-runner'
 import { setUserDataPathProvider as setProviderUserDataPath } from './services/providers/registry'
 import { setPipelineUserDataPathProvider } from './services/agent-pipeline'
+import {
+  setDebugTraceUserDataPath,
+  forceDebugTraceOn,
+  trace,
+  flushTrace
+} from './services/debug-trace'
 import { startAutomations, stopAutomations } from './services/automations-runner'
 import { startLoopWakeups, stopLoopWakeups } from './services/loop-runner'
 import { mcpManager } from './services/mcp-manager'
@@ -468,6 +474,22 @@ app.whenReady().then(() => {
   setProviderUserDataPath(() => app.getPath('userData'))
   // T3 — same trick for the pipeline's per-stage wall-clock budgets.
   setPipelineUserDataPathProvider(() => app.getPath('userData'))
+  // DBG1 — wire the diagnostic trace writer + force it on for this debug
+  // build so the user doesn't have to flip `debugTrace: true` themselves.
+  // Remove `forceDebugTraceOn()` before shipping a non-debug build.
+  setDebugTraceUserDataPath(() => app.getPath('userData'))
+  forceDebugTraceOn()
+  trace('main.boot', {
+    version: app.getVersion(),
+    electron: process.versions.electron,
+    platform: process.platform,
+    arch: process.arch,
+    userData: app.getPath('userData')
+  })
+  app.on('before-quit', () => {
+    trace('main.before-quit')
+    flushTrace()
+  })
 
   registerAllIpcHandlers()
 

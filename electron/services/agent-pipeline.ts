@@ -16,6 +16,7 @@ import {
   type SubAgentRunner
 } from './multi-agent-run-tool'
 import { summarizeRun } from './final-response-composer'
+import { trace } from './debug-trace'
 
 // T3 — Per-stage wall-clock budgets. The MAX_TOOL_ROUNDS cap (chat.ts:204)
 // protects against infinite loops but not against 50 rounds × 60s thinking-
@@ -75,17 +76,32 @@ interface BudgetedSignal {
   cleanup: () => void
 }
 
-function makeBudgetedSignal(parent: AbortSignal, budgetMs: number): BudgetedSignal {
+function makeBudgetedSignal(
+  parent: AbortSignal,
+  budgetMs: number,
+  role?: BudgetedRole
+): BudgetedSignal {
   const child = new AbortController()
   let fired = false
+  const armedAt = Date.now()
+  trace('pipeline.budget.armed', { role, budgetMs })
   const timer = budgetMs > 0
     ? setTimeout(() => {
         fired = true
+        trace('pipeline.budget.fired', {
+          role,
+          budgetMs,
+          actualElapsedMs: Date.now() - armedAt
+        })
         child.abort()
       }, budgetMs)
     : null
-  const onParentAbort = (): void => child.abort()
+  const onParentAbort = (): void => {
+    trace('pipeline.budget.parent-abort', { role, budgetMs })
+    child.abort()
+  }
   if (parent.aborted) {
+    trace('pipeline.budget.parent-already-aborted', { role, budgetMs })
     child.abort()
   } else {
     parent.addEventListener('abort', onParentAbort, { once: true })
@@ -94,6 +110,12 @@ function makeBudgetedSignal(parent: AbortSignal, budgetMs: number): BudgetedSign
     signal: child.signal,
     budgetFired: () => fired,
     cleanup: () => {
+      trace('pipeline.budget.cleanup', {
+        role,
+        budgetMs,
+        fired,
+        elapsedMs: Date.now() - armedAt
+      })
       if (timer) clearTimeout(timer)
       parent.removeEventListener('abort', onParentAbort)
     }
@@ -300,6 +322,16 @@ export async function runAgentPipeline(opts: RunAgentPipelineOptions): Promise<v
   const emitter = opts.emitter ?? defaultEmitter
   const { conversationId, roster, signal } = opts
   const correlationId = opts.correlationId
+  trace('pipeline.start', {
+    conversationId,
+    correlationId,
+    plannerModel: roster.planner,
+    coderModel: roster.coder,
+    reviewerModel: roster.reviewer,
+    plannerBudgetMs: readStageBudgetMs('planner'),
+    coderBudgetMs: readStageBudgetMs('coder'),
+    reviewerBudgetMs: readStageBudgetMs('reviewer')
+  })
 
   // Per-stage start timestamps so the done/error event can carry an accurate
   // durationMs. Keyed by role for the rare case where a stage retries.
@@ -351,7 +383,7 @@ export async function runAgentPipeline(opts: RunAgentPipelineOptions): Promise<v
   // PLANNER ------------------------------------------------------------
   emitter.status({ conversationId, role: 'planner', model: roster.planner, state: 'running' })
   stageStarted('planner', roster.planner)
-  const plannerBudget = makeBudgetedSignal(signal, readStageBudgetMs('planner'))
+  const plannerBudget = makeBudgetedSignal(signal, readStageBudgetMs('planner'), 'planner')
   // Declared without an initializer because both error paths in the
   // try/catch below `return` before any read; TS' flow analysis confirms
   // assignment-before-use at the line that reads planText (the rewritten
@@ -462,11 +494,20 @@ export async function runAgentPipeline(opts: RunAgentPipelineOptions): Promise<v
     ...opts.priorMessages,
     { role: 'user', content: buildCoderUserContent(opts.userContent, planText) }
   ]
-  const coderBudget = makeBudgetedSignal(signal, readStageBudgetMs('coder'))
+  const coderBudget = makeBudgetedSignal(signal, readStageBudgetMs('coder'), 'coder')
   // Declared without an initializer for the same reason as planText above:
   // the catch returns, and the try always assigns. ESLint's
   // no-useless-assignment flags the dead initializer.
   let coderMessage: { message: unknown } | null
+  const coderInvokedAt = Date.now()
+  trace('pipeline.coder.invoke', {
+    conversationId,
+    correlationId,
+    model: roster.coder,
+    messagesCount: coderMessages.length,
+    toolsCount: opts.tools?.length ?? 0,
+    coderBudgetMs: readStageBudgetMs('coder')
+  })
   try {
     coderMessage = await opts.coderRunner({
       conversationId,
@@ -476,7 +517,21 @@ export async function runAgentPipeline(opts: RunAgentPipelineOptions): Promise<v
       workspacePath: opts.workspacePath,
       signal: coderBudget.signal
     })
+    trace('pipeline.coder.return', {
+      conversationId,
+      durationMs: Date.now() - coderInvokedAt,
+      hasMessage: !!coderMessage,
+      budgetFired: coderBudget.budgetFired()
+    })
   } catch (err) {
+    trace('pipeline.coder.throw', {
+      conversationId,
+      durationMs: Date.now() - coderInvokedAt,
+      errName: (err as Error)?.name,
+      errMessage: String((err as Error)?.message ?? err).slice(0, 200),
+      budgetFired: coderBudget.budgetFired(),
+      parentSignalAborted: signal.aborted
+    })
     const message = err instanceof Error ? err.message : String(err)
     const budgetExhausted = coderBudget.budgetFired() && !signal.aborted
     emitter.status({
@@ -571,7 +626,7 @@ export async function runAgentPipeline(opts: RunAgentPipelineOptions): Promise<v
     reviewContext = reviewContext.slice(0, 32 * 1024)
   }
 
-  const reviewerBudget = makeBudgetedSignal(signal, readStageBudgetMs('reviewer'))
+  const reviewerBudget = makeBudgetedSignal(signal, readStageBudgetMs('reviewer'), 'reviewer')
   try {
     const reviewResult = await executeMultiAgentRun({
       args: {

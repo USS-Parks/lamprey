@@ -5,8 +5,10 @@ import type {
 } from 'openai/resources/chat/completions'
 import { existsSync, readFileSync } from 'fs'
 import { join } from 'path'
+import { randomUUID } from 'crypto'
 import { getKey } from '../keychain'
 import { boundedJsonPreview, recordEvent } from '../event-log'
+import { trace } from '../debug-trace'
 
 // T1 — SSE inactivity watchdog. Some providers (notably DeepSeek under load
 // and OpenRouter when routing through a stalled upstream) silently leave the
@@ -619,6 +621,18 @@ export async function chatOnce(
   const desc = resolveModel(modelId)
   const client = getClientForProvider(desc.provider)
   const startedAt = Date.now()
+  const traceId = randomUUID().slice(0, 8)
+  trace('chatOnce.enter', {
+    traceId,
+    model: desc.id,
+    apiModelId: desc.apiModelId,
+    provider: desc.provider,
+    purpose: audit?.purpose,
+    role: audit?.role,
+    conversationId: audit?.conversationId,
+    parentSignalAborted: signal?.aborted ?? null,
+    messageCount: messages.length
+  })
   emitModelRequestStarted(desc, audit, { streaming: false, toolCount: 0 })
   try {
     const response = await client.chat.completions.create(
@@ -630,6 +644,12 @@ export async function chatOnce(
     )
     const content = response.choices[0]?.message?.content || ''
     const finishReason = response.choices[0]?.finish_reason ?? undefined
+    trace('chatOnce.complete', {
+      traceId,
+      durationMs: Date.now() - startedAt,
+      contentLen: content.length,
+      finishReason
+    })
     emitModelRequestCompleted(desc, audit, {
       streaming: false,
       toolCount: 0,
@@ -639,7 +659,15 @@ export async function chatOnce(
       cancelled: signal?.aborted ?? false
     })
     return content
-  } catch (err) {
+  } catch (err: any) {
+    trace('chatOnce.error', {
+      traceId,
+      durationMs: Date.now() - startedAt,
+      errName: err?.name,
+      errStatus: err?.status,
+      errMessage: String(err?.message ?? err).slice(0, 200),
+      parentSignalAborted: signal?.aborted ?? null
+    })
     emitModelRequestFailed(desc, audit, {
       streaming: false,
       toolCount: 0,
@@ -678,6 +706,20 @@ export async function chatStream(
   let retries = 0
   const maxRetries = 3
   const inactivityMs = readStreamInactivityMs()
+
+  // DBG2 — per-call trace id so we can correlate every line in
+  // lamprey-debug.log back to the same stream invocation.
+  const traceId = randomUUID().slice(0, 8)
+  trace('chatStream.enter', {
+    traceId,
+    model: desc.id,
+    apiModelId: desc.apiModelId,
+    provider: desc.provider,
+    inactivityMs,
+    toolCount: offeredToolCount,
+    purpose: audit?.purpose,
+    conversationId: audit?.conversationId
+  })
 
   // T4 — vitals heartbeat. Fires every 2s while the attempt streams. Counters
   // reset on each retry so the renderer's "Ns since last chunk" reflects the
@@ -730,11 +772,29 @@ export async function chatStream(
       }
     }
     const armInactivityTimer = (): void => {
-      if (inactivityMs <= 0) return
+      if (inactivityMs <= 0) {
+        trace('chatStream.watchdog.disabled', { traceId, retries, reason: 'inactivityMs<=0' })
+        return
+      }
       clearInactivityTimer()
+      const armedAt = Date.now()
       inactivityTimer = setTimeout(() => {
+        const elapsed = Date.now() - armedAt
+        trace('chatStream.watchdog.fired', {
+          traceId,
+          retries,
+          inactivityMs,
+          actualElapsedMs: elapsed,
+          chunkCount,
+          fullContentLen: fullContent.length,
+          fullReasoningLen: fullReasoning.length
+        })
         inactivityFired = true
         attemptController.abort()
+        trace('chatStream.watchdog.abort-called', {
+          traceId,
+          attemptControllerAborted: attemptController.signal.aborted
+        })
       }, inactivityMs)
     }
 
@@ -750,6 +810,7 @@ export async function chatStream(
       chunkCount = 0
       startVitalsHeartbeat()
       armInactivityTimer()
+      trace('chatStream.attempt.start', { traceId, retries, attemptStartedAt })
       const stream = await client.chat.completions.create(
         {
           model: desc.apiModelId,
@@ -762,8 +823,55 @@ export async function chatStream(
         },
         { signal: attemptController.signal }
       )
+      trace('chatStream.sdk.stream-resolved', {
+        traceId,
+        retries,
+        delayMs: Date.now() - attemptStartedAt
+      })
 
-      for await (const chunk of stream) {
+      // DBG2 — manual iteration so we can log each .next() lifecycle and
+      // see whether the hang lives at iterator.next or at chunk-process.
+      const iter = (stream as unknown as AsyncIterable<any>)[Symbol.asyncIterator]()
+      let iterIndex = 0
+      while (true) {
+        const nextStartedAt = Date.now()
+        trace('chatStream.iter.next.await', {
+          traceId,
+          retries,
+          iterIndex,
+          msSinceLastChunk: lastChunkAt === 0 ? null : nextStartedAt - lastChunkAt,
+          inactivityFired,
+          attemptControllerAborted: attemptController.signal.aborted,
+          parentSignalAborted: signal?.aborted ?? null
+        })
+        let iterResult: IteratorResult<any>
+        try {
+          iterResult = await iter.next()
+        } catch (iterErr: any) {
+          trace('chatStream.iter.next.throw', {
+            traceId,
+            retries,
+            iterIndex,
+            waitMs: Date.now() - nextStartedAt,
+            errName: iterErr?.name,
+            errMessage: String(iterErr?.message ?? iterErr).slice(0, 200),
+            inactivityFired,
+            attemptControllerAborted: attemptController.signal.aborted,
+            parentSignalAborted: signal?.aborted ?? null
+          })
+          throw iterErr
+        }
+        trace('chatStream.iter.next.resolved', {
+          traceId,
+          retries,
+          iterIndex,
+          waitMs: Date.now() - nextStartedAt,
+          done: iterResult.done,
+          hasValue: iterResult.value !== undefined
+        })
+        if (iterResult.done) break
+        const chunk = iterResult.value
+        iterIndex++
         clearInactivityTimer()
         lastChunkAt = Date.now()
         chunkCount++
@@ -792,7 +900,9 @@ export async function chatStream(
             })
           | undefined
 
+        let chunkKind: string = 'empty'
         if (delta?.content) {
+          chunkKind = 'content'
           fullContent += delta.content
           callbacks.onChunk(delta.content)
         }
@@ -806,11 +916,13 @@ export async function chatStream(
           (typeof delta?.reasoning === 'string' && delta.reasoning) ||
           ''
         if (reasoningDelta) {
+          chunkKind = chunkKind === 'content' ? 'content+reasoning' : 'reasoning'
           fullReasoning += reasoningDelta
           callbacks.onReasoning?.(reasoningDelta)
         }
 
         if (delta?.tool_calls) {
+          chunkKind = chunkKind === 'empty' ? 'tool_call' : chunkKind + '+tool_call'
           for (const tc of delta.tool_calls) {
             const idx = tc.index
             if (!toolCallsAccumulator.has(idx)) {
@@ -826,9 +938,27 @@ export async function chatStream(
             if (tc.function?.arguments) acc.function.arguments += tc.function.arguments
           }
         }
+        trace('chatStream.chunk.processed', {
+          traceId,
+          retries,
+          iterIndex,
+          chunkKind,
+          chunkCount,
+          contentDeltaLen: delta?.content?.length ?? 0,
+          reasoningDeltaLen: reasoningDelta.length,
+          finishReason: chunk.choices?.[0]?.finish_reason ?? null
+        })
         armInactivityTimer()
       }
 
+      trace('chatStream.iter.done', {
+        traceId,
+        retries,
+        chunkCount,
+        contentLen: fullContent.length,
+        reasoningLen: fullReasoning.length,
+        toolCalls: toolCallsAccumulator.size
+      })
       clearInactivityTimer()
       stopVitalsHeartbeat()
       if (signal) signal.removeEventListener('abort', onUserAbort)
@@ -851,6 +981,20 @@ export async function chatStream(
       clearInactivityTimer()
       stopVitalsHeartbeat()
       if (signal) signal.removeEventListener('abort', onUserAbort)
+
+      trace('chatStream.catch.entered', {
+        traceId,
+        retries,
+        errName: err?.name,
+        errStatus: err?.status,
+        errMessage: String(err?.message ?? err).slice(0, 200),
+        inactivityFired,
+        parentSignalAborted: signal?.aborted ?? null,
+        attemptControllerAborted: attemptController.signal.aborted,
+        chunkCount,
+        fullContentLen: fullContent.length,
+        fullReasoningLen: fullReasoning.length
+      })
 
       // User-cancelled — the attempt controller was fired by the user signal,
       // not the watchdog. Treat as a clean cancellation regardless of which
@@ -879,10 +1023,18 @@ export async function chatStream(
         if (retries < maxRetries) {
           retries++
           const delay = Math.pow(2, retries) * 1000
+          trace('chatStream.retry.inactivity', { traceId, retries, backoffMs: delay })
           await new Promise((r) => setTimeout(r, delay))
           continue
         }
         const stallErr = new StreamInactivityError(inactivityMs)
+        trace('chatStream.exit.inactivity-exhausted', {
+          traceId,
+          retries,
+          inactivityMs,
+          contentLen: fullContent.length,
+          reasoningLen: fullReasoning.length
+        })
         callbacks.onError(stallErr.message, {
           content: fullContent,
           reasoning: fullReasoning || undefined
