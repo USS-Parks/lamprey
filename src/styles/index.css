@@ -58,6 +58,11 @@
   --panel-border: rgba(255, 255, 255, 0.06);
   --panel-radius: 12px;
   --panel-gap: 8px;
+  /* Drop shadow under the two sidebar panels + the chat input pill.
+     Off in dark mode — the dark substrate already separates panels
+     by tone, and a shadow there reads as muddy. Overridden in light
+     mode below to match Tailwind's `shadow-lg`. */
+  --panel-shadow: none;
 }
 
 /* Light-mode fallback values — these are overwritten the moment
@@ -75,6 +80,16 @@
   --app-bg: #ece8e2;
   --panel-bg: #ffffff;
   --panel-border: rgba(15, 17, 21, 0.06);
+  --panel-shadow:
+    0 10px 15px -3px rgb(0 0 0 / 0.1),
+    0 4px 6px -4px rgb(0 0 0 / 0.1);
+}
+
+/* Utility — apply the substrate-aware panel shadow. Use on the two
+   sidebar containers (left + right). The chat input pill keeps its
+   own Tailwind `shadow-lg` and renders identically in light mode. */
+.panel-shadow {
+  box-shadow: var(--panel-shadow);
 }
 
 @layer base {

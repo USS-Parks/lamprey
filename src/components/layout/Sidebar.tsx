@@ -726,7 +726,7 @@ export function Sidebar() {
   if (sidebarCollapsed) {
     return (
       <div
-        className="relative flex h-full w-12 flex-col items-center overflow-hidden rounded-[var(--panel-radius)] bg-[var(--panel-bg)] py-3"
+        className="panel-shadow relative flex h-full w-12 flex-col items-center overflow-hidden rounded-[var(--panel-radius)] bg-[var(--panel-bg)] py-3"
         style={transitionStyle}
       >
         <button
@@ -784,7 +784,7 @@ export function Sidebar() {
 
   return (
     <div
-      className="relative flex h-full flex-col overflow-hidden rounded-[var(--panel-radius)] bg-[var(--panel-bg)]"
+      className="panel-shadow relative flex h-full flex-col overflow-hidden rounded-[var(--panel-radius)] bg-[var(--panel-bg)]"
       style={{ width: sidebarWidth, minWidth: sidebarWidth, ...(transitionStyle ?? {}) }}
     >
       <SidebarBody
