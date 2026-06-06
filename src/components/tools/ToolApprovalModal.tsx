@@ -97,7 +97,7 @@ export function ToolApprovalModal({ request, onResolved, onAllowed }: ToolApprov
           </div>
         )}
 
-        <div className="mb-4 rounded border border-[var(--border)] bg-[var(--bg-primary)] p-3">
+        <div className="mb-4 rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] p-3">
           <pre className="max-h-48 overflow-auto text-xs font-mono text-[var(--text-secondary)]">
             {JSON.stringify(request.args, null, 2)}
           </pre>
@@ -126,7 +126,7 @@ export function ToolApprovalModal({ request, onResolved, onAllowed }: ToolApprov
         <div className="flex gap-3">
           <button
             onClick={() => respond('deny', scope)}
-            className="flex-1 rounded-lg border border-[var(--border)] bg-[var(--bg-tertiary)] px-4 py-2 text-sm font-medium text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-primary)]"
+            className="flex-1 rounded-lg border border-[var(--panel-border)] bg-[var(--bg-tertiary)] px-4 py-2 text-sm font-medium text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-primary)]"
           >
             Deny
           </button>

@@ -174,7 +174,7 @@ export function AskUserModal() {
           'w-full rounded-lg border px-3 py-2 text-left transition-colors ' +
           (isFocused
             ? 'border-[var(--accent)] bg-[var(--accent)]/10'
-            : 'border-[var(--border)] bg-[var(--bg-secondary)] hover:border-[var(--accent)]/60')
+            : 'border-[var(--panel-border)] bg-[var(--bg-secondary)] hover:border-[var(--accent)]/60')
         }
       >
         <div className="flex items-center gap-2">
@@ -184,7 +184,7 @@ export function AskUserModal() {
                 'inline-flex h-4 w-4 items-center justify-center rounded border ' +
                 (isPicked
                   ? 'border-[var(--accent)] bg-[var(--accent)] text-white'
-                  : 'border-[var(--border)] bg-transparent')
+                  : 'border-[var(--panel-border)] bg-transparent')
               }
               aria-hidden
             >
@@ -216,7 +216,7 @@ export function AskUserModal() {
         className="flex max-h-[80vh] w-[640px] max-w-[92vw] flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--bg-primary)] shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between border-b border-[var(--border)] px-4 py-3">
+        <div className="flex items-center justify-between px-4 py-3">
           <div className="flex items-center gap-2">
             <span className="rounded-full bg-[var(--accent)]/15 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wider text-[var(--accent)]">
               {event.header.slice(0, 12)}
@@ -236,7 +236,7 @@ export function AskUserModal() {
         </div>
 
         <div className="flex min-h-0 flex-1 overflow-hidden">
-          <div className="flex w-1/2 min-w-0 flex-col gap-2 overflow-y-auto border-r border-[var(--border)] p-4">
+          <div className="flex w-1/2 min-w-0 flex-col gap-2 overflow-y-auto p-4">
             <div className="text-[14px] font-medium text-[var(--text-primary)]">
               {event.question}
             </div>
@@ -248,7 +248,7 @@ export function AskUserModal() {
                 'mt-1 w-full rounded-lg border px-3 py-2 text-left text-[13px] transition-colors ' +
                 (focusIdx === otherIdx
                   ? 'border-[var(--accent)] bg-[var(--accent)]/10'
-                  : 'border-[var(--border)] bg-[var(--bg-secondary)] hover:border-[var(--accent)]/60')
+                  : 'border-[var(--panel-border)] bg-[var(--bg-secondary)] hover:border-[var(--accent)]/60')
               }
             >
               <div className="font-medium text-[var(--text-primary)]">Other…</div>
@@ -281,7 +281,7 @@ export function AskUserModal() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2 border-t border-[var(--border)] bg-[var(--bg-secondary)] px-4 py-3">
+        <div className="flex items-center gap-2 bg-[var(--bg-secondary)] px-4 py-3">
           <input
             type="text"
             value={notes}
@@ -292,7 +292,7 @@ export function AskUserModal() {
           <button
             type="button"
             onClick={cancel}
-            className="rounded-md border border-[var(--border)] px-3 py-1 text-[12px] text-[var(--text-muted)] hover:border-[var(--accent)]/60 hover:text-[var(--text-primary)]"
+            className="rounded-md border border-[var(--panel-border)] px-3 py-1 text-[12px] text-[var(--text-muted)] hover:border-[var(--accent)]/60 hover:text-[var(--text-primary)]"
           >
             Cancel
           </button>

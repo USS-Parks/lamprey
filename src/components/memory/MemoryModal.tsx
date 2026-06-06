@@ -69,7 +69,7 @@ export function MemoryModal() {
         className="relative flex h-[80vh] w-[min(720px,92vw)] flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--bg-secondary)] shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <header className="flex items-center justify-between border-b border-[var(--border)] px-4 py-3">
+        <header className="flex items-center justify-between px-4 py-3">
           <div>
             <h2 className="text-[15px] font-semibold text-[var(--text-primary)]">Memory</h2>
             <p className="text-[12px] text-[var(--text-muted)]">
@@ -101,7 +101,7 @@ export function MemoryModal() {
         </header>
 
         {paths && (
-          <div className="flex flex-col gap-1 border-b border-[var(--border)] bg-[var(--bg-primary)] px-4 py-2 text-[11px] text-[var(--text-muted)]">
+          <div className="flex flex-col gap-1 bg-[var(--bg-primary)] px-4 py-2 text-[11px] text-[var(--text-muted)]">
             <div className="flex items-center gap-2">
               <span className="shrink-0 font-mono uppercase tracking-wider">DB:</span>
               <code

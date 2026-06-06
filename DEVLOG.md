@@ -1,5 +1,33 @@
 # Lamprey Harness Dev Log
 
+## [Panels — Prompt P6] Modal interior surface cleanup  —  2026-06-05
+
+**Files changed:** `src/components/settings/SettingsDialog.tsx`, `src/components/customize/CustomizeView.tsx`, `src/components/memory/MemoryModal.tsx`, `src/components/chat/AskUserModal.tsx`, `src/components/tools/ToolApprovalModal.tsx`
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- electron-vite build ✓
+- user-verification-needed: open each modal and confirm:
+  - SettingsDialog: tab sidebar reads as a tonal block (bg-primary) on the modal frame, no border between tabs and content; header strip flows into content with spacing only
+  - CustomizeView: three Skills/Connectors/Plugins columns read as soft-edged panels on the modal surface (focused column still gets accent border); CTA strip at the bottom is a bg-secondary ribbon, no hairline above it
+  - MemoryModal: header flows into content; DB paths sub-section is a tonal ribbon, no border
+  - AskUserModal: header/footer/column-split hairlines gone; option buttons read as soft-edged selection cards
+  - ToolApprovalModal: args JSON block has a soft `--panel-border` edge; risk-tier color stripe still visible
+- ApiKeyModal: no interior dividers were present to strip; outer frame + form-control borders kept per allow-list
+
+**Notes:**
+- **SettingsDialog**: stripped tab-sidebar `border-r` (line 57) and header `border-b` (line 75). Tab sidebar bg-primary against modal bg-secondary provides the tonal split without a hairline.
+- **CustomizeView**: stripped breadcrumb `border-b` (88), column-header `border-b` (141), CTA-strip `border-t` (157). CTA card resting border (42) and non-focused column border (138) softened to `--panel-border`; focused column keeps `--accent` (semantic).
+- **MemoryModal**: stripped header `border-b` (72) and DB-paths sub-strip `border-b` (104).
+- **AskUserModal**: stripped header `border-b` (219), column-split `border-r` (239), footer `border-t` (284). Option-card borders (177, 251), checkbox border (187), and cancel-button border (295) softened to `--panel-border`. Form-input borders (266, 290) kept (allow-list #7).
+- **ToolApprovalModal**: args JSON wrapper (100) and Deny button (129) softened to `--panel-border`. Risk-tier color object literal (28) untouched — these are semantic stripes (allow-list #8). Allow button has no border (accent bg primary action). Select form-control border (112) kept.
+- **ApiKeyModal**: only the outer modal frame border + two form-input borders. All allow-list. No edits this prompt.
+
+**Commit:** _this commit_
+
+---
+
 ## [Panels — Prompt P5] Chat column transparent + ChatInput pill softened  —  2026-06-05
 
 **Files changed:** `src/components/chat/ChatView.tsx`, `src/components/chat/ChatInput.tsx`
