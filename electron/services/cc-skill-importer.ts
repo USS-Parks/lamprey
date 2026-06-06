@@ -321,6 +321,97 @@ export async function importCcPlugin(
   }
 }
 
+// ---------- Eject ----------
+
+export interface EjectOptions {
+  /** Test-only override of the destination root. Production callers
+   *  leave this undefined; eject resolves <userData>/skills/ via the
+   *  skill-loader's `getSkillsDir()`. */
+  skillsRootOverride?: string
+  /** When true, an existing `<userSkills>/<slug>/` is rm'd before the
+   *  copy. Default false: existing user-side skill aborts the eject. */
+  overwrite?: boolean
+}
+
+export interface EjectResult {
+  ok: true
+  userSkillSlug: string
+  userSkillPath: string
+}
+
+export type EjectResponse = EjectResult | ImportFailure
+
+function defaultSkillsRoot(): string {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const sl = require('./skill-loader') as { getSkillsDir: () => string }
+  return sl.getSkillsDir()
+}
+
+/** Copies a plugin-sourced skill out of its plugin and into the user-
+ *  authored skills root so it can be edited via the existing wizard. The
+ *  plugin copy is left in place. */
+export function ejectCcSkill(
+  pluginRoot: string,
+  skillSlug: string,
+  opts: EjectOptions = {}
+): EjectResponse {
+  if (!isDirSafe(pluginRoot)) {
+    return { ok: false, error: `Plugin root not found: ${pluginRoot}` }
+  }
+  const sourceSkillDir = join(pluginRoot, 'skills', skillSlug)
+  if (!isDirSafe(sourceSkillDir)) {
+    return { ok: false, error: `Skill not found in plugin: ${skillSlug}` }
+  }
+
+  const skillsRoot = opts.skillsRootOverride ?? defaultSkillsRoot()
+  let destSlug = skillSlug
+  let destDir = join(skillsRoot, destSlug)
+  if (existsSync(destDir)) {
+    if (opts.overwrite) {
+      try {
+        rmSync(destDir, { recursive: true, force: true })
+      } catch (err) {
+        return { ok: false, error: `Failed to remove existing user skill: ${(err as Error).message}` }
+      }
+    } else {
+      // Auto-rename with -ejected suffix so we don't silently clobber.
+      destSlug = `${skillSlug}-ejected`
+      destDir = join(skillsRoot, destSlug)
+      let i = 2
+      while (existsSync(destDir)) {
+        destSlug = `${skillSlug}-ejected-${i}`
+        destDir = join(skillsRoot, destSlug)
+        i++
+      }
+    }
+  }
+
+  try {
+    mkdirSync(destDir, { recursive: true })
+    copyTree(sourceSkillDir, destDir)
+  } catch (err) {
+    return { ok: false, error: `Failed to copy skill: ${(err as Error).message}` }
+  }
+
+  // The skill-loader keys on lowercase `skill.md` for directory-mode
+  // skills. We already ensure it exists (imported bundles always emit
+  // one), but be defensive: if only SKILL.md is present, synthesise.
+  if (!existsSync(join(destDir, 'skill.md')) && existsSync(join(destDir, 'SKILL.md'))) {
+    try {
+      const raw = readFileSync(join(destDir, 'SKILL.md'), 'utf-8')
+      writeFileSync(join(destDir, 'skill.md'), raw, 'utf-8')
+    } catch {
+      /* loader still finds SKILL.md as *.md, just without supporting-file enumeration */
+    }
+  }
+
+  return {
+    ok: true,
+    userSkillSlug: destSlug,
+    userSkillPath: join(destDir, 'skill.md')
+  }
+}
+
 export const __ccSkillImporterTest = {
   slugifyPluginName,
   emitLowercaseSkillMd,

@@ -40,6 +40,14 @@ interface CcImportState {
 
   /** Prompt for an additional roots directory and re-discover including it. */
   pickExtraRootAndRefresh: () => Promise<number>
+
+  /** Copy a plugin-sourced skill into the user-skills root so the
+   *  existing editor can modify it. The plugin copy is left in place. */
+  ejectSkill: (
+    pluginId: string,
+    skillSlug: string,
+    overwrite?: boolean
+  ) => Promise<{ ok: boolean; userSkillSlug?: string; error?: string }>
 }
 
 export const useCcImportStore = create<CcImportState>((set, get) => ({
@@ -131,5 +139,21 @@ export const useCcImportStore = create<CcImportState>((set, get) => ({
     const path = picked.data as string | null
     if (!path) return get().discovered?.length ?? 0
     return get().refresh([path])
+  },
+
+  ejectSkill: async (pluginId, skillSlug, overwrite) => {
+    if (!window.api?.ccImport) return { ok: false, error: 'ccImport API not available' }
+    const result = await window.api.ccImport.eject({
+      pluginId,
+      skillSlug,
+      ...(overwrite ? { overwrite: true } : {})
+    })
+    if (!result.success) {
+      toast.error(`Eject failed: ${result.error}`)
+      return { ok: false, error: result.error }
+    }
+    const data = result.data as { userSkillSlug: string; userSkillPath: string }
+    toast.success(`Ejected as user skill "${data.userSkillSlug}"`)
+    return { ok: true, userSkillSlug: data.userSkillSlug }
   }
 }))

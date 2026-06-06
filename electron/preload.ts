@@ -249,6 +249,8 @@ const api = {
       ipcRenderer.invoke('ccImport:discover', opts ?? {}),
     install: (payload: { sourcePath: string; overwrite?: boolean }) =>
       ipcRenderer.invoke('ccImport:install', payload),
+    eject: (payload: { pluginId: string; skillSlug: string; overwrite?: boolean }) =>
+      ipcRenderer.invoke('ccImport:eject', payload),
     pickExtraRoot: () => ipcRenderer.invoke('ccImport:pickExtraRoot')
   },
 

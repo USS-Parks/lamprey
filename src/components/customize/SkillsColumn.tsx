@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import type { Skill } from '@/lib/types'
 import { toast } from '@/stores/toast-store'
 import { useSkillsStore } from '@/stores/skills-store'
+import { useCcImportStore } from '@/stores/cc-import-store'
 import { NewSkillWizard } from './NewSkillWizard'
 
 interface SkillDraft {
@@ -79,6 +80,22 @@ function EditDrawer({ skill, onClose }: EditDrawerProps) {
           <div className="truncate font-mono text-[10px] text-[var(--text-muted)]" title={skill.filePath}>
             {skill.filePath}
           </div>
+          {skill.supportingFiles && skill.supportingFiles.length > 0 && (
+            <details className="rounded border border-[var(--border)] bg-[var(--bg-primary)] p-2 text-[11px] text-[var(--text-secondary)]">
+              <summary className="cursor-pointer select-none text-[var(--text-muted)] hover:text-[var(--text-primary)]">
+                Supporting files ({skill.supportingFiles.length})
+              </summary>
+              <ul className="mt-1.5 space-y-0.5 pl-3 font-mono text-[10px]">
+                {skill.supportingFiles.map((f) => (
+                  <li key={f}>{f}</li>
+                ))}
+              </ul>
+              <p className="mt-1 text-[10px] text-[var(--text-muted)]">
+                These siblings are listed shallow — the skill body may also reference
+                files nested in subdirectories that aren't shown here.
+              </p>
+            </details>
+          )}
 
           <label className="block text-[11px] text-[var(--text-muted)]">
             Name
@@ -154,6 +171,7 @@ export function SkillsColumn({ onOpenImport }: SkillsColumnProps = {}) {
   const setSkillsFromEvent = useSkillsStore((s) => s.setSkillsFromEvent)
   const toggleSkill = useSkillsStore((s) => s.toggleSkill)
   const deleteSkill = useSkillsStore((s) => s.deleteSkill)
+  const ejectSkill = useCcImportStore((s) => s.ejectSkill)
 
   const [filter, setFilter] = useState('')
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -190,6 +208,19 @@ export function SkillsColumn({ onOpenImport }: SkillsColumnProps = {}) {
   const onDelete = async (skill: Skill) => {
     if (!confirm(`Delete skill "${skill.name}"?`)) return
     await deleteSkill(skill.id)
+  }
+
+  const onEject = async (skill: Skill) => {
+    if (!skill.pluginId) return
+    // The skill.id is `<pluginId>:<slug>`; derive the slug for the eject call.
+    const slug = skill.id.startsWith(`${skill.pluginId}:`)
+      ? skill.id.slice(skill.pluginId.length + 1)
+      : skill.id
+    const ok = confirm(
+      `Eject "${skill.name}" from plugin "${skill.pluginId}" into your user skills?\n\nThe plugin copy stays in place; you'll get an editable user-skill copy.`
+    )
+    if (!ok) return
+    await ejectSkill(skill.pluginId, slug)
   }
 
   return (
@@ -277,6 +308,19 @@ export function SkillsColumn({ onOpenImport }: SkillsColumnProps = {}) {
               </div>
 
               <div className="flex shrink-0 items-center gap-1 opacity-0 group-hover:opacity-100">
+                {skill.pluginId && (
+                  <button
+                    onClick={() => void onEject(skill)}
+                    className="rounded p-1 text-[11px] text-[var(--text-secondary)] hover:bg-[var(--bg-primary)] hover:text-[var(--accent)]"
+                    title="Eject as user skill (editable copy)"
+                    aria-label="Eject as user skill"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                      <path d="M12 19V5" />
+                      <polyline points="5 12 12 5 19 12" />
+                    </svg>
+                  </button>
+                )}
                 <button
                   onClick={() => setEditingId(skill.id)}
                   className="rounded p-1 text-[11px] text-[var(--text-secondary)] hover:bg-[var(--bg-primary)] hover:text-[var(--text-primary)]"

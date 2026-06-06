@@ -1,6 +1,11 @@
 import { ipcMain, dialog, BrowserWindow } from 'electron'
 import { discoverCcPlugins, type DiscoveredCcPlugin } from '../services/cc-skill-discovery'
-import { importCcPlugin, type ImportResponse } from '../services/cc-skill-importer'
+import {
+  ejectCcSkill,
+  importCcPlugin,
+  type ImportResponse
+} from '../services/cc-skill-importer'
+import { getPlugin } from '../services/plugin-loader'
 
 // Skill Import Phase I3 — IPC bridge for discovery + install. Wraps
 // cc-skill-discovery (read-only) and cc-skill-importer (writes into
@@ -66,6 +71,32 @@ export function registerCcSkillImportHandlers(): void {
       return { success: false, error: (err as Error).message }
     }
   })
+
+  ipcMain.handle(
+    'ccImport:eject',
+    async (_event, payload: { pluginId: string; skillSlug: string; overwrite?: boolean }) => {
+      try {
+        if (!payload?.pluginId || !payload?.skillSlug) {
+          return { success: false, error: 'pluginId and skillSlug are required' }
+        }
+        const plugin = getPlugin(payload.pluginId)
+        if (!plugin) return { success: false, error: `Plugin not found: ${payload.pluginId}` }
+        const result = ejectCcSkill(plugin.rootPath, payload.skillSlug, {
+          ...(payload.overwrite ? { overwrite: true } : {})
+        })
+        if (!result.ok) return { success: false, error: result.error }
+        return {
+          success: true,
+          data: {
+            userSkillSlug: result.userSkillSlug,
+            userSkillPath: result.userSkillPath
+          }
+        }
+      } catch (err) {
+        return { success: false, error: (err as Error).message }
+      }
+    }
+  )
 
   ipcMain.handle('ccImport:pickExtraRoot', async (event) => {
     try {

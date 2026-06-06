@@ -4,7 +4,7 @@ import { join } from 'path'
 import matter from 'gray-matter'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
-import { importCcPlugin, __ccSkillImporterTest } from './cc-skill-importer'
+import { ejectCcSkill, importCcPlugin, __ccSkillImporterTest } from './cc-skill-importer'
 
 interface SkillFx {
   slug: string
@@ -221,6 +221,54 @@ describe('cc-skill-importer', () => {
     expect(manifest.id).toBe('anthropic-skills')
     expect(manifest.name.length).toBeGreaterThan(0)
     expect(manifest.version.length).toBeGreaterThan(0)
+  })
+
+  it('ejects a plugin-sourced skill into the user skills root', async () => {
+    writeBundle(
+      source,
+      { name: 'p', version: '1.0.0', description: '' },
+      [{ slug: 'docx', name: 'docx', description: 'Word', enabled: true, supportingFiles: ['scripts/extract.py'] }]
+    )
+    const importResult = await importCcPlugin(source, { installRootOverride: installRoot })
+    expect(importResult.ok).toBe(true)
+    if (!importResult.ok) return
+
+    const userSkillsRoot = join(tmp, 'user-skills')
+    mkdirSync(userSkillsRoot, { recursive: true })
+
+    const ejected = ejectCcSkill(importResult.installPath, 'docx', {
+      skillsRootOverride: userSkillsRoot
+    })
+    expect(ejected.ok).toBe(true)
+    if (!ejected.ok) return
+    expect(ejected.userSkillSlug).toBe('docx')
+    expect(existsSync(join(userSkillsRoot, 'docx', 'skill.md'))).toBe(true)
+    // Supporting tree comes along.
+    expect(existsSync(join(userSkillsRoot, 'docx', 'scripts', 'extract.py'))).toBe(true)
+  })
+
+  it('auto-renames the user skill when the target slug already exists', async () => {
+    writeBundle(source, { name: 'p', version: '1.0.0', description: '' }, [
+      { slug: 'helper', name: 'helper', enabled: true }
+    ])
+    const importResult = await importCcPlugin(source, { installRootOverride: installRoot })
+    expect(importResult.ok).toBe(true)
+    if (!importResult.ok) return
+
+    const userSkillsRoot = join(tmp, 'user-skills')
+    // Pre-occupy the slug.
+    mkdirSync(join(userSkillsRoot, 'helper'), { recursive: true })
+    writeFileSync(join(userSkillsRoot, 'helper', 'skill.md'), '---\nname: existing\n---', 'utf-8')
+
+    const ejected = ejectCcSkill(importResult.installPath, 'helper', {
+      skillsRootOverride: userSkillsRoot
+    })
+    expect(ejected.ok).toBe(true)
+    if (!ejected.ok) return
+    expect(ejected.userSkillSlug).toBe('helper-ejected')
+    expect(existsSync(join(userSkillsRoot, 'helper-ejected', 'skill.md'))).toBe(true)
+    // Pre-existing user skill is untouched.
+    expect(existsSync(join(userSkillsRoot, 'helper', 'skill.md'))).toBe(true)
   })
 
   it('fires the onInstalled hook with id + install path', async () => {
