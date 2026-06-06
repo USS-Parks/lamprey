@@ -27,12 +27,15 @@ import { readSettings } from '../settings-helper'
 // Settings (read from settings.json deepResearch.providerCascade):
 //   { "deepResearch": { "providerCascade": ["duckduckgo", "brave", "serpapi"] } }
 
-// R3 — DDG demoted to the very end of the cascade after the html.duckduckgo.com
-// endpoint regressed (POST + GET both serve the homepage instead of results
-// for our adapter as of v0.7.2). Brave + SerpAPI are tried first when keyed;
-// Wikipedia (R5) is the zero-key floor that actually works. DDG is kept as a
-// last-resort attempt — if it ever comes back to life it'll still contribute.
+// R6 — Tavily promoted to first in the cascade. Tavily is purpose-built for
+// research-grade retrieval (it returns ranked, dedup'd, content-clean results
+// suitable for LLM consumption) and the API has been stable; Brave is a solid
+// general-web second; SerpAPI is the expensive-but-comprehensive Google
+// fallback; Wikipedia (R5) is the zero-key floor; DDG (demoted in R3 when
+// html.duckduckgo.com regressed) stays as a last-resort attempt — if it
+// recovers it'll still contribute.
 export const DEFAULT_PROVIDER_CASCADE: WebSearchProviderId[] = [
+  'tavily',
   'brave',
   'serpapi',
   'wikipedia',

@@ -315,7 +315,18 @@ class TavilyAdapter implements WebSearchAdapter {
     const body: Record<string, unknown> = {
       api_key: this.apiKey,
       query,
-      max_results
+      max_results,
+      // R6 — `advanced` returns ranked, deduped, content-clean results that are
+      // higher quality for research-grade citation work. Costs 2 credits per
+      // call instead of 1 (basic); worth it for the deep-research cascade
+      // since downstream readers depend on the snippet being substantive.
+      search_depth: 'advanced',
+      // `include_answer: 'advanced'` adds a synthesized answer paragraph in
+      // the response. We don't use it (the orchestrator runs its own
+      // synthesizer), but enabling it doesn't cost extra credits and keeps
+      // the API response shape consistent with what the user expects from
+      // the Tavily web console.
+      include_answer: 'advanced'
     }
     // Tavily accepts time_range when supplied; map common freshness windows.
     if (opts.freshness) {

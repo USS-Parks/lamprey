@@ -102,10 +102,12 @@ describe('readDeepResearchSettings', () => {
     expect(readDeepResearchSettings().depthTier).toBe('auto')
   })
 
-  it('R3 — default cascade puts key/api providers first, DDG last', () => {
-    // DDG's html.duckduckgo.com endpoint regressed in v0.7.2; the demotion
-    // here is intentional and must not be silently reverted.
+  it('R3+R6 — default cascade: tavily first, DDG last', () => {
+    // R6 (v0.7.3) promoted Tavily to first; R3 (v0.7.2) demoted DDG to last.
+    // Both deliberate — Tavily is purpose-built for research retrieval,
+    // DDG's html endpoint regressed. The ordering must not be silently reverted.
     expect(DEFAULT_PROVIDER_CASCADE).toEqual([
+      'tavily',
       'brave',
       'serpapi',
       'wikipedia',

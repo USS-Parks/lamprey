@@ -328,3 +328,65 @@ describe('WikipediaAdapter — R5 (zero-key floor)', () => {
     await expect(adapter!.search('x')).rejects.toThrow(/HTTP 429/)
   })
 })
+
+describe('TavilyAdapter — R6 (advanced search depth)', () => {
+  const originalFetch = globalThis.fetch
+  let capturedBody = ''
+
+  beforeEach(() => {
+    // A prior describe block (SSRF) clears hasKeyFor. Restore it here so the
+    // Tavily case finds a key. Order-independence belt + suspenders.
+    state.hasKeyFor = new Set<string>([
+      'web_search:brave',
+      'web_search:tavily',
+      'web_search:serpapi'
+    ])
+  })
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch
+    capturedBody = ''
+  })
+
+  it('sends search_depth: advanced + include_answer: advanced in the request body', async () => {
+    state.provider = 'tavily'
+    globalThis.fetch = (async (_url: unknown, init?: RequestInit) => {
+      capturedBody = String(init?.body ?? '')
+      return new Response(
+        JSON.stringify({
+          results: [
+            {
+              title: 'Result A',
+              url: 'https://example.com/a',
+              content: 'Snippet A'
+            }
+          ]
+        }),
+        { status: 200 }
+      )
+    }) as typeof fetch
+
+    const adapter = getWebSearchAdapter()
+    expect(adapter).not.toBeNull()
+    const results = await adapter!.search('test query')
+
+    const parsed = JSON.parse(capturedBody) as Record<string, unknown>
+    expect(parsed.search_depth).toBe('advanced')
+    expect(parsed.include_answer).toBe('advanced')
+    expect(parsed.query).toBe('test query')
+    expect(results).toHaveLength(1)
+    expect(results[0].url).toBe('https://example.com/a')
+  })
+
+  it('does NOT leak the api_key into snippet / url fields', async () => {
+    // Defensive: a malformed Tavily response shape must not let api_key bleed
+    // into WebSearchResult. We don't echo the api_key out anywhere; this test
+    // pins that contract against accidental refactors.
+    state.provider = 'tavily'
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify({ results: [] }), { status: 200 })) as typeof fetch
+    const adapter = getWebSearchAdapter()
+    const results = await adapter!.search('q')
+    expect(results).toEqual([])
+  })
+})

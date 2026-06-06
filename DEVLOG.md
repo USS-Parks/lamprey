@@ -1,5 +1,24 @@
 # Lamprey Harness Dev Log
 
+## [Tavily Promotion Hotfix] — 2026-06-05 (v0.7.3)
+
+Single-prompt follow-up to the v0.7.2 research reliability work. User asked to switch primary search from DDG to Tavily after a real-world test confirmed DDG's HTML endpoint returns zero results for both POST and GET.
+
+**Changes**
+- **R6** — `DEFAULT_PROVIDER_CASCADE` reordered to `['tavily', 'brave', 'serpapi', 'wikipedia', 'duckduckgo']`. Tavily moves from middle-of-pack to first because it's purpose-built for research-grade retrieval (ranked, deduped, content-clean results sized for LLM consumption) and the API has been stable. The R3 cascade pin test (`adapter-cascade.test.ts`) updated to lock in the new order.
+- `TavilyAdapter.search` request body now includes `search_depth: 'advanced'` (matches the user's stated intent — better quality at 2 credits/call vs 1 for basic) and `include_answer: 'advanced'` (free; keeps the API response shape consistent with the Tavily web console even though our orchestrator runs its own synthesizer).
+- Two new vitest cases in `web-search-adapters.test.ts` pin the Tavily request body to carry `search_depth: 'advanced'` + `include_answer: 'advanced'` and that an empty Tavily response surfaces as `[]` (no api_key leakage).
+
+**Verification**
+- Both tsc configs clean.
+- 48/48 across adapter + cascade test files.
+- Built signed Windows installer to primary `dist/`.
+
+**User-action required after install**
+- Settings → API Keys → Search providers → paste Tavily key (free 1k credits/mo at https://app.tavily.com/home). Until a key is stored, the cascade falls through Brave → SerpAPI → Wikipedia → DDG, matching the v0.7.2 behaviour.
+
+---
+
 ## [Research Reliability Hotfix] — 2026-06-05 (v0.7.2)
 
 Five-prompt fix for the recurring "research turn ghosts the conversation" symptom. Diagnosed by reproducing the user's failing prompt: the cascade's default DDG provider returned zero `result__a` selectors for both POST and GET requests — `html.duckduckgo.com/html/` now serves the homepage template instead of search results regardless of HTTP method. With no key configured for Brave / SerpAPI, the cascade exhausted, `runDeepResearch` threw `"No sources found for the planner queries"`, the chat handler emitted a transient `chat:error` toast, and nothing else: no assistant message persisted, no recovery, just an empty assistant slot under the user's prompt.
