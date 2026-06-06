@@ -101,6 +101,17 @@ describe('readDeepResearchSettings', () => {
     state.settings = { deepResearch: { depthTier: 'extreme' } }
     expect(readDeepResearchSettings().depthTier).toBe('auto')
   })
+
+  it('R3 — default cascade puts key/api providers first, DDG last', () => {
+    // DDG's html.duckduckgo.com endpoint regressed in v0.7.2; the demotion
+    // here is intentional and must not be silently reverted.
+    expect(DEFAULT_PROVIDER_CASCADE).toEqual([
+      'brave',
+      'serpapi',
+      'wikipedia',
+      'duckduckgo'
+    ])
+  })
 })
 
 describe('quickCanonical', () => {
@@ -139,13 +150,19 @@ describe('dedupeByCanonical', () => {
 })
 
 describe('searchCascade — first-non-empty mode', () => {
+  // R3 — these tests pin the cascade order explicitly via the `providers`
+  // opts override, so they test cascade BEHAVIOUR independent of whatever
+  // the default DEFAULT_PROVIDER_CASCADE happens to be at the time. Without
+  // the pin they coupled to the v0.5 ordering and broke when DDG got demoted.
+  const order: WebSearchProviderId[] = ['duckduckgo', 'brave']
+
   it('uses the first provider when it returns results', async () => {
     adapter('duckduckgo', () => [{ title: 'A', url: 'https://a.example.com', snippet: 's' }])
     adapter('brave', () => {
       throw new Error('should not be called')
     })
 
-    const r = await searchCascade('hello')
+    const r = await searchCascade('hello', { providers: order })
     expect(r.results.length).toBe(1)
     expect(r.providersUsed).toEqual(['duckduckgo'])
     expect(r.errors.length).toBe(0)
@@ -157,7 +174,7 @@ describe('searchCascade — first-non-empty mode', () => {
     })
     adapter('brave', () => [{ title: 'B', url: 'https://b.example.com', snippet: 's' }])
 
-    const r = await searchCascade('hello')
+    const r = await searchCascade('hello', { providers: order })
     expect(r.providersUsed).toEqual(['brave'])
     expect(r.results[0].title).toBe('B')
     expect(r.errors.length).toBe(1)
@@ -178,7 +195,7 @@ describe('searchCascade — first-non-empty mode', () => {
     adapter('duckduckgo', () => [])
     adapter('brave', () => [{ title: 'B', url: 'https://b.example.com', snippet: 's' }])
 
-    const r = await searchCascade('hello')
+    const r = await searchCascade('hello', { providers: order })
     expect(r.providersUsed).toEqual(['brave'])
     expect(r.errors[0].error).toMatch(/Empty result set/)
   })
@@ -232,7 +249,9 @@ describe('searchCascade — first-non-empty mode', () => {
       throw new Error('Programming bug — undefined.foo')
     })
     adapter('brave', () => [{ title: 'B', url: 'https://b.example.com', snippet: 's' }])
-    await expect(searchCascade('hello')).rejects.toThrow(/Cascade aborted at duckduckgo/)
+    await expect(searchCascade('hello', { providers: order })).rejects.toThrow(
+      /Cascade aborted at duckduckgo/
+    )
   })
 })
 

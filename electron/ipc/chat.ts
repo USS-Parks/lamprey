@@ -47,7 +47,12 @@ import { emitChatEvent } from '../services/chat-events'
 import { readDeepResearchSettings } from '../services/research/adapter-cascade'
 import { trace } from '../services/debug-trace'
 import { routeChatTurn } from '../services/research/intent'
-import { runDeepResearch, FabricatedCitationError, DeepResearchCancelledError } from '../services/research'
+import {
+  runDeepResearch,
+  FabricatedCitationError,
+  DeepResearchCancelledError,
+  NoSourcesError
+} from '../services/research'
 import {
   composeFinalResponse,
   shouldComposeFinalResponse,
@@ -268,9 +273,12 @@ export function registerChatHandlers(): void {
       })
 
       // If routing chose the research pipeline, hand off to runDeepResearch
-      // and emit its outcome as the assistant message. Errors fall through
-      // to the outer catch which emits a chat:error event so the user
-      // sees the problem (no silent fallback — quality-bar invariant).
+      // and emit its outcome as the assistant message. Most errors fall
+      // through to the outer catch which emits a chat:error event so the
+      // user sees the problem. EXCEPTION: a NoSourcesError (R1+R2) is
+      // recoverable — we persist a system note about the failed search and
+      // fall through to a normal chat turn so the model can answer from
+      // training knowledge instead of ghosting the conversation.
       if (researchRoute && researchRoute.kind === 'research') {
         // Set up an abort controller early so chat:cancel can interrupt
         // the in-flight research run. The normal-dispatch path below
@@ -300,9 +308,43 @@ export function registerChatHandlers(): void {
             content: `${outcome.summary}\n\n**Sources:** ${outcome.sourceCount} (${outcome.acceptedCount} accepted, ${outcome.singleSourceCount} single-source, ${outcome.disputedCount} disputed) · Providers: ${outcome.providersUsed.join(', ') || 'none'}\n\n[Open full report](artifact://research/${outcome.filename})`,
             model
           })
-          return { success: true, data: { conversationId, correlationId } }
-        } finally {
           activeAbortControllers.delete(conversationId)
+          return { success: true, data: { conversationId, correlationId } }
+        } catch (researchErr: unknown) {
+          activeAbortControllers.delete(conversationId)
+          if (researchErr instanceof NoSourcesError) {
+            // R1+R2 — recoverable. Persist a SYSTEM-role message that
+            // tells the model (and the user, in the transcript) that the
+            // search cascade returned nothing. The fall-through runs the
+            // normal chat dispatch which picks this system note up via
+            // promptHistory below.
+            const trail = researchErr.summary()
+            convStore.saveMessage({
+              id: randomUUID(),
+              conversationId,
+              role: 'system',
+              content:
+                'Deep research fallback: the web-search cascade returned no usable sources for this prompt. ' +
+                'Answer from training knowledge ONLY. Be explicit that web search returned nothing, name any ' +
+                'limitations (no recent events, no citations), and offer to retry with a narrower query or ' +
+                'after the user configures a Brave Search / SerpAPI key in Settings → API Keys.\n\n' +
+                `Search provider trail:\n${trail}`,
+              model
+            })
+            // Tell the renderer the research stage failed cleanly so the
+            // banner closes; the next phase emit (`understanding`) then
+            // re-opens the normal-chat lifecycle.
+            emitChatEvent('chat:error', {
+              conversationId,
+              error: `Research cascade returned no sources — falling back to model knowledge.`
+            })
+            // Fall through to the normal-chat dispatch below. Do NOT return.
+          } else {
+            // Anything else from runDeepResearch (FabricatedCitationError,
+            // DeepResearchCancelledError, hard exceptions) keeps the
+            // existing behaviour: surface to the outer catch as chat:error.
+            throw researchErr
+          }
         }
         void FabricatedCitationError
         void DeepResearchCancelledError

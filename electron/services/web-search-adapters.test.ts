@@ -4,7 +4,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 // adapter dependencies to focus on the SSRF/safeFetch wiring.
 
 const state = vi.hoisted(() => ({
-  provider: 'searxng' as 'duckduckgo' | 'brave' | 'tavily' | 'serpapi' | 'searxng',
+  provider: 'searxng' as
+    | 'duckduckgo'
+    | 'brave'
+    | 'tavily'
+    | 'serpapi'
+    | 'searxng'
+    | 'wikipedia',
   endpoint: 'http://127.0.0.1:8888',
   hasKeyFor: new Set<string>(['web_search:brave', 'web_search:tavily', 'web_search:serpapi']),
   keyValue: 'test-key-12345'
@@ -251,5 +257,74 @@ describe('DuckDuckGo adapter — wiring', () => {
     expect(ALL_WEB_SEARCH_PROVIDERS[0].id).toBe('duckduckgo')
     expect(ALL_WEB_SEARCH_PROVIDERS[0].requiresKey).toBe(false)
     expect(ALL_WEB_SEARCH_PROVIDERS[0].requiresEndpoint).toBe(false)
+  })
+})
+
+describe('WikipediaAdapter — R5 (zero-key floor)', () => {
+  const originalFetch = globalThis.fetch
+  let capturedUrl = ''
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch
+    capturedUrl = ''
+  })
+
+  it('Wikipedia is always configured (no key needed)', () => {
+    expect(isProviderConfigured('wikipedia')).toBe(true)
+  })
+
+  it('Wikipedia is in the provider registry as zero-key', () => {
+    const entry = ALL_WEB_SEARCH_PROVIDERS.find((p) => p.id === 'wikipedia')
+    expect(entry).toBeDefined()
+    expect(entry!.requiresKey).toBe(false)
+    expect(entry!.requiresEndpoint).toBe(false)
+  })
+
+  it('search() returns parsed OpenSearch results', async () => {
+    state.provider = 'wikipedia'
+    const sampleResponse = JSON.stringify([
+      'fusion energy',
+      ['Nuclear fusion', 'Fusion power', 'Fusion ignition'],
+      ['Process of merging atomic nuclei', 'Power produced by fusion', ''],
+      [
+        'https://en.wikipedia.org/wiki/Nuclear_fusion',
+        'https://en.wikipedia.org/wiki/Fusion_power',
+        'https://en.wikipedia.org/wiki/Fusion_ignition'
+      ]
+    ])
+    globalThis.fetch = (async (input: unknown) => {
+      capturedUrl = String(input)
+      return new Response(sampleResponse, { status: 200 })
+    }) as typeof fetch
+
+    const adapter = getWebSearchAdapter()
+    expect(adapter).not.toBeNull()
+    const results = await adapter!.search('fusion energy')
+
+    expect(capturedUrl).toContain('en.wikipedia.org/w/api.php')
+    expect(capturedUrl).toContain('action=opensearch')
+    expect(capturedUrl).toContain('search=fusion+energy')
+    expect(results).toHaveLength(3)
+    expect(results[0]).toEqual({
+      title: 'Nuclear fusion',
+      url: 'https://en.wikipedia.org/wiki/Nuclear_fusion',
+      snippet: 'Process of merging atomic nuclei'
+    })
+  })
+
+  it('search() returns [] when Wikipedia returns no hits', async () => {
+    state.provider = 'wikipedia'
+    const empty = JSON.stringify(['zorblax', [], [], []])
+    globalThis.fetch = (async () => new Response(empty, { status: 200 })) as typeof fetch
+    const adapter = getWebSearchAdapter()
+    const results = await adapter!.search('zorblax')
+    expect(results).toEqual([])
+  })
+
+  it('search() throws on HTTP non-2xx so the cascade can fall through', async () => {
+    state.provider = 'wikipedia'
+    globalThis.fetch = (async () => new Response('rate', { status: 429 })) as typeof fetch
+    const adapter = getWebSearchAdapter()
+    await expect(adapter!.search('x')).rejects.toThrow(/HTTP 429/)
   })
 })

@@ -10,6 +10,11 @@ import {
   validateProviderKeyDetailed,
   type ProviderId
 } from '../services/providers/registry'
+import {
+  ALL_WEB_SEARCH_PROVIDERS,
+  keychainProviderFor as searchKeychainKey,
+  type WebSearchProviderId
+} from '../services/web-search-adapters'
 import { recordEvent } from '../services/event-log'
 
 const getSettingsPath = () => join(app.getPath('userData'), 'settings.json')
@@ -139,6 +144,62 @@ export function registerSettingsHandlers(): void {
         hasKey: keychain.hasKey(p.id)
       }))
       return { success: true, data }
+    } catch (err: any) {
+      return { success: false, error: err.message }
+    }
+  })
+
+  // R4 — Search-provider key handlers. Distinct from AI-provider handlers
+  // because they target the `web_search:<id>` keychain namespace and use a
+  // different allowlist (Brave, Tavily, SerpAPI — anything in
+  // ALL_WEB_SEARCH_PROVIDERS that requires a key). No validation endpoint:
+  // search APIs charge per request, so we let the next research turn act as
+  // the real test rather than burning a paid call on settings entry.
+  const SEARCH_PROVIDER_DOCS_URLS: Partial<Record<WebSearchProviderId, string>> = {
+    brave: 'https://api.search.brave.com/app/keys',
+    tavily: 'https://app.tavily.com/home',
+    serpapi: 'https://serpapi.com/manage-api-key'
+  }
+  function isSearchProviderWithKey(id: unknown): id is WebSearchProviderId {
+    return (
+      typeof id === 'string' &&
+      ALL_WEB_SEARCH_PROVIDERS.some((p) => p.id === id && p.requiresKey)
+    )
+  }
+
+  ipcMain.handle('settings:listSearchProviderKeys', async () => {
+    try {
+      const data = ALL_WEB_SEARCH_PROVIDERS.filter((p) => p.requiresKey).map((p) => ({
+        id: p.id,
+        label: p.label,
+        docsUrl: SEARCH_PROVIDER_DOCS_URLS[p.id] ?? '',
+        hasKey: keychain.hasKey(searchKeychainKey(p.id))
+      }))
+      return { success: true, data }
+    } catch (err: any) {
+      return { success: false, error: err.message }
+    }
+  })
+
+  ipcMain.handle('settings:saveSearchProviderKey', async (_event, provider, key) => {
+    try {
+      if (!isSearchProviderWithKey(provider)) {
+        return { success: false, error: `Unknown search provider: ${provider}` }
+      }
+      keychain.setKey(searchKeychainKey(provider), String(key))
+      return { success: true, data: null }
+    } catch (err: any) {
+      return { success: false, error: err.message }
+    }
+  })
+
+  ipcMain.handle('settings:deleteSearchProviderKey', async (_event, provider) => {
+    try {
+      if (!isSearchProviderWithKey(provider)) {
+        return { success: false, error: `Unknown search provider: ${provider}` }
+      }
+      keychain.deleteKey(searchKeychainKey(provider))
+      return { success: true, data: null }
     } catch (err: any) {
       return { success: false, error: err.message }
     }

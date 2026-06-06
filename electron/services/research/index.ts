@@ -123,6 +123,35 @@ export class DeepResearchCancelledError extends Error {
   }
 }
 
+// R1+R2 — typed error so chat.ts can distinguish "search returned nothing"
+// from genuine orchestrator failures and fall back to a normal chat turn
+// with a synthetic system message instead of ghosting the conversation.
+// Carries the per-query error trail so the fallback message can tell the
+// user which providers were tried + why each one failed.
+export class NoSourcesError extends Error {
+  constructor(
+    /** Per-query error strings as aggregated by the collector. */
+    public readonly perQueryErrors: Array<{ query: string; error: string }>,
+    /** Providers that were actually attempted (may be empty if none configured). */
+    public readonly providersAttempted: string[]
+  ) {
+    super('No sources found for the planner queries.')
+    this.name = 'NoSourcesError'
+  }
+
+  /** Compact human-readable summary, used in the chat-message fallback. */
+  summary(): string {
+    if (this.perQueryErrors.length === 0) {
+      return this.providersAttempted.length === 0
+        ? 'No search providers were configured.'
+        : `Attempted: ${this.providersAttempted.join(', ')}.`
+    }
+    return this.perQueryErrors
+      .map((e) => `• "${e.query}" → ${e.error}`)
+      .join('\n')
+  }
+}
+
 // Re-export typed errors so the chat dispatch can `instanceof` them.
 export { FabricatedCitationError } from './synthesizer'
 
@@ -184,8 +213,14 @@ export async function runDeepResearch(opts: RunDeepResearchOpts): Promise<DeepRe
     checkAbort()
 
     if (collect.sources.length === 0) {
-      emit({ stage: 'failed', error: 'No sources found for the planner queries.' })
-      throw new Error('No sources found for the planner queries.')
+      // R1+R2 — typed so chat.ts can offer a fall-back to model-knowledge
+      // instead of ghosting the conversation with only a transient toast.
+      const noSourcesErr = new NoSourcesError(
+        collect.errors,
+        collect.providersUsed
+      )
+      emit({ stage: 'failed', error: noSourcesErr.message })
+      throw noSourcesErr
     }
 
     // -- Stage 3: extract --

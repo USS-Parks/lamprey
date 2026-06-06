@@ -1,5 +1,43 @@
 # Lamprey Harness Dev Log
 
+## [Research Reliability Hotfix] — 2026-06-05 (v0.7.2)
+
+Five-prompt fix for the recurring "research turn ghosts the conversation" symptom. Diagnosed by reproducing the user's failing prompt: the cascade's default DDG provider returned zero `result__a` selectors for both POST and GET requests — `html.duckduckgo.com/html/` now serves the homepage template instead of search results regardless of HTTP method. With no key configured for Brave / SerpAPI, the cascade exhausted, `runDeepResearch` threw `"No sources found for the planner queries"`, the chat handler emitted a transient `chat:error` toast, and nothing else: no assistant message persisted, no recovery, just an empty assistant slot under the user's prompt.
+
+| Prompt | Title | Commit |
+|---|---|---|
+| R5 | Wikipedia adapter (zero-key floor, no scraping) | _this commit_ |
+| R3 | Demote DDG to last in default cascade | _this commit_ |
+| R1+R2 | Typed NoSourcesError + fall-back to model knowledge | _this commit_ |
+| R4 | Search Providers section in API Keys panel | _this commit_ |
+| Ship | v0.7.2 build + push | _this commit_ |
+
+**Root cause**
+- DDG's free HTML endpoint has been silently degrading; on the user's IP both POST and GET to `https://html.duckduckgo.com/html/` return a 14KB homepage template with the canonical URL `https://duckduckgo.com/` and zero `result__a` anchors. The adapter's regex parser sees nothing, returns `[]`, and `runFirstNonEmpty` falls through to providers the user hasn't configured.
+- The orchestrator threw `Error('No sources found for the planner queries.')` — an opaque type. `chat.ts` caught it at the OUTER try/catch and emitted `chat:error`. No assistant row was persisted, so the conversation was left in a ghost state.
+
+**Fix stack**
+- **R1+R2** — `electron/services/research/index.ts` exports a new `NoSourcesError extends Error` carrying `perQueryErrors[]` + `providersAttempted[]` + a `summary()` helper. The collector's zero-sources branch throws THIS typed error instead of `new Error(...)`. `electron/ipc/chat.ts` catches `NoSourcesError` inside the research branch, persists a `role: 'system'` message that tells the model "search returned nothing, answer from training, name your limitations" with the per-query error trail, then falls through to the normal-chat dispatch. The user always gets a real answer, even if web search is down.
+- **R3** — `electron/services/research/adapter-cascade.ts` changes `DEFAULT_PROVIDER_CASCADE` from `['duckduckgo', 'brave', 'serpapi']` to `['brave', 'serpapi', 'wikipedia', 'duckduckgo']`. Brave/SerpAPI go first when keyed, Wikipedia is the new zero-key floor, DDG stays in the list as a last-resort attempt (will contribute again if their endpoint recovers). New `R3 — default cascade puts key/api providers first, DDG last` test pins the order.
+- **R4** — `src/components/settings/ApiKeySettings.tsx` gains a "Search providers" section above "Provider API keys" with Brave + SerpAPI + Tavily cards: free-tier blurb per provider, "Get a free key →" external link, save/delete with separate keychain namespace (`web_search:<id>`). New IPC handlers `settings:{list,save,delete}SearchProviderKey` use a type-narrowed allowlist (only providers with `requiresKey === true`).
+- **R5** — `electron/services/web-search-adapters.ts` gains a `WikipediaAdapter` hitting Wikipedia's OpenSearch REST API (`https://en.wikipedia.org/w/api.php?action=opensearch`). No key, no HTML scraping, no UA spoofing. Returns `[query, titles[], descriptions[], urls[]]` parsed into `WebSearchResult[]`. Wikipedia is `isProviderConfigured: true` unconditionally — the zero-key floor we now have a right to rely on. Five-case vitest covers parsing, empty results, HTTP errors, registry entry, isProviderConfigured.
+
+**Architecture notes**
+- The R1+R2 fall-through pattern uses the existing `convStore.saveMessage` with `role: 'system'` so the synthetic note becomes part of conversation history. The next turn's prompt history will replay it as a system marker; the user can also read it in the transcript.
+- R4 introduces a parallel keychain namespace (`web_search:*`) deliberately separate from the AI-provider namespace so the type-narrowed handlers can refuse cross-namespace writes. A leaked Brave key can't be confused with a leaked DeepSeek key.
+- DDG demotion is conservative: kept in the cascade so any future recovery is automatic. The new test pins the order so a silent revert during a merge would fail CI.
+
+**Test verification**
+- Both tsc configs clean.
+- 294/294 tests pass across research + web-search-adapters + providers + mcp-manager + agent-pipeline.
+- 5 new vitest cases in `web-search-adapters.test.ts` for the Wikipedia adapter; 1 new pin test in `adapter-cascade.test.ts` for the cascade order; 4 existing cascade tests updated to explicitly pin their provider order via opts so they no longer couple to defaults.
+
+**Version + release**
+- `package.json` bumped 0.7.1 → 0.7.2.
+- User is the reviewer + pusher; commits go to `main` per the explicit "STS R1-R5" directive.
+
+---
+
 ## [Skill Import Phase Complete] — 2026-06-05 — v0.7.0
 
 All eight prompts of the Skill Import Phase landed on `claude/kind-noyce-f4eeca`. The phase gave Lamprey a first-class **"Import from Claude Code"** path inside the Customize → Browse Plugins surface so users can adopt their on-disk Claude Code skill bundles without hand-copying files. See `PLANNING/LAMPREY_SKILL_IMPORT_PLAN.md` for the full plan.

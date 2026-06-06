@@ -164,7 +164,15 @@ const api = {
     deleteApiKey: () => ipcRenderer.invoke('settings:deleteApiKey'),
     isEncryptionAvailable: () => ipcRenderer.invoke('settings:isEncryptionAvailable'),
     grantPlaintextConsent: () => ipcRenderer.invoke('settings:grantPlaintextConsent'),
-    hasPlaintextConsent: () => ipcRenderer.invoke('settings:hasPlaintextConsent')
+    hasPlaintextConsent: () => ipcRenderer.invoke('settings:hasPlaintextConsent'),
+
+    // R4 — search-provider key namespace. Separate from AI providers so the
+    // type-narrowed handler can refuse cross-namespace writes.
+    listSearchProviderKeys: () => ipcRenderer.invoke('settings:listSearchProviderKeys'),
+    saveSearchProviderKey: (provider: string, key: string) =>
+      ipcRenderer.invoke('settings:saveSearchProviderKey', provider, key),
+    deleteSearchProviderKey: (provider: string) =>
+      ipcRenderer.invoke('settings:deleteSearchProviderKey', provider)
   },
 
   model: {

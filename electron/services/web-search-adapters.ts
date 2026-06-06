@@ -48,7 +48,7 @@ export interface WebSearchAdapter {
   imageSearch?(query: string, opts?: ImageSearchOpts): Promise<ImageSearchResult[]>
 }
 
-export type WebSearchProviderId = 'duckduckgo' | 'brave' | 'tavily' | 'serpapi' | 'searxng'
+export type WebSearchProviderId = 'duckduckgo' | 'brave' | 'tavily' | 'serpapi' | 'searxng' | 'wikipedia'
 
 export interface WebToolsSettings {
   searchProvider: WebSearchProviderId
@@ -522,6 +522,69 @@ class SearxngAdapter implements WebSearchAdapter {
 }
 
 // ----------------------------------------------------------------------------
+// Wikipedia adapter (no API key required, no scraping)
+// ----------------------------------------------------------------------------
+//
+// Hits Wikipedia's stable OpenSearch REST API (an established machine-readable
+// endpoint, NOT HTML scraping): `https://en.wikipedia.org/w/api.php?action=opensearch`
+// Returns an array of the form [query, titles[], descriptions[], urls[]] which
+// we project into WebSearchResult[]. The endpoint is rate-limited but generous
+// (~200 req/s) and has been stable for years — exactly the kind of zero-key
+// floor the deep-research cascade needs after the DDG HTML endpoint regressed.
+
+const WIKIPEDIA_OPENSEARCH_ENDPOINT = 'https://en.wikipedia.org/w/api.php'
+
+class WikipediaAdapter implements WebSearchAdapter {
+  readonly id = 'wikipedia' as const
+  readonly label = 'Wikipedia'
+
+  async search(query: string, opts: WebSearchOpts = {}): Promise<WebSearchResult[]> {
+    const limit = Math.max(1, Math.min(50, opts.count ?? 10))
+    const params = new URLSearchParams({
+      action: 'opensearch',
+      search: query,
+      limit: String(limit),
+      namespace: '0',
+      format: 'json',
+      origin: '*'
+    })
+    const url = `${WIKIPEDIA_OPENSEARCH_ENDPOINT}?${params.toString()}`
+    const res = await fetchWithTimeout(url, {
+      headers: {
+        Accept: 'application/json',
+        // Wikipedia asks API consumers to identify themselves. Generic UA
+        // is fine; the policy is about contact info, not browser-spoofing.
+        'User-Agent':
+          'Lamprey-Harness/0.7 (https://github.com/USS-Parks/lamprey; research-cascade)'
+      }
+    })
+    if (!res.ok) {
+      throw new Error(`Wikipedia HTTP ${res.status}: ${await safeReadText(res)}`)
+    }
+    const json = (await res.json()) as [string, string[], string[], string[]]
+    // OpenSearch contract: [query, titles, descriptions, urls]. We do NOT
+    // trust the array shape — defensive null-checks in case the schema ever
+    // changes (it hasn't in the API's lifetime, but cheap insurance).
+    if (!Array.isArray(json) || json.length < 4) return []
+    const titles = json[1] ?? []
+    const descriptions = json[2] ?? []
+    const urls = json[3] ?? []
+    const out: WebSearchResult[] = []
+    for (let i = 0; i < titles.length; i++) {
+      const title = titles[i]
+      const url = urls[i]
+      if (!title || !url) continue
+      out.push({
+        title,
+        url,
+        snippet: descriptions[i] ?? ''
+      })
+    }
+    return out
+  }
+}
+
+// ----------------------------------------------------------------------------
 // Factory
 // ----------------------------------------------------------------------------
 
@@ -541,11 +604,12 @@ export const ALL_WEB_SEARCH_PROVIDERS: ReadonlyArray<{
   requiresKey: boolean
   requiresEndpoint: boolean
 }> = [
-  { id: 'duckduckgo', label: 'DuckDuckGo · no key required', requiresKey: false, requiresEndpoint: false },
+  { id: 'duckduckgo', label: 'DuckDuckGo · no key required (unreliable)', requiresKey: false, requiresEndpoint: false },
   { id: 'brave', label: 'Brave Search', requiresKey: true, requiresEndpoint: false },
   { id: 'tavily', label: 'Tavily', requiresKey: true, requiresEndpoint: false },
   { id: 'serpapi', label: 'SerpAPI', requiresKey: true, requiresEndpoint: false },
-  { id: 'searxng', label: 'SearXNG', requiresKey: false, requiresEndpoint: true }
+  { id: 'searxng', label: 'SearXNG', requiresKey: false, requiresEndpoint: true },
+  { id: 'wikipedia', label: 'Wikipedia · no key required', requiresKey: false, requiresEndpoint: false }
 ]
 
 export function keychainProviderFor(id: WebSearchProviderId): string {
@@ -585,6 +649,8 @@ export function getWebSearchAdapter(): WebSearchAdapter | null {
       if (!endpoint) return null
       return new SearxngAdapter(endpoint)
     }
+    case 'wikipedia':
+      return new WikipediaAdapter()
     default:
       return null
   }
@@ -616,14 +682,17 @@ export function getWebSearchAdapterById(id: WebSearchProviderId): WebSearchAdapt
       const endpoint = readWebToolsSettings().searxngEndpoint?.trim()
       return endpoint ? new SearxngAdapter(endpoint) : null
     }
+    case 'wikipedia':
+      return new WikipediaAdapter()
     default:
       return null
   }
 }
 
-/** True if the provider has a key (Brave/Tavily/SerpAPI) or an endpoint (SearXNG). DDG needs neither. */
+/** True if the provider has a key (Brave/Tavily/SerpAPI), an endpoint (SearXNG),
+ *  or is unconditionally available (DDG, Wikipedia). */
 export function isProviderConfigured(id: WebSearchProviderId): boolean {
-  if (id === 'duckduckgo') return true
+  if (id === 'duckduckgo' || id === 'wikipedia') return true
   if (id === 'searxng') {
     return Boolean(readWebToolsSettings().searxngEndpoint?.trim())
   }

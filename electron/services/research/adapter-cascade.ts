@@ -27,7 +27,17 @@ import { readSettings } from '../settings-helper'
 // Settings (read from settings.json deepResearch.providerCascade):
 //   { "deepResearch": { "providerCascade": ["duckduckgo", "brave", "serpapi"] } }
 
-export const DEFAULT_PROVIDER_CASCADE: WebSearchProviderId[] = ['duckduckgo', 'brave', 'serpapi']
+// R3 — DDG demoted to the very end of the cascade after the html.duckduckgo.com
+// endpoint regressed (POST + GET both serve the homepage instead of results
+// for our adapter as of v0.7.2). Brave + SerpAPI are tried first when keyed;
+// Wikipedia (R5) is the zero-key floor that actually works. DDG is kept as a
+// last-resort attempt — if it ever comes back to life it'll still contribute.
+export const DEFAULT_PROVIDER_CASCADE: WebSearchProviderId[] = [
+  'brave',
+  'serpapi',
+  'wikipedia',
+  'duckduckgo'
+]
 
 export interface DeepResearchSettings {
   providerCascade: WebSearchProviderId[]

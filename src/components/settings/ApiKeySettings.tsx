@@ -7,6 +7,13 @@ interface ProviderEntry extends ProviderInfo {
   hasKey: boolean
 }
 
+interface SearchProviderEntry {
+  id: string
+  label: string
+  docsUrl: string
+  hasKey: boolean
+}
+
 interface TestResult {
   ok: boolean
   message: string
@@ -14,19 +21,26 @@ interface TestResult {
 
 export function ApiKeySettings() {
   const [providers, setProviders] = useState<ProviderEntry[]>([])
+  // R4 — second row of provider cards for the web-search cascade. Distinct
+  // namespace from AI providers so the IPC handler can refuse cross-writes.
+  const [searchProviders, setSearchProviders] = useState<SearchProviderEntry[]>([])
   const [encrypted, setEncrypted] = useState<boolean | null>(null)
   const [drafts, setDrafts] = useState<Record<string, string>>({})
+  const [searchDrafts, setSearchDrafts] = useState<Record<string, string>>({})
   const [showKey, setShowKey] = useState<Record<string, boolean>>({})
+  const [showSearchKey, setShowSearchKey] = useState<Record<string, boolean>>({})
   const [busy, setBusy] = useState<string | null>(null)
   const [testStatus, setTestStatus] = useState<Record<string, TestResult | null>>({})
 
   const refresh = async () => {
     if (!window.api) return
-    const [list, enc] = await Promise.all([
+    const [list, searchList, enc] = await Promise.all([
       window.api.settings.listProviderKeys(),
+      window.api.settings.listSearchProviderKeys(),
       window.api.settings.isEncryptionAvailable()
     ])
     if (list.success) setProviders(list.data as ProviderEntry[])
+    if (searchList.success) setSearchProviders(searchList.data as SearchProviderEntry[])
     setEncrypted(enc.success ? Boolean(enc.data) : false)
   }
 
@@ -111,8 +125,154 @@ export function ApiKeySettings() {
     }
   }
 
+  // R4 — search-provider key handlers. No test endpoint: search APIs are
+  // metered, so we let the next research turn act as the live validation
+  // rather than burning a paid call on settings entry.
+  const handleSearchSave = async (providerId: string, label: string) => {
+    const trimmed = (searchDrafts[providerId] || '').trim()
+    if (!trimmed) return
+    const consent = await ensurePlaintextConsentIfNeeded()
+    if (!consent) return
+    setBusy(`search:${providerId}`)
+    try {
+      const save = await window.api.settings.saveSearchProviderKey(providerId, trimmed)
+      if (!save.success) {
+        toast.error(`Failed to save ${label} key: ${save.error}`)
+        return
+      }
+      toast.success(`${label} key saved`)
+      setSearchDrafts((s) => ({ ...s, [providerId]: '' }))
+      await refresh()
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const handleSearchDelete = async (providerId: string, label: string) => {
+    setBusy(`search:${providerId}`)
+    try {
+      const result = await window.api.settings.deleteSearchProviderKey(providerId)
+      if (!result.success) {
+        toast.error(`Failed to delete ${label} key: ${result.error}`)
+        return
+      }
+      toast.success(`${label} key deleted`)
+      await refresh()
+    } finally {
+      setBusy(null)
+    }
+  }
+
   return (
     <div className="space-y-5">
+      {/* R4 — Search Providers section. Sits ABOVE AI providers because
+          deep-research auto-triggers on research-shaped prompts and silently
+          fails without one of these keys; users need to discover this knob
+          before their first research turn ghosts. */}
+      <div>
+        <h3 className="font-mono text-sm font-semibold text-[var(--text-primary)]">
+          Search providers
+        </h3>
+        <p className="mt-1 text-[13px] leading-relaxed text-[var(--text-muted)]">
+          Deep Research needs a search API to find sources. The free zero-key path
+          (DuckDuckGo HTML) is unreliable and frequently returns no results; the
+          built-in Wikipedia adapter covers some queries but isn't enough for
+          exhaustive search. Add a Brave or SerpAPI key (free tiers below) for
+          reliable academic + web coverage.
+        </p>
+      </div>
+
+      {searchProviders.map((p) => {
+        const draft = searchDrafts[p.id] || ''
+        const visible = showSearchKey[p.id] || false
+        const blurb =
+          p.id === 'brave'
+            ? 'Free tier: 2,000 queries/month. No credit card required.'
+            : p.id === 'serpapi'
+              ? 'Free tier: 100 searches/month. No credit card required.'
+              : p.id === 'tavily'
+                ? 'Free tier: 1,000 credits/month. No credit card required.'
+                : ''
+        return (
+          <div
+            key={`search:${p.id}`}
+            className="space-y-2 rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] p-3"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span
+                    aria-hidden
+                    className={`inline-block h-2 w-2 rounded-full ${
+                      p.hasKey ? 'bg-[var(--success)]' : 'bg-[var(--warning)]'
+                    }`}
+                  />
+                  <span className="font-mono text-xs font-semibold text-[var(--text-primary)]">
+                    {p.label}
+                  </span>
+                  <span className="font-mono text-[12px] text-[var(--text-muted)]">
+                    {p.hasKey ? 'Stored' : 'No key'}
+                  </span>
+                </div>
+                {blurb && (
+                  <p className="mt-1 text-[12px] text-[var(--text-muted)]">{blurb}</p>
+                )}
+                {p.docsUrl && (
+                  <a
+                    href={p.docsUrl}
+                    onClick={(e) => {
+                      e.preventDefault()
+                      window.api?.artifact?.openExternal?.(p.docsUrl)
+                    }}
+                    className="mt-1 inline-block font-mono text-[12px] text-[var(--accent)] hover:underline"
+                  >
+                    Get a free key →
+                  </a>
+                )}
+              </div>
+            </div>
+
+            <div className="flex gap-2">
+              <input
+                type={visible ? 'text' : 'password'}
+                value={draft}
+                onChange={(e) =>
+                  setSearchDrafts((s) => ({ ...s, [p.id]: e.target.value }))
+                }
+                placeholder={p.hasKey ? 'Replace key...' : 'Paste API key'}
+                className="flex-1 rounded border border-[var(--panel-border)] bg-[var(--bg-secondary)] px-2 py-1.5 font-mono text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+              />
+              <button
+                type="button"
+                onClick={() =>
+                  setShowSearchKey((s) => ({ ...s, [p.id]: !visible }))
+                }
+                className="rounded border border-[var(--panel-border)] bg-transparent px-3 py-1.5 text-xs text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]"
+              >
+                {visible ? 'Hide' : 'Show'}
+              </button>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 pt-1">
+              <button
+                onClick={() => handleSearchSave(p.id, p.label)}
+                disabled={busy === `search:${p.id}` || !draft.trim()}
+                className="rounded bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-40"
+              >
+                Save key
+              </button>
+              <button
+                onClick={() => handleSearchDelete(p.id, p.label)}
+                disabled={busy === `search:${p.id}` || !p.hasKey}
+                className="rounded border border-[var(--panel-border)] bg-transparent px-3 py-1.5 text-xs text-[var(--error)] transition-colors hover:bg-[var(--error)]/10 disabled:opacity-40"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        )
+      })}
+
       <div>
         <h3 className="font-mono text-sm font-semibold text-[var(--text-primary)]">Provider API keys</h3>
         <p className="mt-1 text-[13px] leading-relaxed text-[var(--text-muted)]">
