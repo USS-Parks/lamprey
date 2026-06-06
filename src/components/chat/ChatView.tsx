@@ -92,7 +92,7 @@ export function ChatView({ rightInset = 0 }: ChatViewProps = {}) {
           as a permanent half-step misalignment between the pipeline pill /
           input pill and the message bubbles above. The 6 px matches the
           ::-webkit-scrollbar width set in src/styles/index.css. */}
-      <div className="flex justify-center bg-[var(--bg-primary)] pt-3 pb-4 pr-[6px]">
+      <div className="flex justify-center pt-3 pb-4 pr-[6px]">
         <div className={CHAT_COLUMN_CLASS}>
           <PlanGoalsPanel conversationId={activeConversationId} />
           <AgentRunBanner />
