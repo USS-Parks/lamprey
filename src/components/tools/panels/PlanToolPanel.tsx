@@ -7,9 +7,10 @@ import type { PlanStep, PlanStepStatus } from '@/lib/types'
 // Docked Plan view for the right sidebar. Hosts the full plan UX — header
 // counter + Approve all / Reject (only while planModeActive) + the
 // editable steps list — in a panel that owns the full height of the
-// right column, so a 30-step plan scrolls naturally instead of squeezing
-// the chat-message area like the old inline PlanGoalsPanel did. The chat
-// column keeps a compact pip that links here on click.
+// right column, so a 30-step plan scrolls naturally without squeezing
+// the chat-message area. The right-sidebar Plan pill pulses when a plan
+// is present (amber when gated awaiting approval) so the user knows to
+// open this panel.
 
 const STATUS_LABELS: Record<PlanStepStatus, string> = {
   pending: 'Pending',

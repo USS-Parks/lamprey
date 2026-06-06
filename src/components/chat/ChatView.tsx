@@ -8,7 +8,6 @@ import { FileDropZone } from './FileDropZone'
 import { WelcomeScreen } from './WelcomeScreen'
 import { TokenTicker } from './TokenTicker'
 import { AgentRunBanner } from './AgentRunBanner'
-import { PlanGoalsPanel } from './PlanGoalsPanel'
 import { PlanModeBanner } from './PlanModeBanner'
 import { ChapterSidebar } from './ChapterSidebar'
 import { ChapterQuickJumper } from './ChapterQuickJumper'
@@ -94,7 +93,6 @@ export function ChatView({ rightInset = 0 }: ChatViewProps = {}) {
           ::-webkit-scrollbar width set in src/styles/index.css. */}
       <div className="flex justify-center pt-3 pb-4 pr-[6px]">
         <div className={CHAT_COLUMN_CLASS}>
-          <PlanGoalsPanel conversationId={activeConversationId} />
           <AgentRunBanner />
           <SpawnTaskTray />
           <TokenTicker />
