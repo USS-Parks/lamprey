@@ -79,7 +79,7 @@ export function ArtifactPanel({ artifactType, artifactSource, onClose }: Artifac
 
   return (
     <div
-      className="flex flex-col border-l border-[var(--border)] bg-[var(--bg-secondary)]"
+      className="flex flex-col overflow-hidden rounded-[var(--panel-radius)] bg-[var(--panel-bg)]"
       style={{ width: panelWidth }}
     >
       {/* Drag handle */}
@@ -91,7 +91,7 @@ export function ArtifactPanel({ artifactType, artifactSource, onClose }: Artifac
 
       <div className="flex flex-1 flex-col" style={{ marginLeft: -4 }}>
         {/* Header */}
-        <div className="flex h-12 items-center justify-between px-4 border-b border-[var(--border)]">
+        <div className="flex h-12 items-center justify-between bg-[var(--bg-tertiary)] px-4">
           <div className="flex items-center gap-2">
             <img src={codeWindowIconUrl} alt="" aria-hidden className="icon-asset h-9 w-9 object-contain" />
             <span className="text-sm font-medium text-[var(--text-secondary)]">Artifact</span>

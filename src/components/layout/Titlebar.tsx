@@ -459,7 +459,7 @@ export function SecondaryToolbar({ onSettingsClick }: SecondaryToolbarProps) {
 
   return (
     <div
-      className="flex h-9 items-center gap-2 border-b border-[var(--border)] bg-[var(--bg-secondary)] px-3"
+      className="flex h-9 items-center gap-2 bg-[var(--bg-tertiary)] px-3"
       style={NO_DRAG}
     >
       {/* Tool launcher button: opens the Codex-style VS Code / File Explorer

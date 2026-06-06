@@ -1,5 +1,32 @@
 # Lamprey Harness Dev Log
 
+## [Panels — Prompt P4] Right panel interior trim (cards preserved)  —  2026-06-05
+
+**Files changed:** `src/components/artifacts/RightPanelHome.tsx`, `src/components/tools/ToolsPanel.tsx`, `src/components/artifacts/ArtifactPanel.tsx`, `src/components/layout/Titlebar.tsx`
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- electron-vite build ✓
+- user-verification-needed: launch Electron and confirm:
+  - Right-panel interior cards (Recents, Tool shortcuts, docked env card) **look identical** to before — same backgrounds, same shape, same spacing
+  - No double-bounded effect at the panel's top edge or its outer left edge
+  - SecondaryToolbar at the top of the right panel reads as a subtle `--bg-tertiary` ribbon (no longer outlined)
+  - ArtifactPanel (when an artifact opens) is its own rounded `--panel-bg` panel; its inner header reads as a `--bg-tertiary` ribbon
+  - All right-panel interactions still work (open artifact, swap to tools, expand docked env card)
+
+**Notes:** Conservative trim only. No card backgrounds, borders, spacing, or layouts touched.
+- `RightPanelHome.tsx` line 84: top-strip `border-b border-[var(--border)]` removed (doubled the panel's own top edge). Cards on line 114+ untouched.
+- `ToolsPanel.tsx` line 148: same — top-strip `border-b` removed.
+- `ArtifactPanel.tsx` line 82: outer `border-l + bg-[var(--bg-secondary)]` swapped to `bg-[var(--panel-bg)] rounded-[var(--panel-radius)] overflow-hidden` — ArtifactPanel is now its own rounded panel container (it replaces the right-panel home view when artifact is active).
+- `ArtifactPanel.tsx` line 94: inner header `border-b` removed, swapped to `bg-[var(--bg-tertiary)]` tint so the header still reads as a distinct strip without a hairline.
+- `Titlebar.tsx` SecondaryToolbar (line 462): `border-b border-[var(--border)]` removed, `bg-[var(--bg-secondary)]` → `bg-[var(--bg-tertiary)]` tint so the toolbar lifts off the panel surface (panel bg is `--bg-secondary` in dark mode, so identical bg without the tint swap would blend).
+- WebContentsView sandbox boundary: no explicit boundary set in ArtifactPanel.tsx — the OS-level overlay handles isolation. Nothing to preserve.
+
+**Commit:** _this commit_
+
+---
+
 ## [Panels — Prompt P3] Left sidebar interior cleanup  —  2026-06-05
 
 **Files changed:** `src/components/layout/Sidebar.tsx`

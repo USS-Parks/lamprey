@@ -81,7 +81,7 @@ export function RightPanelHome({ onCollapse }: RightPanelHomeProps): React.React
 
   return (
     <>
-      <div className="flex h-10 items-center justify-between border-b border-[var(--border)] pl-3 pr-2 text-[12px] font-medium text-[var(--text-secondary)]">
+      <div className="flex h-10 items-center justify-between pl-3 pr-2 text-[12px] font-medium text-[var(--text-secondary)]">
         <span>Workspace</span>
         <button
           onClick={onCollapse}
