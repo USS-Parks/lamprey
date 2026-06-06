@@ -68,7 +68,11 @@ win:
   target:
     - nsis
     - zip
-  artifactName: ${productName}-${version}-${arch}.${ext}
+  # Generic artifact names so cdn.islandmountain.io/Lamprey-x64.{exe,zip}
+  # stays a stable URL across releases. The version lives in the GitHub
+  # release tag + notes; the binary filename does not carry it. See
+  # `feedback_cdn_evergreen_artifacts`.
+  artifactName: ${productName}-${arch}.${ext}
   # Skip the sign-and-edit step entirely. We aren't code-signing, and the
   # winCodeSign archive contains macOS symlinks that Windows can't extract
   # without Developer Mode / admin (A required privilege is not held by the client).
@@ -91,7 +95,7 @@ linux:
   category: Development
   target:
     - AppImage
-  artifactName: ${productName}-${version}-${arch}.${ext}
+  artifactName: ${productName}-${arch}.${ext}
 
 publish:
   provider: github

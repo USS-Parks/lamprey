@@ -21,8 +21,8 @@ Pick one — the `.exe` is the standard installer, the `.zip` is the portable bu
 
 | Format | File | Direct link |
 |---|---|---|
-| **NSIS installer** (Windows) | `Lamprey-0.8.4-x64.exe` | [Download .exe](https://github.com/USS-Parks/lamprey/releases/download/v0.8.4/Lamprey-0.8.4-x64.exe) |
-| **Portable ZIP** (Windows) | `Lamprey-0.8.4-x64.zip` | [Download .zip](https://github.com/USS-Parks/lamprey/releases/download/v0.8.4/Lamprey-0.8.4-x64.zip) |
+| **NSIS installer** (Windows) | `Lamprey-x64.exe` | [Download .exe](https://github.com/USS-Parks/lamprey/releases/download/v0.8.4/Lamprey-x64.exe) |
+| **Portable ZIP** (Windows) | `Lamprey-x64.zip` | [Download .zip](https://github.com/USS-Parks/lamprey/releases/download/v0.8.4/Lamprey-x64.zip) |
 
 Or browse all releases → <https://github.com/USS-Parks/lamprey/releases>
 
@@ -206,7 +206,7 @@ User-defined JavaScript sandbox hooks that fire on lifecycle events:
 
 ## Quick start
 
-1. **Download** the [v0.8.4 installer](https://github.com/USS-Parks/lamprey/releases/download/v0.8.4/Lamprey-0.8.4-x64.exe) and run it.
+1. **Download** the [v0.8.4 installer](https://github.com/USS-Parks/lamprey/releases/download/v0.8.4/Lamprey-x64.exe) and run it.
 2. **Get a key.** Easiest: <https://platform.deepseek.com> → sign up → create key → load $5. Lamprey also accepts Google AI Studio (Gemma), Alibaba DashScope (Qwen), and OpenRouter keys.
 3. **Paste your key** in the first-run modal. It's stored with `safeStorage` (OS keychain) under `userData/keys.json`.
 4. **Type something.** That's it.

@@ -1,5 +1,30 @@
 # Lamprey Harness Dev Log
 
+## [Build] Generic artifact filenames — drop the version suffix  —  2026-06-06
+
+User-directed policy change ahead of the v0.8.4 build: `dist/` artifacts must land at stable, version-less paths every release. From now on:
+
+- `dist/Lamprey-x64.exe` (was `Lamprey-0.8.4-x64.exe`)
+- `dist/Lamprey-x64.zip` (was `Lamprey-0.8.4-x64.zip`)
+- `dist/Lamprey-x64.exe.blockmap` (was `Lamprey-0.8.4-x64.exe.blockmap`)
+- `dist/latest.yml` (already generic)
+
+The version still lives in:
+- the GitHub release tag (`v0.8.4`)
+- the release description / notes
+- `latest.yml`'s `version:` field
+- the embedded `productVersion` inside the `.exe` (electron-builder writes this from `package.json`)
+
+**Why:** the public download page `www.islandmountain.io/lamprey` is Cloudflare-fronted at `cdn.islandmountain.io/Lamprey-x64.{exe,zip}`. With generic build output, the CDN upload step is a direct overwrite — no rename. The GitHub release URL pattern `…/releases/download/vX.Y.Z/Lamprey-x64.exe` is also stable across versions (only the tag segment changes), so the README download links don't need surgery beyond the tag.
+
+**Change:** `electron-builder.yml` `win.artifactName` + `linux.artifactName` switched from `${productName}-${version}-${arch}.${ext}` to `${productName}-${arch}.${ext}`. README v0.8.4 download links + Quick-start downloader link rewritten to match.
+
+**Memory updated:** [[feedback-cdn-evergreen-artifacts]] reflects the new flow (no rename step in the ship arc).
+
+**Commit:** _this commit_
+
+---
+
 ## [Robustness Hotfix — Phase Complete] v0.8.4 — duplicate-app + bash-as-prose ghost-reply closed  —  2026-06-06
 
 **Two user-reported defects closed end-to-end.** The 2026-06-06 screenshots showed (a) Lamprey occasionally opens a second app instance of itself and (b) the user often has to re-prompt to actually get the model to perform a duty (coder emitted `<bash>find …</bash>` as final prose). HX1-HX5 closes both, ships as **v0.8.4**.
