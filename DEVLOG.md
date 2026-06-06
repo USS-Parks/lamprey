@@ -1,5 +1,31 @@
 # Lamprey Harness Dev Log
 
+## [Hotfix] v0.8.2 — Right-panel card density  —  2026-06-06
+
+**Single-issue visual fix.** The right-panel home grew to nine pills with the Reasoning-Trace Phase (`Files → Side chat → Browser → Artifacts → Terminal → Review → Plan → Background tasks → Reasoning trace`) and at the default panel width the ninth pill clipped below the fold. User flagged the symptom from a screenshot and asked for the cards to shrink to fit without changing the panel's outer dimensions.
+
+**What changed.** `src/components/artifacts/RightPanelHome.tsx` only.
+
+- Container: `gap-2 p-2.5` → `gap-1.5 p-2` (tighter outer pack)
+- Each card: `min-h-[68px] gap-3 p-3` → `min-h-[54px] gap-2.5 px-2.5 py-2`
+- Icon: `h-11 w-11` → `h-9 w-9` (both the layout span and the inner `img`)
+- Title (14px) and description (12px) type sizes unchanged → hierarchy preserved.
+
+**Reclaimed vertical space.** ~14px per card × 9 cards + ~4px gap delta × 8 gaps + ~10px container padding delta ≈ 168px — enough to seat all nine pills inside the panel at the documented default width without scroll.
+
+**Non-changes.** No tokens added/changed. No new components. No store / IPC / DB touched. `FloatingEnvironmentCard` and right-panel docked-mode interiors untouched (per Panels Phase contract). Plan ring + signal dot logic unchanged.
+
+**Verify gate.**
+- `npx tsc --noEmit -p tsconfig.web.json` ✓ (clean exit, no output)
+- `npx tsc --noEmit -p tsconfig.node.json` ✓
+- `npm run build:win` — runs locally; four release artifacts (`Lamprey-0.8.2-x64.exe`, `.exe.blockmap`, `.zip`, `latest.yml`) land in primary repo `dist/` per `feedback_release_artifacts_in_primary_dist`.
+
+**Why ship it as v0.8.2 instead of folding into v0.8.1.** v0.8.1 is the tagged release for the Reasoning-Trace Phase; this is a post-ship visual fix flagged by inspection of the running app. Patch-level bump keeps the release boundary honest.
+
+**Worktree:** `claude/festive-hellman-e76a8a`.
+
+**Commit:** _this commit_
+
 ## [Reasoning-Trace — Phase Complete] v0.8.1 ship  —  2026-06-06
 
 **RT8 — ship of the Reasoning-Trace Phase.** Bumps `package.json` from `0.7.5` → `0.8.1`; updates CLAUDE.md "Current State" + memory governance files; runs the full verify gate; runs `npm run build:win` to produce the four Windows release artifacts; moves them into the **primary repo's** `dist/` per `feedback_release_artifacts_in_primary_dist`; pushes `feat/reasoning-trace-phase` → `main`. Tag creation deferred to the user (remote proxy rejects tag pushes; CLAUDE.md "Where the .exe comes from").
