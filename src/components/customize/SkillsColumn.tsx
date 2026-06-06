@@ -141,7 +141,13 @@ function EditDrawer({ skill, onClose }: EditDrawerProps) {
   )
 }
 
-export function SkillsColumn() {
+interface SkillsColumnProps {
+  /** Opens the InstallPluginFlow with the "From Claude Code" tab focused.
+   *  CustomizeView owns the modal state, so SkillsColumn just delegates. */
+  onOpenImport?: () => void
+}
+
+export function SkillsColumn({ onOpenImport }: SkillsColumnProps = {}) {
   const skills = useSkillsStore((s) => s.skills)
   const activeSkillIds = useSkillsStore((s) => s.activeSkillIds)
   const loadSkills = useSkillsStore((s) => s.loadSkills)
@@ -203,6 +209,15 @@ export function SkillsColumn() {
         >
           + New
         </button>
+        {onOpenImport && (
+          <button
+            onClick={onOpenImport}
+            className="rounded border border-[var(--border)] bg-[var(--bg-primary)] px-2 py-1 text-[12px] hover:border-[var(--accent)]"
+            title="Import skills from a Claude Code bundle on this machine"
+          >
+            ↓ Import
+          </button>
+        )}
       </div>
 
       {/* List */}

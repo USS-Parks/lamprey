@@ -6,7 +6,7 @@ import { ConnectorsColumn } from './ConnectorsColumn'
 import { PluginsColumn } from './PluginsColumn'
 import { NewSkillWizard } from './NewSkillWizard'
 import { AddConnectorFlow } from './AddConnectorFlow'
-import { InstallPluginFlow } from './InstallPluginFlow'
+import { InstallPluginFlow, type InstallPluginFlowTab } from './InstallPluginFlow'
 import connectAppsIconLight from '@assets/Lamprey Connect Apps Icon.png'
 import connectAppsIconDark from '@assets/Lamprey Connect Apps Icon Dark View.png'
 import skillsTeacherIconLight from '@assets/Lamprey Skills Teacher Icon Light View.png'
@@ -77,6 +77,14 @@ export function CustomizeView() {
   const [wizardOpen, setWizardOpen] = useState(false)
   const [addConnectorOpen, setAddConnectorOpen] = useState(false)
   const [installPluginOpen, setInstallPluginOpen] = useState(false)
+  const [installPluginTab, setInstallPluginTab] = useState<InstallPluginFlowTab | undefined>(
+    undefined
+  )
+
+  const openInstallPlugin = (tab?: InstallPluginFlowTab) => {
+    setInstallPluginTab(tab)
+    setInstallPluginOpen(true)
+  }
 
   // Highlighting only — every column renders all the time so the panel
   // shows the full surface at a glance, matching the Claude Code layout.
@@ -145,7 +153,9 @@ export function CustomizeView() {
               <div className="text-[12px] text-[var(--text-secondary)]">{col.description}</div>
             </header>
             <div className="min-h-0 flex-1 overflow-y-auto">
-              {col.id === 'skills' && <SkillsColumn />}
+              {col.id === 'skills' && (
+                <SkillsColumn onOpenImport={() => openInstallPlugin('cc-import')} />
+              )}
               {col.id === 'connectors' && <ConnectorsColumn />}
               {col.id === 'plugins' && <PluginsColumn />}
             </div>
@@ -171,7 +181,7 @@ export function CustomizeView() {
           <CtaCard
             title="Browse plugins"
             description="Discover and install bundled plugin packs."
-            onClick={() => setInstallPluginOpen(true)}
+            onClick={() => openInstallPlugin()}
             icon={<PlugInsIcon />}
           />
         </div>
@@ -179,7 +189,15 @@ export function CustomizeView() {
 
       {wizardOpen && <NewSkillWizard onClose={() => setWizardOpen(false)} />}
       {addConnectorOpen && <AddConnectorFlow onClose={() => setAddConnectorOpen(false)} />}
-      {installPluginOpen && <InstallPluginFlow onClose={() => setInstallPluginOpen(false)} />}
+      {installPluginOpen && (
+        <InstallPluginFlow
+          onClose={() => {
+            setInstallPluginOpen(false)
+            setInstallPluginTab(undefined)
+          }}
+          {...(installPluginTab ? { initialTab: installPluginTab } : {})}
+        />
+      )}
     </div>
   )
 }
