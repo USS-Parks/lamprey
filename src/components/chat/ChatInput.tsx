@@ -357,7 +357,7 @@ function ContextChip({ icon, label, title, onClick, menu }: ContextChipProps) {
         disabled={!interactive}
         aria-haspopup={hasMenu ? 'menu' : undefined}
         aria-expanded={hasMenu ? open : undefined}
-        className={`flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] px-2 py-1 text-[12px] text-[var(--text-secondary)] transition-colors ${
+        className={`flex items-center gap-1.5 rounded-md border border-[var(--panel-border)] bg-[var(--bg-tertiary)] px-2 py-1 text-[12px] text-[var(--text-secondary)] transition-colors ${
           interactive
             ? 'hover:border-[var(--accent)] hover:text-[var(--text-primary)]'
             : 'cursor-default opacity-90'
@@ -1117,7 +1117,7 @@ export function ChatInput({ onSend, onCancel, isStreaming, disabled }: ChatInput
           </button>
           <button
             onClick={handlePasteOfferInline}
-            className="rounded border border-[var(--border)] px-2 py-1 text-[13px] text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]"
+            className="rounded border border-[var(--panel-border)] px-2 py-1 text-[13px] text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]"
           >
             Paste inline
           </button>
@@ -1134,7 +1134,7 @@ export function ChatInput({ onSend, onCancel, isStreaming, disabled }: ChatInput
         </div>
       )}
 
-      <div className="relative flex w-full flex-col gap-2 rounded-3xl border border-[var(--border)] bg-[var(--bg-secondary)] px-4 pt-3 pb-2 shadow-lg backdrop-blur-sm">
+      <div className="relative flex w-full flex-col gap-2 rounded-3xl border border-[var(--panel-border)] bg-[var(--panel-bg)] px-4 pt-3 pb-2 shadow-lg backdrop-blur-sm">
         {/* Track 2 / C4 — slash-command palette. Anchored to this
             container's top edge via `bottom-full`, so it floats above
             the input box without affecting layout. */}

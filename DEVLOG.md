@@ -1,5 +1,33 @@
 # Lamprey Harness Dev Log
 
+## [Panels — Prompt P5] Chat column transparent + ChatInput pill softened  —  2026-06-05
+
+**Files changed:** `src/components/chat/ChatView.tsx`, `src/components/chat/ChatInput.tsx`
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- electron-vite build ✓
+- user-verification-needed: launch Electron and confirm:
+  - **Chat column reads as content flowing on the substrate** — no card border around the message stream, no bg lift
+  - Prompt input pill sits as a tactile, slightly-elevated control on the substrate with `--panel-border` soft edge + `--panel-bg` background (white card on cream in light, panel-bg in dark)
+  - Adjacent dock pills (model picker chip, mode toggle, etc.) read as individual pills, softened to `--panel-border`
+  - `FloatingEnvironmentCard` looks and behaves **exactly** as pre-phase — no class or behavior changes
+  - Popovers (slash command, agent mode picker, model picker) still have their borders and read as "lifted" off the surface
+
+**Notes:**
+- `ChatView.tsx` line 55 root container: stripped `rounded-xl border border-[var(--border)] bg-[var(--bg-primary)]` → `bg-transparent`. The chat column was literally a bordered card; that card chrome was the source of the "third panel" feeling. Now messages flow directly on `--app-bg` exposed by P2.
+- `ChatInput.tsx` line 1137 main prompt pill: `border-[var(--border)] bg-[var(--bg-secondary)]` → `border-[var(--panel-border)] bg-[var(--panel-bg)]`. The pill keeps its rounded-3xl shape + shadow-lg + backdrop-blur so it still reads as a defined elevated control.
+- `ChatInput.tsx` line 360 chip-button: `border-[var(--border)] bg-[var(--bg-secondary)]` → `border-[var(--panel-border)] bg-[var(--bg-tertiary)]`. The bg swap (secondary → tertiary) keeps the chip readable on the new pill surface; secondary would have blended since the pill is now `--panel-bg = --bg-secondary` in dark mode.
+- `ChatInput.tsx` line 1120 "Paste inline" button: `--border` → `--panel-border` softening.
+- Line 151 chip is already conditional `border-[var(--accent)]` / `border-transparent` (semantic), no `--border` token usage — left as-is.
+- `FloatingEnvironmentCard.tsx` **untouched** per plan §2 #4. Zero edits.
+- Popovers at lines 184, 271, 395, 603 — all `border border-[var(--border)]`, kept per allow-list #5 (floating UI).
+
+**Commit:** _this commit_
+
+---
+
 ## [Panels — Prompt P4] Right panel interior trim (cards preserved)  —  2026-06-05
 
 **Files changed:** `src/components/artifacts/RightPanelHome.tsx`, `src/components/tools/ToolsPanel.tsx`, `src/components/artifacts/ArtifactPanel.tsx`, `src/components/layout/Titlebar.tsx`
