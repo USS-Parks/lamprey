@@ -1,5 +1,26 @@
 # Lamprey Harness Dev Log
 
+## [Reasoning Audit — Prompt R8] Re-feed past reasoning to the API on rehydrate (gated)  —  2026-06-06
+
+**Files changed:** `electron/services/chat-history.ts` (`StoredChatMessage.reasoning?`, `shouldIncludePastReasoning()` setting read, `reasoningRehydratedContent()` helper, rehydration applied to both tool-call-carrying + plain assistant branches), `electron/services/chat-history.test.ts` (5 new R8 cases), `electron/services/context-compressor.ts` (`CompressorMessage.reasoning?`, SELECT/map includes the new column), `src/lib/types.ts` (`AppSettings.includePastReasoningInContext?: boolean`), `src/stores/settings-store.ts` (default = `true`)
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- vitest ✓ (1915 pass / 38 skip — 5 new chat-history rehydration cases: default-on prepends `<think>`, explicit-off passes through, no-reasoning passes through, no-double-tag when content already starts with `<think>`, tool-call-carrying assistant also rehydrates)
+- electron-vite build ✓ (5.23s)
+- user-verification-needed: in Electron, send a multi-agent turn with a reasoning-emitting Reviewer; follow up with another turn; toggle `includePastReasoningInContext` ON → confirm the next API call's assistant content reflects the prior reasoning (check via debug-trace or model-request audit log); toggle OFF → confirm prior reasoning is absent.
+
+**Notes:**
+- Setting defaults to `true` (Invariant §2.7 + user direction). Power-user opt-out (long-conversation context-saver) via R9's Settings panel.
+- The same-row content/reasoning split keeps the on-disk shape stable; rehydration is a pure read-time transform. No DB migration, no historical-row mutation. Rehydration applies to every assistant row that carries `reasoning` — including R4 Planner rows, R5 Reviewer rows, R6 Composer rows, and regular Coder rows.
+- Double-tagging guard: rows whose content already starts with `<think>` (e.g. legacy inline-emitter rows where the `<think>` block never got hoisted by `splitInlineReasoning`) pass through unchanged.
+- `CompressorMessage` widened so the post-compressor view also carries reasoning. The summary row inserted by the compressor itself has no `reasoning` field; it's a `role: 'system'` row and goes through the system-content branch unchanged.
+
+**Commit:** _pending — current commit_
+
+---
+
 ## [Reasoning Audit — Prompt R7] MessageBubble: stage chip + Planner-trace toggle on Coder bubble  —  2026-06-06
 
 **Files changed:** `src/components/chat/MessageList.tsx` (pre-walk attaches Planner rows to next downstream bubble; orphan fallback at end), `src/components/chat/MessageBubble.tsx` (`attachedPlanner?: Message` prop, "Show pipeline trace ▾" toggle, stage chip for Reviewer / Composer / orphan Planner)

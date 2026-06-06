@@ -374,6 +374,16 @@ export interface AppSettings {
     coder?: number
     reviewer?: number
   }
+  /**
+   * Reasoning Audit Phase R8 — when on (default), past assistant rows
+   * with persisted reasoning get re-fed into the next turn's API stack
+   * as a leading `<think>…</think>` block so the model can see its own
+   * prior chain-of-thought. Trade-off: each rehydrated `<think>` block
+   * inflates context tokens; turn off if a long conversation hits the
+   * model's context limit. Closes the "no session history tool exists"
+   * gap surfaced by the Cascadian Shadow debug-session audit.
+   */
+  includePastReasoningInContext?: boolean
 }
 
 export const DEFAULT_AGENTIC_CODING_SKILLS: string[] = [
