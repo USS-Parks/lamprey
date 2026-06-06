@@ -1,5 +1,34 @@
 # Lamprey Harness Dev Log
 
+## [Robustness Hotfix — Prompt HX2] `PSEUDO_TAG_GUARD` constant generalised across model-facing roles  —  2026-06-06
+
+**Defect.** RT1 added the pseudo-XML guard ("never wrap commentary in `<bash>`, `<tool>`, `<run>`, …") but only on the Reviewer role. The same bash-as-prose defect surfaced on `coder` (per the 2026-06-06 user-reported screenshots) and is structurally possible on `planner` / `coworker` / composer too.
+
+**Fix.** Extracted the guard from its inline position in `AGENT_ROLE_PROMPTS.reviewer` into a top-level `export const PSEUDO_TAG_GUARD` placed just before `COMPOSER_SYSTEM` (so the composer-array literal can append it). Re-spliced into:
+- `AGENT_ROLE_PROMPTS.planner` (appended after "no code.")
+- `AGENT_ROLE_PROMPTS.coder` (appended after "Use tools when they exist.")
+- `AGENT_ROLE_PROMPTS.reviewer` (replaces the inline copy — body reassembles byte-identical to pre-HX2)
+- `AGENT_ROLE_PROMPTS.coworker` (appended after "avoid restating the obvious.")
+- `COMPOSER_SYSTEM` array (final entry, after "Keep it short and concrete.")
+
+`reader` and `verifier` are deliberately untouched — they emit short verdict strings (PASS / FAIL / UNCERTAIN) and won't carry pseudo-XML in practice. The HX2 test suite codifies that omission so a future refactor doesn't accidentally widen the surface.
+
+**Reviewer byte-identical invariant.** A new test `'reassembles byte-for-byte from PSEUDO_TAG_GUARD'` snapshots the exact RT1 reviewer body and asserts `AGENT_ROLE_PROMPTS.reviewer === RT1_REVIEWER_GOLDEN`. The refactor preserves the SHIP / file:line / no-tools contract verbatim.
+
+**Files changed:** `electron/services/system-prompt-builder.ts`, `electron/services/system-prompt-builder.test.ts`.
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- electron-vite build ✓
+- vitest (`system-prompt-builder`): 40 / 40 ✓ (13 new HX2 tests + 27 prior)
+
+**Notes.** Belt-and-braces — the persist-side sanitizer in HX3/HX4 catches the case where a model ignores the prompt guard anyway. The guard itself isn't blocking the bash-as-prose defect; it's making it less likely upstream.
+
+**Commit:** _this commit_
+
+---
+
 ## [Robustness Hotfix — Prompt HX1] Single-instance lock blocks duplicate Lamprey processes  —  2026-06-06
 
 **Defect.** Double-clicking the desktop launcher (or any re-launch firing while the splash is up) spawned a second independent Electron process. Each duplicate opened its own SQLite handle on `lamprey.db`, its own MCP clients, its own watchers — at minimum confusing, at worst a write-race on shared `userData/`.
