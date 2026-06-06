@@ -241,6 +241,11 @@ export interface ThemePresetTokens {
   warning: string
   error: string
   codeBg: string
+  // Panels Phase tokens — substrate + panel surface system.
+  // appBg = outer shell substrate (sidebars float on this).
+  // panelBg = sidebar panel surface (rounded card tone).
+  appBg: string
+  panelBg: string
 }
 
 export interface ThemePreset {

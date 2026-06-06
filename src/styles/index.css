@@ -33,6 +33,31 @@
   --warning: #c47a2a;
   --error: #c43a3a;
   --code-bg: #111111;
+
+  /* ─── Panels Phase substrate system ──────────────────────────────────
+     Layout chrome convention (introduced in v0.6.0 — Panels Phase):
+
+       --app-bg       Outer shell substrate. The two sidebar panels and
+                      the (transparent) chat column sit on top of this.
+       --panel-bg     The two sidebar panels' surface tone. The chat
+                      column is NOT a panel — it stays transparent.
+       --panel-border Low-alpha edge for soft panel edges + the chat
+                      input pill. Use sparingly; tonal contrast carries
+                      most of the work.
+       --panel-radius Corner radius for panels and pills (12px).
+       --panel-gap    Substrate gap between panels and chat (8px).
+
+     When adding new chrome: prefer whitespace + tonal lift over a 1px
+     border. Borders are reserved for floating UI (popovers, modals,
+     toasts), form controls (input, textarea, select), and semantic
+     stripes (risk-tier, diff gutters, role accents). Structural-chrome
+     borders are a regression — see PLANNING/LAMPREY_PANELS_PLAN.md §2
+     allow-list. */
+  --app-bg: #090909;
+  --panel-bg: #161616;
+  --panel-border: rgba(255, 255, 255, 0.06);
+  --panel-radius: 12px;
+  --panel-gap: 8px;
 }
 
 /* Light-mode fallback values — these are overwritten the moment
@@ -47,6 +72,9 @@
   --text-secondary: #4a5160;
   --text-muted: #8a92a0;
   --code-bg: #f3f4f6;
+  --app-bg: #ece8e2;
+  --panel-bg: #ffffff;
+  --panel-border: rgba(15, 17, 21, 0.06);
 }
 
 @layer base {

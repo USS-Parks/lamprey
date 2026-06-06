@@ -43,7 +43,12 @@ function buildLightTokens(dark: ThemePresetTokens): ThemePresetTokens {
     success: shadeToward(dark.success, 0.1),
     warning: shadeToward(dark.warning, 0.1),
     error: shadeToward(dark.error, 0.05),
-    codeBg: tintToward(dark.accent, 0.92)
+    codeBg: tintToward(dark.accent, 0.92),
+    // Panels Phase: substrate is warm-tinted (cream-leaning per accent);
+    // panel surface is pure white so existing --bg-tertiary cards on the
+    // panel still read as a step down/cooler.
+    appBg: tintToward(dark.accent, 0.92),
+    panelBg: '#ffffff'
   }
 }
 
@@ -66,7 +71,9 @@ export const THEME_PRESETS: ThemePreset[] = [
       success: '#3d9e60',
       warning: '#c47a2a',
       error: '#c43a3a',
-      codeBg: '#111111'
+      codeBg: '#111111',
+      appBg: '#090909',
+      panelBg: '#161616'
     }
   },
   {
@@ -87,7 +94,9 @@ export const THEME_PRESETS: ThemePreset[] = [
       success: '#3d9e60',
       warning: '#c47a2a',
       error: '#c43a3a',
-      codeBg: '#0d1118'
+      codeBg: '#0d1118',
+      appBg: '#07090d',
+      panelBg: '#11151c'
     }
   },
   {
@@ -108,7 +117,9 @@ export const THEME_PRESETS: ThemePreset[] = [
       success: '#3d9e60',
       warning: '#f7975e',
       error: '#c43a3a',
-      codeBg: '#130f0d'
+      codeBg: '#130f0d',
+      appBg: '#0b0807',
+      panelBg: '#1a1410'
     }
   },
   {
@@ -129,7 +140,9 @@ export const THEME_PRESETS: ThemePreset[] = [
       success: '#3d9e60',
       warning: '#c47a2a',
       error: '#c43a3a',
-      codeBg: '#0a180f'
+      codeBg: '#0a180f',
+      appBg: '#050e09',
+      panelBg: '#0e1f15'
     }
   },
   {
@@ -150,7 +163,9 @@ export const THEME_PRESETS: ThemePreset[] = [
       success: '#3d9e60',
       warning: '#c47a2a',
       error: '#c43a3a',
-      codeBg: '#14100a'
+      codeBg: '#14100a',
+      appBg: '#0c0705',
+      panelBg: '#1c130e'
     }
   },
   {
@@ -171,7 +186,9 @@ export const THEME_PRESETS: ThemePreset[] = [
       success: '#3d9e60',
       warning: '#ffae85',
       error: '#c43a3a',
-      codeBg: '#0d0a18'
+      codeBg: '#0d0a18',
+      appBg: '#07060e',
+      panelBg: '#110f1c'
     }
   },
   {
@@ -192,7 +209,9 @@ export const THEME_PRESETS: ThemePreset[] = [
       success: '#3d9e60',
       warning: '#c47a2a',
       error: '#c43a3a',
-      codeBg: '#0a1410'
+      codeBg: '#0a1410',
+      appBg: '#060c0a',
+      panelBg: '#0e1a17'
     }
   },
   {
@@ -213,7 +232,9 @@ export const THEME_PRESETS: ThemePreset[] = [
       success: '#7a8f2a',
       warning: '#d4a017',
       error: '#c43a3a',
-      codeBg: '#18140d'
+      codeBg: '#18140d',
+      appBg: '#0e0c07',
+      panelBg: '#1e1a12'
     }
   }
 ]

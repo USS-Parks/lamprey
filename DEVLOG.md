@@ -1,5 +1,28 @@
 # Lamprey Harness Dev Log
 
+## [Panels — Prompt P1] Surface tokens + theme-preset feed-through  —  2026-06-05
+
+**Files changed:** `src/lib/types.ts`, `src/styles/index.css`, `src/styles/theme-presets.ts`, `src/styles/apply-theme.ts`
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- electron-vite build ✓
+- light + dark mode eyeball: **no visual change expected this prompt** (tokens land but no consumers yet — P2 is the first consumer). User-verification-needed: open DevTools on the running app and confirm `:root` resolves `--app-bg`, `--panel-bg`, `--panel-border`, `--panel-radius`, `--panel-gap` to non-empty values in both modes; flipping theme preset updates `--app-bg` + `--panel-bg`.
+
+**Notes:**
+- Added `appBg` + `panelBg` to `ThemePresetTokens` (the two values that vary per preset).
+- `--panel-border` (low-alpha edge), `--panel-radius` (12px), `--panel-gap` (8px) are constants — kept in `index.css` directly, not threaded through the preset system.
+- Dark `appBg` per preset is computed as roughly `shadeToward(bgPrimary, 0.30)` — pushes ~30% toward black so panels lift visibly off the substrate. Values hand-picked once and inlined (no module-init computation).
+- Dark `panelBg` aliases `bgSecondary` per preset, so the existing sidebar surface tone stays — only the role changes from "sidebar bg via hairline border" to "sidebar bg via rounded panel + tonal lift."
+- Light `appBg` uses `tintToward(dark.accent, 0.92)` — gives each preset a warm cream substrate that hints at its accent without overpowering. Light `panelBg` is `#ffffff` so the sidebars read as white cards floating on the cream.
+- Constraint enforced: `--bg-tertiary` cards inside the right panel still read as a tonal step against the new `--panel-bg` — dark `bg-tertiary > bg-secondary = panel-bg`, light `bg-tertiary < panel-bg = #ffffff`.
+- Block of comments inserted in `index.css` documenting the panel convention for future contributors.
+
+**Commit:** _this commit_
+
+---
+
 ## [Customize Phase Complete] — 2026-06-05
 
 All twelve prompts of the Customize Phase landed on `claude/determined-pasteur-033123`. The phase gave Lamprey a first-class **Customize** surface in the left sidebar — mirroring Claude Code's Customize panel — with three columns (Skills / Connectors / Plugins) and three bottom CTAs (Connect your apps / Create new skills / Browse plugins). Promoted the previously buried `SkillsManager` and `McpSettings` out of the Settings dialog and retired both tabs, then built the plugin system end-to-end from scratch.
