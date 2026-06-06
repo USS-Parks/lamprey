@@ -1,5 +1,54 @@
 # Lamprey Harness Dev Log
 
+## [Hotfix] v0.8.3 — Right-panel polish round 2  —  2026-06-06
+
+**Three follow-up fixes flagged from the v0.8.2 build.**
+
+### 1. Card spacing rebalanced
+
+v0.8.2 over-trimmed the cards (`min-h-[54px] shrink-0 gap-1.5 p-2`) — they all fit, but the panel had a big empty band below the ninth pill. v0.8.3 swaps `shrink-0` for `flex-1 basis-0` so the nine cards take an equal share of the remaining panel height and distribute evenly to fill it.
+
+- Container: `gap-1.5 p-2` → `gap-2 p-2.5` (more breathing room since cards now stretch).
+- Card: `min-h-[54px] shrink-0 gap-2.5 px-2.5 py-2` → `min-h-[58px] flex-1 basis-0 gap-3 px-3 py-2.5`.
+- 58px minimum prevents collapse if the panel is ever short; `flex-1 basis-0` gives even distribution when there's room (the common case).
+
+### 2. Background tasks icon density bumped
+
+`ASSETS/Lamprey Background Tasks Icon.png` was sitting at 6.3% opaque while peers ran 7.5–13% — under dark mode's `brightness(0) invert(1)` filter the icon looked visibly faded next to its neighbors. New script `scripts/thicken-background-tasks-icon.cjs` dilates alpha by 2px and fills the new halo using nearest-source-pixel RGB (navy stroke / teal accent preserved). Result: 7.9% opaque, in family with Files (8.0%) and Side chat (7.5%). Companion `ASSETS/Lamprey Background Tasks Icon Dark View.png` regenerated from the new light source (white-RGB, preserved alpha) per `feedback_icon_wireframe_method`.
+
+### 3. Reasoning trace icon wired with paired-PNG treatment
+
+Source `ASSETS/Lamprey Reasoning Trace Icon Light View.png` was a fresh opaque-white-background drop (100% opaque, 90.6% near-white pixels — exactly the input `scripts/make-wireframe.cjs` expects).
+
+- Added the path to `FILES` in `scripts/make-wireframe.cjs` and ran it — 1,424,754 / 1,572,516 pixels knocked transparent (90.6%, right in the documented band).
+- Generated `ASSETS/Lamprey Reasoning Trace Icon Dark View.png` companion via the standard white-RGB / preserved-alpha rewrite.
+- `RightPanelHome.tsx` now imports `reasoningTraceIcon` and assigns it to the `reasoning` pill — no longer reusing `planIcon` as a placeholder. The Reasoning trace pill finally has its own art.
+
+### What changed
+
+- `src/components/artifacts/RightPanelHome.tsx` — flex-1 distribution + reasoning trace icon import.
+- `scripts/thicken-background-tasks-icon.cjs` — new one-off dilation tool.
+- `scripts/make-wireframe.cjs` — `FILES` array extended by one entry.
+- `ASSETS/Lamprey Background Tasks Icon.png` + `… Dark View.png` — regenerated.
+- `ASSETS/Lamprey Reasoning Trace Icon Light View.png` + `… Dark View.png` — wireframed + paired companion.
+
+### Verify gate
+
+- `tsc --noEmit -p tsconfig.web.json` ✓
+- `tsc --noEmit -p tsconfig.node.json` ✓
+- `electron-vite build` ✓
+- `electron-builder --win --publish never` ✓ (signed NSIS + zip + blockmap + latest.yml).
+
+### What this release does NOT touch
+
+- No tokens / IPC / store / DB.
+- `FloatingEnvironmentCard` and right-panel docked-mode interiors — preserved per Panels Phase contract.
+- Other icon assets — only Background tasks and Reasoning trace touched.
+
+**Worktree:** `claude/festive-hellman-e76a8a`.
+
+**Commit:** _this commit_
+
 ## [Hotfix] v0.8.2 — Right-panel card density  —  2026-06-06
 
 **Single-issue visual fix.** The right-panel home grew to nine pills with the Reasoning-Trace Phase (`Files → Side chat → Browser → Artifacts → Terminal → Review → Plan → Background tasks → Reasoning trace`) and at the default panel width the ninth pill clipped below the fold. User flagged the symptom from a screenshot and asked for the cards to shrink to fit without changing the panel's outer dimensions.

@@ -17,7 +17,8 @@ const FILES = [
   path.resolve(__dirname, '..', 'ASSETS', 'Lamprey Chat Pill Stop Icon Light View.png'),
   path.resolve(__dirname, '..', 'ASSETS', 'Lamprey Connect Apps Icon.png'),
   path.resolve(__dirname, '..', 'ASSETS', 'Lamprey Skills Teacher Icon Light View.png'),
-  path.resolve(__dirname, '..', 'ASSETS', 'Lamprey Plug-Ins Icon 2.png')
+  path.resolve(__dirname, '..', 'ASSETS', 'Lamprey Plug-Ins Icon 2.png'),
+  path.resolve(__dirname, '..', 'ASSETS', 'Lamprey Reasoning Trace Icon Light View.png')
 ]
 
 // A pixel is "background fill" if it is bright AND unsaturated.

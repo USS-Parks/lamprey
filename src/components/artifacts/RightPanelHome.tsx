@@ -8,6 +8,7 @@ import codingIcon from '@assets/Lamprey Coding Icon.png'
 import fullAccessIcon from '@assets/Lamprey Full Access Icon.png'
 import planIcon from '@assets/Lamprey Plan Icon.png'
 import backgroundIcon from '@assets/Lamprey Background Tasks Icon.png'
+import reasoningTraceIcon from '@assets/Lamprey Reasoning Trace Icon Light View.png'
 
 interface RightPanelHomeProps {
   onCollapse: () => void
@@ -88,7 +89,7 @@ export function RightPanelHome({ onCollapse }: RightPanelHomeProps): React.React
       id: 'reasoning',
       label: 'Reasoning trace',
       description: 'Per-stage reasoning + token cost for every assistant turn',
-      icon: planIcon
+      icon: reasoningTraceIcon
     }
   ]
 
@@ -118,7 +119,7 @@ export function RightPanelHome({ onCollapse }: RightPanelHomeProps): React.React
         </button>
       </div>
 
-      <div className="flex flex-1 flex-col gap-1.5 overflow-hidden p-2">
+      <div className="flex flex-1 flex-col gap-2 overflow-hidden p-2.5">
         {pills.map((pill) => {
           const isPlan = pill.id === 'plan'
           const planSignal = isPlan && planState !== 'idle'
@@ -139,7 +140,7 @@ export function RightPanelHome({ onCollapse }: RightPanelHomeProps): React.React
               key={pill.id}
               type="button"
               onClick={() => setActiveTool(pill.id)}
-              className={`group flex min-h-[54px] shrink-0 items-center gap-2.5 rounded-xl border border-[var(--panel-border)] bg-[var(--bg-primary)] px-2.5 py-2 text-left transition-all hover:-translate-y-0.5 hover:border-[var(--accent)] hover:bg-[var(--bg-tertiary)] ${
+              className={`group flex min-h-[58px] flex-1 basis-0 items-center gap-3 rounded-xl border border-[var(--panel-border)] bg-[var(--bg-primary)] px-3 py-2.5 text-left transition-all hover:-translate-y-0.5 hover:border-[var(--accent)] hover:bg-[var(--bg-tertiary)] ${
                 planSignal ? planRingClass : ''
               }`}
               aria-label={
