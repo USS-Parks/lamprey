@@ -1,5 +1,25 @@
 # Lamprey Harness Dev Log
 
+## [Reasoning Audit — Prompt R5] Save Reviewer reasoning + `stage: 'reviewer'`  —  2026-06-06
+
+**Files changed:** `electron/services/agent-pipeline.ts` (reviewer saveMessage now passes `reasoning: taken.reasoning` + `stage: 'reviewer'`), `electron/services/agent-pipeline.test.ts` (widen happy-path expectation to include stage='reviewer' + 2 new R5 cases: native channel + inline `<think>` Reviewer)
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- vitest ✓ (1904 pass / 38 skip — 30/30 in `agent-pipeline.test.ts`)
+- electron-vite build ✓
+- user-verification-needed: end-to-end multi-agent turn against deepseek-reasoner as Reviewer — confirm `messages.reasoning` column populated (was NULL pre-R5 when the model emitted on the native channel).
+
+**Notes:**
+- Reviewer row now matches Planner row for audit completeness: both stage-tagged, both carry reasoning when emitted, both inline-`<think>`-aware via the conversation-store splitInlineReasoning layer.
+- Composer-final row still uses last-round reasoning only (R6 owns the cumulative trail).
+- The reviewer mock at line 27 widened to accept `stage?` + `reasoning?` (was strictly typed to omit them).
+
+**Commit:** _pending — current commit_
+
+---
+
 ## [Reasoning Audit — Prompt R4] Save Planner as its own row with `stage: 'planner'`  —  2026-06-06
 
 **Files changed:** `electron/services/agent-pipeline.ts` (Planner saveMessage + plannerReasoning capture + new `plannerMessage` emitter), `electron/services/chat-events.ts` (`ChatPlannerMessagePayload` + `chat:planner-message` in `ChatEventMap`), `electron/preload.ts` (`onPlannerMessage` subscription + `offAll` list), `src/stores/chat-store.ts` (`appendPlannerMessage` action — idempotent on id), `src/hooks/useChat.ts` (`onPlannerMessage` wiring), `electron/services/agent-pipeline.test.ts` (recorded savedMessages now tracks stage + reasoning; existing happy-path expectation widened to 2 rows; new "Planner reasoning is preserved" case)

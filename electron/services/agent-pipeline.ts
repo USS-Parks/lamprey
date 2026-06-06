@@ -714,12 +714,21 @@ export async function runAgentPipeline(opts: RunAgentPipelineOptions): Promise<v
       reviewerBudget.cleanup()
       return
     }
+    // R5 — Reviewer save now persists reasoning + stage. The Reviewer's
+    // chain-of-thought reaches us via `taken.reasoning` from R3's
+    // takeOutput destructure. Inline `<think>` blocks in the body still
+    // get hoisted to the reasoning column by splitInlineReasoning at the
+    // saveMessage layer (conversation-store.ts), so this works for both
+    // native-channel models (deepseek-reasoner, V4 Flash thinking,
+    // DashScope enable_thinking) and inline-emitting models.
     const reviewerMessage = convStore.saveMessage({
       id: randomUUID(),
       conversationId,
       role: 'assistant',
       content: taken.output,
-      model: roster.reviewer
+      model: roster.reviewer,
+      reasoning: taken.reasoning,
+      stage: 'reviewer'
     })
     emitter.status({
       conversationId,

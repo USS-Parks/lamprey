@@ -25,7 +25,15 @@ vi.mock('@electron-toolkit/utils', () => ({
 }))
 
 vi.mock('./conversation-store', () => ({
-  saveMessage: (msg: { role: string; content: string; model?: string; id: string; conversationId: string }) => {
+  saveMessage: (msg: {
+    role: string
+    content: string
+    model?: string
+    id: string
+    conversationId: string
+    stage?: string
+    reasoning?: string
+  }) => {
     recorded.savedMessages.push({
       role: msg.role,
       content: msg.content,
@@ -39,7 +47,9 @@ vi.mock('./conversation-store', () => ({
       role: msg.role,
       content: msg.content,
       timestamp: 1,
-      model: msg.model
+      model: msg.model,
+      stage: msg.stage,
+      reasoning: msg.reasoning
     }
   }
 }))
@@ -200,9 +210,10 @@ describe('runAgentPipeline — happy path', () => {
     // The Reviewer output is on both reviewer:done AND persisted as a row.
     const reviewerDone = status.find((s) => s.role === 'reviewer' && s.state === 'done')
     expect(reviewerDone?.output).toBe('review-text-output')
-    // R4: pipeline now saves the Planner row in addition to the Reviewer
-    // row. Planner: stage='planner', model=roster.planner, content=planText.
-    // Reviewer save still lacks stage (R5 lands stage='reviewer').
+    // R4 + R5: pipeline now saves Planner + Reviewer rows; each carries
+    // its own `stage` discriminator + reasoning (when the sub-agent runner
+    // returned reasoning; here the runner returned plain strings so both
+    // are undefined).
     expect(recorded.savedMessages).toEqual([
       {
         role: 'assistant',
@@ -215,7 +226,7 @@ describe('runAgentPipeline — happy path', () => {
         role: 'assistant',
         content: 'review-text-output',
         model: reviewer,
-        stage: undefined,
+        stage: 'reviewer',
         reasoning: undefined
       }
     ])
@@ -259,6 +270,83 @@ describe('runAgentPipeline — happy path', () => {
     expect(plannerRow?.reasoning).toBe(
       'I considered three approaches and picked the simplest'
     )
+  })
+
+  // R5 — Reviewer reasoning preserved on the saved row, both for
+  // native-channel emitters (object form) and inline-<think>-emitters
+  // (the existing splitInlineReasoning path inside saveMessage).
+  it('R5: persists Reviewer reasoning from the native channel (object form)', async () => {
+    const subAgentRunner: SubAgentRunner = async (_m, modelId) => {
+      if (modelId === planner) return 'plan-output'
+      // Reviewer emits both body + native reasoning
+      return {
+        output: 'PASS: looks correct',
+        reasoning: "I checked the diff against the user's intent, no regressions"
+      }
+    }
+    const coderRunner = vi.fn(async () => ({ message: { content: 'coder reply' } }))
+    const { emitter } = makeEmitter()
+    const signal = new AbortController().signal
+
+    await runAgentPipeline({
+      conversationId: 'c1',
+      roster: validRoster,
+      userContent: 'do stuff',
+      systemPrompt: '<system>',
+      priorMessages: [],
+      tools: undefined,
+      workspacePath: '/tmp/proj',
+      signal,
+      subAgentRunner,
+      coderRunner,
+      emitter
+    })
+
+    const reviewerRow = recorded.savedMessages.find((m) => m.stage === 'reviewer')
+    expect(reviewerRow).toBeDefined()
+    expect(reviewerRow?.content).toBe('PASS: looks correct')
+    expect(reviewerRow?.reasoning).toBe(
+      "I checked the diff against the user's intent, no regressions"
+    )
+  })
+
+  // R5 — Inline `<think>` Reviewer body. The saveMessage layer's
+  // splitInlineReasoning hoists the block into the reasoning column,
+  // so even when the sub-agent runner returns a plain string (no native
+  // channel) the row still carries reasoning.
+  it('R5: persists Reviewer reasoning from inline <think> blocks', async () => {
+    const subAgentRunner: SubAgentRunner = async (_m, modelId) => {
+      if (modelId === planner) return 'plan-output'
+      return '<think>I weighed the trade-offs</think>PASS: ship it'
+    }
+    const coderRunner = vi.fn(async () => ({ message: { content: 'coder reply' } }))
+    const { emitter } = makeEmitter()
+    const signal = new AbortController().signal
+
+    await runAgentPipeline({
+      conversationId: 'c1',
+      roster: validRoster,
+      userContent: 'do stuff',
+      systemPrompt: '<system>',
+      priorMessages: [],
+      tools: undefined,
+      workspacePath: '/tmp/proj',
+      signal,
+      subAgentRunner,
+      coderRunner,
+      emitter
+    })
+
+    // The test recorder captures the saveMessage *input* (not the
+    // post-split output), so msg.content here is the original body with
+    // the <think> block, and msg.reasoning is undefined at the input
+    // layer. The actual split happens inside the real conversation-store
+    // saveMessage which is covered by conversation-store-reasoning tests.
+    // Here we just confirm the Reviewer save path landed with stage and
+    // the body got through to the recorder.
+    const reviewerRow = recorded.savedMessages.find((m) => m.stage === 'reviewer')
+    expect(reviewerRow).toBeDefined()
+    expect(reviewerRow?.content).toBe('<think>I weighed the trade-offs</think>PASS: ship it')
   })
 
   it('emits reviewer:running BEFORE the first chat:done so the renderer keeps the banner up', async () => {
