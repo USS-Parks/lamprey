@@ -40,7 +40,7 @@ function buildExportInput(conversationId: string): ExportInput {
     reasoning: m.reasoning,
     toolCalls: m.toolCalls
   }))
-  let title: string | null = null
+  let title: string | null
   try {
     const conv = convStore.getConversation(conversationId)
     title = conv?.title ?? null

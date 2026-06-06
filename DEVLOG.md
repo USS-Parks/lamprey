@@ -1,5 +1,51 @@
 # Lamprey Harness Dev Log
 
+## [Reasoning-Trace — Phase Complete] v0.8.1 ship  —  2026-06-06
+
+**RT8 — ship of the Reasoning-Trace Phase.** Bumps `package.json` from `0.7.5` → `0.8.1`; updates CLAUDE.md "Current State" + memory governance files; runs the full verify gate; runs `npm run build:win` to produce the four Windows release artifacts; moves them into the **primary repo's** `dist/` per `feedback_release_artifacts_in_primary_dist`; pushes `feat/reasoning-trace-phase` → `main`. Tag creation deferred to the user (remote proxy rejects tag pushes; CLAUDE.md "Where the .exe comes from").
+
+**Phase roster — eight prompts, eight commits.**
+
+| # | Commit | Title |
+|---|---|---|
+| Plan | `28bb91e` | plan(reasoning-trace): P-SPR for RT1-RT8 phase (v0.8.1) |
+| RT1 | `752dcc1` | reviewer prompt-tuning — strip `<bash>`-as-prose hallucination |
+| RT2 | `a51ff63` | per-stage token-cost data layer (`message_stage_metrics` + store + pipeline wiring) |
+| RT3 | `a0f832f` | per-stage token-cost UI (`StageTokenChips` + `StreamStatusLine` stage segment) |
+| RT4 | `7ad44dd` | `get_conversation_history` model-callable tool |
+| RT5 | `6ca6f94` | Reasoning-Trace Viewer panel shell + per-turn list |
+| RT6 | `40813da` | viewer per-stage expansion + debounced search + stage-filter chips |
+| RT7 | `937cec7` | audit-trail export (.md + .csv via `showSaveDialog`) |
+| RT8 | _this commit_ | ship (version bump + governance + build + push) |
+
+**Final verify gate (RT8).**
+- `npx tsc --noEmit -p tsconfig.node.json` ✓
+- `npx tsc --noEmit -p tsconfig.web.json` ✓
+- `npx electron-vite build` ✓
+- `npx vitest run` — full suite green (1939 passed / 38 skipped — +47 new tests vs the v0.7.5 baseline of 1892, across `system-prompt-builder.test.ts` +5, `stage-metrics-store.test.ts` +12, `tool-conversation-history.test.ts` +18, `reasoning-trace-exporter.test.ts` +12).
+- `npm run build:win` — _user-verification-needed: this session runs in a worktree on a Linux-capable shell; `build:win` (Windows installer) is the user's machine path. The four release artifacts (`Lamprey-0.8.1-x64.exe`, `.exe.blockmap`, `.zip`, `latest.yml`) will be produced + moved into primary `dist/` when the user runs the build locally._
+- `npm run lint` — **1 pre-existing inherited error** in `electron/services/debug-trace.ts:49` (`@typescript-eslint/no-require-imports` on a deliberately-lazy `require('fs')`). This error pre-dates the Reasoning-Trace Phase by checked-out commit history (`b0200cc`, v0.6.2 instrumentation work) and is unrelated to any RT1-RT7 file. All RT-introduced files lint clean. Not modifying out-of-phase code; flagging here per `feedback_no_fake_polish` instead of silently passing the gate.
+
+**Why this phase.** Direct R10 follow-up. The Reasoning Audit Phase (R1-R10) explicitly documented five "out of scope" items: (1) Reviewer hallucinated `<bash>` blocks as prose, (2) `get_conversation_history` model-callable tool, (3) dedicated Reasoning-Trace Viewer panel, (4) reasoning export / audit-report generation, (5) per-stage token-cost accounting. This phase closed all five.
+
+**What changed end-to-end.**
+- Reviewer system prompt now explicitly forbids pseudo-XML tool tags + routes code through fenced Markdown. (RT1)
+- Every assistant message gets a `message_stage_metrics` row — single-mode = one `stage='single'` row, multi-agent = three rows (planner + coder on the coder message id, reviewer on the reviewer message id). (RT2)
+- Chat bubbles display per-stage chips post-stream; `StreamStatusLine` shows the live stage indicator during multi-agent streaming. (RT3)
+- The model can now call `get_conversation_history` to ask for prior turns by index (with opt-in stage metrics and tool calls) — read-only, no approval gate, never reaches the network. (RT4)
+- New "Reasoning trace" right-panel pill opens a docked viewer that lists every assistant turn, expands them to per-stage subsections (reusing R7's `ReasoningBlock`), supports debounced text search, and filters by stage. (RT5 + RT6)
+- The viewer has an `.md` + `.csv` export button that writes via `dialog.showSaveDialog` — purely local, reasoning content verbatim. (RT7)
+
+**Non-changes (preserved).**
+- R7's per-bubble reasoning pill — untouched.
+- R8's API stack rehydration toggle — untouched.
+- `FloatingEnvironmentCard` — untouched.
+- All shipped phase contracts (Parity / Fluidity / Deep Research / Snip / Customize / Panels / Stall / Skill Import / Research Reliability / Reasoning Audit) — referenced, not modified.
+
+**Worktree:** `claude/elegant-hodgkin-49d53e` (off `c4d10bc`).
+
+**Commit:** _this commit_
+
 ## [Reasoning-Trace — Prompt RT7] Audit-trail export (.md + .csv)  —  2026-06-06
 
 **Files changed:** `electron/services/reasoning-trace-exporter.ts` (new), `electron/services/reasoning-trace-exporter.test.ts` (new), `electron/ipc/reasoning-trace.ts` (new), `electron/ipc/index.ts`, `electron/preload.ts`, `src/components/tools/panels/ReasoningTracePanel.tsx`
