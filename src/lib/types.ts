@@ -126,6 +126,33 @@ export interface LoadedPlugin {
   }
 }
 
+// Skill Import Phase I4 — renderer mirrors of the discovery + importer
+// shapes. Kept narrow on purpose: the renderer never instantiates these,
+// it just receives them across IPC.
+
+export interface DiscoveredCcSkill {
+  slug: string
+  name: string
+  description: string
+  enabled: boolean
+  supportingFileCount: number
+}
+
+export interface DiscoveredCcPlugin {
+  sourcePath: string
+  pluginName: string
+  version: string
+  description: string
+  skills: DiscoveredCcSkill[]
+}
+
+export interface CcImportResult {
+  pluginId: string
+  installPath: string
+  skillsImported: string[]
+  skipped: string[]
+}
+
 export type MemoryType = 'user' | 'feedback' | 'project' | 'reference'
 
 export interface MemoryEntry {
