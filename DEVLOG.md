@@ -1,5 +1,39 @@
 # Lamprey Harness Dev Log
 
+## [Panels — Prompt P9] Light + dark QA tuning + screenshot grid  —  2026-06-05
+
+**Files changed:** `src/styles/theme-presets.ts`, `src/styles/index.css`
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- electron-vite build ✓
+- user-verification-needed: launch Electron and walk **every theme preset** (Lamprey Default, Lamprey Blue, Lamprey Ember, Lamprey Mint, Lamprey Earth, Lamprey Magma, Lamprey Viridis, Lamprey Drab) in both dark and light modes. Per-preset checklist:
+  - Two sidebar panels read as floating rounded panels on substrate
+  - Chat column reads as transparent content on substrate (not a third bounded card)
+  - Chat-column text legible on `--app-bg` (WCAG AA spot-check)
+  - Bottom dock pill cluster (input pill + adjacent pills + FloatingEnvironmentCard) is the only chrome in chat
+  - **Right-panel interior cards (Recents, tool shortcuts, docked env card) look unchanged** vs. v0.5.2
+  - **FloatingEnvironmentCard fade-in/out + width math identical** vs. v0.5.2 — toggle right panel expand/collapse and verify
+  - Banners (Plan, Deep Research, Agent run) read as substrate-floating tonal blocks (no perimeter)
+  - Modals (Settings, Customize, Memory, AskUser, ToolApproval) float cleanly
+  - Form inputs (API key field, prompt input, settings fields) read as defined surfaces (light-mode bg-primary tuned to `#f8f9fa` so they contrast against the white panel)
+  - Popovers (slash, @file, model picker, etc.) still feel "lifted" — shadow carries the floating definition
+  - Keyboard shortcut sweep (ESC, Cmd+K, Cmd+/) — no overlay regression
+- Screenshot grid (user-captured) → save under `ASSETS/panels-phase/<preset>-<surface>.png` and embed in this entry post-hoc.
+
+**Notes:**
+- **Light-mode bg-primary tuned** from `#ffffff` → `#f8f9fa`. Reason: P8 softened all `--border` to `--panel-border` (6% alpha) which made form-input borders nearly invisible. In light mode where both bg-primary (input bg) AND panel-bg (sidebar bg) were `#ffffff`, inputs had no edge at all. Tuning bg-primary to a faint off-white restores tonal contrast — input surfaces now sit visibly within the white panels, and the panel boundary stays defined against the cream app-bg.
+- Dark-mode bg-primary (`#0d0d0d`) already contrasts well against panel-bg (`#161616`), so no tuning needed.
+- Per-preset light-mode `--app-bg` (warm tinted cream via `tintToward(accent, 0.92)`) and `--panel-bg = #ffffff` carry consistent across all 8 presets.
+- Per-preset dark-mode `--app-bg` (shaded `bgPrimary` toward black at ~30%) and `--panel-bg` (alias `bgSecondary`) similarly consistent.
+- `--bg-tertiary` cards (used by right-panel interior cards + bottom-dock chips) verified to still tonally contrast against the new `--panel-bg` in both modes.
+- The screenshot grid step is deferred to user — this session can't take Electron-native screenshots. Capture before P10's commit so the artifacts land in the same release.
+
+**Commit:** _this commit_
+
+---
+
 ## [Panels — Prompt P8] Auxiliary panel sweep — `--border` → `--panel-border` everywhere structural  —  2026-06-05
 
 **Files changed:** ~70 files across `src/components/` (activity, automations, library, memory, github, mcp, model, settings, customize, layout, ui, snip, plan, tools, workspace, etc.)

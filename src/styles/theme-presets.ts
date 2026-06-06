@@ -30,8 +30,11 @@ function shadeToward(hex: string, amount: number): string {
 function buildLightTokens(dark: ThemePresetTokens): ThemePresetTokens {
   // Use the preset's accent to lightly tint the surfaces so each preset still
   // feels distinct in light mode, without overwhelming the content.
+  // Panels Phase: bgPrimary is now slightly off-white so form-control inputs
+  // (which use bg-primary) read as distinct surfaces against the pure white
+  // --panel-bg = #ffffff sidebars.
   return {
-    bgPrimary: '#ffffff',
+    bgPrimary: '#f8f9fa',
     bgSecondary: tintToward(dark.accent, 0.94),
     bgTertiary: tintToward(dark.accent, 0.88),
     border: tintToward(dark.accent, 0.78),

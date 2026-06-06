@@ -64,7 +64,7 @@
    applyThemePreset() runs with mode === 'light', but they keep the
    first-paint usable if a theme load is slow. */
 :root[data-theme-mode='light'] {
-  --bg-primary: #ffffff;
+  --bg-primary: #f8f9fa;
   --bg-secondary: #f7f7f8;
   --bg-tertiary: #eef0f3;
   --border: #dcdfe4;
