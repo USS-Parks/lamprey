@@ -659,6 +659,28 @@ function initSchema(db: Database.Database): void {
       ON snip_command_log(command_head, ts DESC);
   `)
 
+  // Reasoning-Trace Phase / RT2 — per-stage token + duration metrics for
+  // multi-agent pipelines. One row per (message, stage) so the Reasoning
+  // Trace Viewer and StageTokenChips can render planner/coder/reviewer
+  // costs separately. Single-agent turns get one row with stage='single'
+  // so the audit surface is uniform. FK→messages.id with ON DELETE CASCADE
+  // means a deleted conversation cleans up its metrics transitively.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS message_stage_metrics (
+      id                TEXT PRIMARY KEY,
+      message_id        TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+      stage             TEXT NOT NULL CHECK(stage IN ('planner','coder','reviewer','single')),
+      model             TEXT,
+      prompt_tokens     INTEGER,
+      completion_tokens INTEGER,
+      duration_ms       INTEGER,
+      created_at        INTEGER NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_message_stage_metrics_message
+      ON message_stage_metrics(message_id, created_at ASC);
+  `)
+
   // The sqlite-vec virtual table is created separately and is gated on the
   // extension being available. When sqlite-vec failed to load, RAG vector
   // search is disabled — the rest of the RAG schema still works for lexical-

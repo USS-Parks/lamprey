@@ -28,6 +28,8 @@ import {
 } from '../services/async-event-bridge'
 import { buildSystemPrompt } from '../services/system-prompt-builder'
 import { resolveAgentDispatch, runAgentPipeline } from '../services/agent-pipeline'
+import { saveStageMetrics } from '../services/stage-metrics-store'
+import { approximateTokenCount } from '../services/multi-agent-run-tool'
 import { readAgentsMd } from '../services/agents-md-loader'
 import { fireHooks } from '../services/hooks-runner'
 import { mcpManager } from '../services/mcp-manager'
@@ -673,8 +675,13 @@ export async function runChatRound(
   params?: ModelParams,
   composerMode: AgenticComposerMode = 'auto',
   suppressDoneEvent: boolean = false,
-  correlationId?: string
+  correlationId?: string,
+  // RT2 — wall-clock for the whole turn (passed through recursive tool rounds
+  // so the final assistant message's stage metric reflects total turn time,
+  // not just the last round's). Defaults to Date.now() at the outermost call.
+  roundStartedAt?: number
 ): Promise<RunChatRoundResult> {
+  const turnStartedAt = roundStartedAt ?? Date.now()
   trace('runChatRound.enter', {
     conversationId,
     correlationId,
@@ -796,6 +803,24 @@ export async function runChatRound(
               reasoning: fullReasoning,
               documents
             })
+            // RT2 — per-stage token + duration metric for the assistant turn.
+            // suppressDoneEvent=true means the coder stage of the multi-agent
+            // pipeline is calling us; the pipeline writes its own
+            // stage='coder' row, so we skip the write here to avoid a double.
+            // suppressDoneEvent=false → single-agent path; record stage='single'.
+            if (!suppressDoneEvent) {
+              try {
+                saveStageMetrics(assistantMsg.id, {
+                  stage: 'single',
+                  model,
+                  promptTokens: null,
+                  completionTokens: approximateTokenCount(finalContent),
+                  durationMs: Date.now() - turnStartedAt
+                })
+              } catch (err) {
+                console.warn('[chat] saveStageMetrics(single) failed:', err)
+              }
+            }
             if (!suppressDoneEvent) {
               emitPhase(conversationId, 'done')
               emitChatEvent('chat:done', { conversationId, message: assistantMsg })
@@ -892,7 +917,8 @@ export async function runChatRound(
               params,
               composerMode,
               suppressDoneEvent,
-              correlationId
+              correlationId,
+              turnStartedAt
             )
             resolve(next)
           } catch (err) {

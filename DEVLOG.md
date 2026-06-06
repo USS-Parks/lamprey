@@ -1,5 +1,20 @@
 # Lamprey Harness Dev Log
 
+## [Reasoning-Trace — Prompt RT2] Per-stage token-cost data layer  —  2026-06-06
+
+**Files changed:** `electron/services/database.ts`, `electron/services/stage-metrics-store.ts` (new), `electron/services/stage-metrics-store.test.ts` (new), `electron/services/agent-pipeline.ts`, `electron/ipc/chat.ts`
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- electron-vite build ✓
+- vitest (stage-metrics-store): 12 passed ✓
+- vitest (full suite): 1909 passed, 38 skipped (baseline 1897/38 + 12 new) ✓
+
+**Notes:** New `message_stage_metrics` table (`id`, `message_id` FK→messages.id ON DELETE CASCADE, `stage` CHECK planner/coder/reviewer/single, `model`, `prompt_tokens`, `completion_tokens`, `duration_ms`, `created_at`) + index on `message_id`. Idempotent `CREATE TABLE IF NOT EXISTS`, no destructive migration. New `stage-metrics-store.ts` mirrors `plan-goal-persistence` shape: write-through SQLite with an in-memory fallback that activates if `getDb()` throws (headless tests, disk failure). Wired three call sites: (a) `runChatRound` in `chat.ts` writes one `stage='single'` row per non-suppressed assistant message, with wall-clock duration threaded through tool-round recursion via a new optional `roundStartedAt` param so total turn time is captured rather than just the last round, (b) `agent-pipeline.ts` stashes planner `tokensUsedEstimate` + `elapsedMs` then writes `stage='planner'` + `stage='coder'` rows against the persisted coder message id once the coder runner returns, and (c) writes `stage='reviewer'` against the persisted reviewer message id. Single-mode token estimate uses `approximateTokenCount(finalContent)` to match the multi-agent path; prompt tokens left null because no provider returns a separate split at this layer. The fallback flag is reset between test suites via `__resetStageMetricsForTests` + `__forceMemoryFallback` helpers.
+
+**Commit:** _this commit_
+
 ## [Reasoning-Trace — Prompt RT1] Reviewer prompt-tuning  —  2026-06-06
 
 **Files changed:** `electron/services/system-prompt-builder.ts`, `electron/services/system-prompt-builder.test.ts`
