@@ -36,7 +36,7 @@ export function CompressedRegionPill({ message }: CompressedRegionPillProps) {
 
   return (
     <div
-      className="my-3 rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] p-2 text-[12px] text-[var(--text-muted)]"
+      className="my-3 rounded-md border border-[var(--panel-border)] bg-[var(--bg-secondary)] p-2 text-[12px] text-[var(--text-muted)]"
       data-summary-id={message.id}
     >
       <button

@@ -55,7 +55,7 @@ export function IngestDropzone({ collectionId }: IngestDropzoneProps) {
       className={`flex items-center justify-between rounded border border-dashed px-3 py-2 ${
         dragOver
           ? 'border-[var(--text-primary)] bg-[var(--bg-tertiary)]'
-          : 'border-[var(--border)]'
+          : 'border-[var(--panel-border)]'
       }`}
     >
       <div className="flex flex-col">
@@ -78,7 +78,7 @@ export function IngestDropzone({ collectionId }: IngestDropzoneProps) {
       />
       <button
         onClick={() => inputRef.current?.click()}
-        className="rounded border border-[var(--border)] px-2 py-1 font-mono text-[11px] text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)]"
+        className="rounded border border-[var(--panel-border)] px-2 py-1 font-mono text-[11px] text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)]"
       >
         Browse
       </button>

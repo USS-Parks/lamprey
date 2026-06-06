@@ -126,7 +126,7 @@ export function ActivityTimeline() {
               className={`rounded border px-2 py-1 font-mono text-[11px] transition-colors ${
                 mode === m
                   ? 'border-[var(--text-primary)] bg-[var(--bg-tertiary)] text-[var(--text-primary)]'
-                  : 'border-[var(--border)] text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]'
+                  : 'border-[var(--panel-border)] text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]'
               }`}
             >
               {SCOPE_LABELS[m]}
@@ -148,12 +148,12 @@ export function ActivityTimeline() {
               placeholder={
                 mode === 'workspace' ? '/absolute/path' : 'paste an id…'
               }
-              className="flex-1 rounded border border-[var(--border)] bg-[var(--bg-primary)] px-2 py-1 font-mono text-[12px] text-[var(--text-primary)] placeholder-[var(--text-muted)]"
+              className="flex-1 rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] px-2 py-1 font-mono text-[12px] text-[var(--text-primary)] placeholder-[var(--text-muted)]"
             />
             <button
               onClick={() => void fetchEvents()}
               disabled={!scopeValue.trim() || loading}
-              className="rounded border border-[var(--border)] px-3 py-1 font-mono text-[11px] text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)] disabled:opacity-50"
+              className="rounded border border-[var(--panel-border)] px-3 py-1 font-mono text-[11px] text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)] disabled:opacity-50"
             >
               {loading ? 'Loading…' : 'Show'}
             </button>
@@ -163,7 +163,7 @@ export function ActivityTimeline() {
           <button
             onClick={() => void fetchEvents()}
             disabled={loading}
-            className="rounded border border-[var(--border)] px-3 py-1 font-mono text-[11px] text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)] disabled:opacity-50"
+            className="rounded border border-[var(--panel-border)] px-3 py-1 font-mono text-[11px] text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)] disabled:opacity-50"
           >
             {loading ? 'Loading…' : 'Refresh'}
           </button>
@@ -194,7 +194,7 @@ function EventRow({ event }: { event: EventRecord }) {
   const style = severityStyle(event.severity)
   const subtitle = eventSubtitle(event)
   return (
-    <div className="flex gap-2 rounded border border-[var(--border)]/50 bg-[var(--bg-primary)]/50 px-2 py-1">
+    <div className="flex gap-2 rounded border border-[var(--panel-border)]/50 bg-[var(--bg-primary)]/50 px-2 py-1">
       <span
         className={`mt-1 h-2 w-2 shrink-0 rounded-full ${style.dotClass}`}
         aria-label={style.label}

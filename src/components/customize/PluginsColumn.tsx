@@ -14,8 +14,8 @@ function DetailDrawer({ plugin, onClose, onRemove }: DetailDrawerProps) {
 
   return (
     <div className="fixed inset-0 z-40 flex items-stretch justify-end bg-black/40">
-      <div className="flex h-full w-[460px] flex-col border-l border-[var(--border)] bg-[var(--bg-secondary)] shadow-2xl">
-        <header className="flex h-12 shrink-0 items-center gap-2 border-b border-[var(--border)] px-4">
+      <div className="flex h-full w-[460px] flex-col border-l border-[var(--panel-border)] bg-[var(--bg-secondary)] shadow-2xl">
+        <header className="flex h-12 shrink-0 items-center gap-2 border-b border-[var(--panel-border)] px-4">
           <span className="truncate text-[14px] font-semibold text-[var(--text-primary)]">
             {manifest.name}
           </span>
@@ -91,20 +91,20 @@ function DetailDrawer({ plugin, onClose, onRemove }: DetailDrawerProps) {
           </div>
         </div>
 
-        <footer className="flex shrink-0 items-center gap-2 border-t border-[var(--border)] px-4 py-3">
+        <footer className="flex shrink-0 items-center gap-2 border-t border-[var(--panel-border)] px-4 py-3">
           <button
             onClick={() => {
               if (!confirm(`Remove plugin "${manifest.name}"? Files on disk will be deleted.`)) return
               void onRemove()
             }}
-            className="rounded border border-[var(--border)] bg-[var(--bg-primary)] px-3 py-1.5 text-[12px] text-[var(--error)] hover:border-[var(--error)]"
+            className="rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] px-3 py-1.5 text-[12px] text-[var(--error)] hover:border-[var(--error)]"
           >
             Remove
           </button>
           <div className="flex-1" />
           <button
             onClick={onClose}
-            className="rounded border border-[var(--border)] bg-[var(--bg-primary)] px-3 py-1.5 text-[12px] hover:border-[var(--accent)]"
+            className="rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] px-3 py-1.5 text-[12px] hover:border-[var(--accent)]"
           >
             Close
           </button>
@@ -156,14 +156,14 @@ export function PluginsColumn() {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex shrink-0 items-center gap-2 border-b border-[var(--border)] px-3 py-2">
+      <div className="flex shrink-0 items-center gap-2 border-b border-[var(--panel-border)] px-3 py-2">
         <span className="text-[12px] text-[var(--text-secondary)]">
           {plugins.length} plugin{plugins.length === 1 ? '' : 's'}
         </span>
         <div className="flex-1" />
         <button
           onClick={() => setInstallOpen(true)}
-          className="rounded border border-[var(--border)] bg-[var(--bg-primary)] px-2 py-1 text-[12px] hover:border-[var(--accent)]"
+          className="rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] px-2 py-1 text-[12px] hover:border-[var(--accent)]"
           title="Install a plugin"
         >
           + Install
@@ -187,7 +187,7 @@ export function PluginsColumn() {
                 return (
                   <div
                     key={manifest.id}
-                    className="group flex items-start gap-2 rounded border border-transparent p-2 hover:border-[var(--border)] hover:bg-[var(--bg-tertiary)]"
+                    className="group flex items-start gap-2 rounded border border-transparent p-2 hover:border-[var(--panel-border)] hover:bg-[var(--bg-tertiary)]"
                   >
                     <button
                       onClick={() => void (plugin.enabled ? disable(manifest.id) : enable(manifest.id))}
@@ -196,7 +196,7 @@ export function PluginsColumn() {
                       className={`mt-0.5 h-5 w-9 shrink-0 rounded-full border transition-colors ${
                         plugin.enabled
                           ? 'border-[var(--accent)] bg-[var(--accent)]'
-                          : 'border-[var(--border)] bg-[var(--bg-primary)]'
+                          : 'border-[var(--panel-border)] bg-[var(--bg-primary)]'
                       }`}
                     >
                       <span

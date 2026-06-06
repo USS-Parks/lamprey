@@ -41,7 +41,7 @@ export function SessionSearchBar({ placeholder = 'Search sessions…' }: Props) 
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="w-full rounded border border-[var(--border)] bg-[var(--bg-primary)] px-2 py-1.5 pr-8 text-[12px] text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+        className="w-full rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] px-2 py-1.5 pr-8 text-[12px] text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
         type="search"
         aria-label="Search sessions"
       />

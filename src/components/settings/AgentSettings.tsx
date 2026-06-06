@@ -66,7 +66,7 @@ export function AgentSettings() {
         </p>
       </div>
 
-      <div className="rounded border border-[var(--border)] bg-[var(--bg-primary)] p-3">
+      <div className="rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] p-3">
         <div className="text-[12px] uppercase tracking-wider text-[var(--text-muted)]">Run mode</div>
         <div className="mt-2 flex gap-2">
           <button
@@ -74,7 +74,7 @@ export function AgentSettings() {
             className={`flex-1 rounded border px-3 py-2 text-left text-xs transition-colors ${
               agentMode === 'single'
                 ? 'border-[var(--accent)] bg-[var(--accent-dim)] text-[var(--accent)]'
-                : 'border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                : 'border-[var(--panel-border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
             }`}
           >
             <div className="font-mono font-semibold">Single model</div>
@@ -87,7 +87,7 @@ export function AgentSettings() {
             className={`flex-1 rounded border px-3 py-2 text-left text-xs transition-colors ${
               agentMode === 'multi'
                 ? 'border-[var(--accent)] bg-[var(--accent-dim)] text-[var(--accent)]'
-                : 'border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                : 'border-[var(--panel-border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
             }`}
           >
             <div className="font-mono font-semibold">Multi-agent</div>
@@ -105,7 +105,7 @@ export function AgentSettings() {
           return (
             <div
               key={role}
-              className="space-y-1 rounded border border-[var(--border)] bg-[var(--bg-primary)] p-3"
+              className="space-y-1 rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] p-3"
             >
               <div className="flex items-baseline justify-between">
                 <span className="font-mono text-xs font-semibold text-[var(--text-primary)]">
@@ -117,7 +117,7 @@ export function AgentSettings() {
               <select
                 value={value}
                 onChange={(e) => void persistRole(role, e.target.value)}
-                className="mt-1 w-full rounded border border-[var(--border)] bg-[var(--bg-secondary)] px-2 py-1 font-mono text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+                className="mt-1 w-full rounded border border-[var(--panel-border)] bg-[var(--bg-secondary)] px-2 py-1 font-mono text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
               >
                 {models.map((m) => (
                   <option key={m.id} value={m.id}>

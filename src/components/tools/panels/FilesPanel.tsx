@@ -151,13 +151,13 @@ export function FilesPanel() {
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       {rootPath && (
-        <div className="border-b border-[var(--border)] px-3 py-1.5 text-[12px] text-[var(--text-muted)]" title={rootPath}>
+        <div className="border-b border-[var(--panel-border)] px-3 py-1.5 text-[12px] text-[var(--text-muted)]" title={rootPath}>
           <span className="truncate">{rootPath}</span>
         </div>
       )}
 
       <div className="flex min-h-0 flex-1">
-        <div className="w-1/2 min-w-0 overflow-auto border-r border-[var(--border)] py-1">
+        <div className="w-1/2 min-w-0 overflow-auto border-r border-[var(--panel-border)] py-1">
           {rootError && (
             <p className="px-3 py-2 text-[12px] text-[var(--error)]">{rootError}</p>
           )}
@@ -200,7 +200,7 @@ export function FilesPanel() {
         <div className="flex w-1/2 min-w-0 flex-col">
           {openFile ? (
             <>
-              <div className="border-b border-[var(--border)] px-3 py-1.5 text-[12px] text-[var(--text-secondary)]">
+              <div className="border-b border-[var(--panel-border)] px-3 py-1.5 text-[12px] text-[var(--text-secondary)]">
                 <span className="font-medium">{openFile.name}</span>
                 {!openFile.error && (
                   <span className="ml-2 text-[var(--text-muted)]">

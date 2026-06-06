@@ -134,14 +134,14 @@ export function BrowserPanel() {
   return (
     <div className="flex flex-1 flex-col bg-[var(--bg-primary)]">
       {/* Tab strip */}
-      <div className="flex items-stretch border-b border-[var(--border)] bg-[var(--bg-secondary)]">
+      <div className="flex items-stretch border-b border-[var(--panel-border)] bg-[var(--bg-secondary)]">
         <div className="flex min-w-0 flex-1 overflow-x-auto">
           {tabs.map((t) => {
             const isActive = t.id === activeId
             return (
               <div
                 key={t.id}
-                className={`group flex min-w-[100px] max-w-[200px] shrink-0 items-center gap-1 border-r border-[var(--border)] px-2 py-1.5 text-[12px] ${
+                className={`group flex min-w-[100px] max-w-[200px] shrink-0 items-center gap-1 border-r border-[var(--panel-border)] px-2 py-1.5 text-[12px] ${
                   isActive
                     ? 'bg-[var(--bg-primary)] text-[var(--text-primary)]'
                     : 'text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)]'
@@ -180,7 +180,7 @@ export function BrowserPanel() {
         <button
           type="button"
           onClick={() => void window.api?.browser?.newTab({})}
-          className="flex shrink-0 items-center justify-center border-l border-[var(--border)] px-2 text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]"
+          className="flex shrink-0 items-center justify-center border-l border-[var(--panel-border)] px-2 text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]"
           title="New tab"
           aria-label="New tab"
         >
@@ -189,7 +189,7 @@ export function BrowserPanel() {
       </div>
 
       {/* Address bar */}
-      <div className="flex items-center gap-1 border-b border-[var(--border)] bg-[var(--bg-secondary)] px-2 py-1.5">
+      <div className="flex items-center gap-1 border-b border-[var(--panel-border)] bg-[var(--bg-secondary)] px-2 py-1.5">
         <button
           type="button"
           disabled={!active?.canGoBack}
@@ -235,7 +235,7 @@ export function BrowserPanel() {
             }
           }}
           placeholder="Search Google or type a URL"
-          className="ml-1 min-w-0 flex-1 rounded border border-[var(--border)] bg-[var(--bg-primary)] px-2 py-1 text-[13px] text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)] focus:border-[var(--accent)]"
+          className="ml-1 min-w-0 flex-1 rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] px-2 py-1 text-[13px] text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)] focus:border-[var(--accent)]"
         />
       </div>
 

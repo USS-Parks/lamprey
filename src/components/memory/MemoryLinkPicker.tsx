@@ -102,7 +102,7 @@ export function MemoryLinkPicker({ textarea, onPicked }: Props) {
 
   return (
     <ul
-      className="fixed z-50 max-h-64 w-72 overflow-y-auto rounded border border-[var(--border)] bg-[var(--bg-secondary)] text-[12px] shadow-lg"
+      className="fixed z-50 max-h-64 w-72 overflow-y-auto rounded border border-[var(--panel-border)] bg-[var(--bg-secondary)] text-[12px] shadow-lg"
       style={{ top: position.top, left: position.left }}
     >
       {matches.map((m, i) => (

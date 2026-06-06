@@ -139,9 +139,9 @@ export function RepositoryPickerDialog({
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="flex h-[560px] w-[640px] flex-col overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)] shadow-2xl"
+        className="flex h-[560px] w-[640px] flex-col overflow-hidden rounded-lg border border-[var(--panel-border)] bg-[var(--bg-secondary)] shadow-2xl"
       >
-        <div className="flex h-10 items-center justify-between border-b border-[var(--border)] px-4">
+        <div className="flex h-10 items-center justify-between border-b border-[var(--panel-border)] px-4">
           <span className="font-mono text-xs font-semibold text-[var(--text-primary)]">
             Choose a GitHub repository
           </span>
@@ -168,19 +168,19 @@ export function RepositoryPickerDialog({
           </div>
         ) : (
           <>
-            <div className="flex items-center gap-2 border-b border-[var(--border)] px-3 py-2">
+            <div className="flex items-center gap-2 border-b border-[var(--panel-border)] px-3 py-2">
               <input
                 type="text"
                 value={filter}
                 onChange={(e) => setFilter(e.target.value)}
                 placeholder="Search repos by name or description"
                 autoFocus
-                className="flex-1 rounded border border-[var(--border)] bg-[var(--bg-primary)] px-2 py-1.5 font-mono text-[12px] text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+                className="flex-1 rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] px-2 py-1.5 font-mono text-[12px] text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
               />
               <select
                 value={ownerFilter}
                 onChange={(e) => setOwnerFilter(e.target.value)}
-                className="rounded border border-[var(--border)] bg-[var(--bg-primary)] px-2 py-1.5 font-mono text-[12px] text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+                className="rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] px-2 py-1.5 font-mono text-[12px] text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
               >
                 <option value="all">All owners</option>
                 {owners.map((o) => (
@@ -193,7 +193,7 @@ export function RepositoryPickerDialog({
                 type="button"
                 onClick={() => void refreshRepos()}
                 disabled={loadingRepos}
-                className="rounded border border-[var(--border)] bg-transparent px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)] disabled:opacity-40"
+                className="rounded border border-[var(--panel-border)] bg-transparent px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)] disabled:opacity-40"
               >
                 {loadingRepos ? 'Loading…' : 'Refresh'}
               </button>
@@ -234,7 +234,7 @@ interface RepoRowProps {
 
 function RepoRow({ repo, busy, onClone, onOpen }: RepoRowProps): React.ReactElement {
   return (
-    <div className="flex items-center gap-3 border-b border-[var(--border)] px-3 py-2 hover:bg-[var(--bg-tertiary)]/50">
+    <div className="flex items-center gap-3 border-b border-[var(--panel-border)] px-3 py-2 hover:bg-[var(--bg-tertiary)]/50">
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <span className="truncate font-mono text-[12px] text-[var(--text-primary)]">
@@ -265,7 +265,7 @@ function RepoRow({ repo, busy, onClone, onOpen }: RepoRowProps): React.ReactElem
             type="button"
             onClick={onOpen}
             disabled={busy}
-            className="rounded border border-[var(--border)] bg-transparent px-2 py-1 text-[11px] text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)] disabled:opacity-40"
+            className="rounded border border-[var(--panel-border)] bg-transparent px-2 py-1 text-[11px] text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)] disabled:opacity-40"
           >
             Open
           </button>

@@ -141,8 +141,8 @@ export function SkillEditor({ initialSkill, onClose }: SkillEditorProps) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="flex h-[85vh] w-[92vw] max-w-6xl flex-col rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)] shadow-2xl">
-        <div className="flex items-center justify-between border-b border-[var(--border)] px-5 py-3">
+      <div className="flex h-[85vh] w-[92vw] max-w-6xl flex-col rounded-lg border border-[var(--panel-border)] bg-[var(--bg-secondary)] shadow-2xl">
+        <div className="flex items-center justify-between border-b border-[var(--panel-border)] px-5 py-3">
           <div>
             <h2 className="font-mono text-sm font-medium uppercase tracking-wider text-[var(--text-primary)]">
               {isEdit ? 'Edit Skill' : 'New Skill'}
@@ -166,7 +166,7 @@ export function SkillEditor({ initialSkill, onClose }: SkillEditorProps) {
         </div>
 
         <div className="flex flex-1 overflow-hidden">
-          <div className="flex w-1/2 flex-col gap-3 overflow-y-auto border-r border-[var(--border)] px-5 py-4">
+          <div className="flex w-1/2 flex-col gap-3 overflow-y-auto border-r border-[var(--panel-border)] px-5 py-4">
             <label className="flex flex-col gap-1">
               <span className="text-[12px] font-medium uppercase tracking-wider text-[var(--text-muted)]">
                 Name
@@ -177,7 +177,7 @@ export function SkillEditor({ initialSkill, onClose }: SkillEditorProps) {
                 onChange={(e) => setName(e.target.value)}
                 placeholder="Direct Voice"
                 disabled={busy}
-                className="rounded border border-[var(--border)] bg-[var(--bg-primary)] px-2 py-1.5 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+                className="rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] px-2 py-1.5 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
               />
             </label>
 
@@ -191,7 +191,7 @@ export function SkillEditor({ initialSkill, onClose }: SkillEditorProps) {
                 placeholder="One sentence. When to activate this skill."
                 rows={2}
                 disabled={busy}
-                className="resize-none rounded border border-[var(--border)] bg-[var(--bg-primary)] px-2 py-1.5 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+                className="resize-none rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] px-2 py-1.5 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
               />
             </label>
 
@@ -212,7 +212,7 @@ export function SkillEditor({ initialSkill, onClose }: SkillEditorProps) {
                 placeholder={'Communication rules:\n- State conclusions directly.\n- Lead with the answer, then explain if needed.'}
                 disabled={busy}
                 spellCheck={false}
-                className="flex-1 resize-none rounded border border-[var(--border)] bg-[var(--bg-primary)] px-2 py-2 font-mono text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+                className="flex-1 resize-none rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] px-2 py-2 font-mono text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
               />
             </label>
 
@@ -224,7 +224,7 @@ export function SkillEditor({ initialSkill, onClose }: SkillEditorProps) {
           </div>
 
           <div className="flex w-1/2 flex-col overflow-hidden bg-[var(--bg-primary)]">
-            <div className="border-b border-[var(--border)] px-5 py-2 text-[12px] font-medium uppercase tracking-wider text-[var(--text-muted)]">
+            <div className="border-b border-[var(--panel-border)] px-5 py-2 text-[12px] font-medium uppercase tracking-wider text-[var(--text-muted)]">
               System prompt preview
             </div>
             <pre className="flex-1 overflow-auto px-5 py-3 font-mono text-xs leading-relaxed text-[var(--text-secondary)] whitespace-pre-wrap">
@@ -233,21 +233,21 @@ export function SkillEditor({ initialSkill, onClose }: SkillEditorProps) {
           </div>
         </div>
 
-        <div className="flex items-center justify-between border-t border-[var(--border)] px-5 py-3">
+        <div className="flex items-center justify-between border-t border-[var(--panel-border)] px-5 py-3">
           <div className="flex gap-2">
             {isEdit && (
               <>
                 <button
                   onClick={handleDuplicate}
                   disabled={busy}
-                  className="rounded border border-[var(--border)] bg-transparent px-3 py-1.5 text-xs text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)] disabled:opacity-30"
+                  className="rounded border border-[var(--panel-border)] bg-transparent px-3 py-1.5 text-xs text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)] disabled:opacity-30"
                 >
                   Duplicate
                 </button>
                 <button
                   onClick={handleDelete}
                   disabled={busy}
-                  className="rounded border border-[var(--border)] bg-transparent px-3 py-1.5 text-xs text-[var(--error)] transition-colors hover:bg-[var(--error)]/10 disabled:opacity-30"
+                  className="rounded border border-[var(--panel-border)] bg-transparent px-3 py-1.5 text-xs text-[var(--error)] transition-colors hover:bg-[var(--error)]/10 disabled:opacity-30"
                 >
                   Delete
                 </button>
@@ -258,14 +258,14 @@ export function SkillEditor({ initialSkill, onClose }: SkillEditorProps) {
             <button
               onClick={onClose}
               disabled={busy}
-              className="rounded border border-[var(--border)] bg-transparent px-3 py-1.5 text-xs text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)] disabled:opacity-30"
+              className="rounded border border-[var(--panel-border)] bg-transparent px-3 py-1.5 text-xs text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)] disabled:opacity-30"
             >
               Cancel
             </button>
             <button
               onClick={handleSave}
               disabled={busy}
-              className="rounded border border-[var(--border)] bg-transparent px-3 py-1.5 text-xs text-[var(--text-primary)] transition-colors hover:bg-[var(--bg-tertiary)] disabled:opacity-30"
+              className="rounded border border-[var(--panel-border)] bg-transparent px-3 py-1.5 text-xs text-[var(--text-primary)] transition-colors hover:bg-[var(--bg-tertiary)] disabled:opacity-30"
             >
               {busy ? 'Saving...' : 'Save'}
             </button>

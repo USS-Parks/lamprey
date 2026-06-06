@@ -125,7 +125,7 @@ export function BranchPickerPopover({
       autoFocus={false}
     >
       <div className="px-2 py-1.5">
-        <div className="flex items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--bg-primary)] px-2 py-1.5">
+        <div className="flex items-center gap-2 rounded-md border border-[var(--panel-border)] bg-[var(--bg-primary)] px-2 py-1.5">
           <svg
             width="12"
             height="12"
@@ -195,13 +195,13 @@ export function BranchPickerPopover({
             }}
             placeholder="branch-name"
             autoFocus
-            className="flex-1 rounded-md border border-[var(--border)] bg-[var(--bg-primary)] px-2 py-1 text-[12px] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[var(--accent)] focus:outline-none"
+            className="flex-1 rounded-md border border-[var(--panel-border)] bg-[var(--bg-primary)] px-2 py-1 text-[12px] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[var(--accent)] focus:outline-none"
           />
           <button
             type="button"
             onClick={() => void handleCreate()}
             disabled={!newName.trim()}
-            className="rounded-md border border-[var(--border)] bg-[var(--bg-tertiary)] px-2 py-1 text-[11px] text-[var(--text-primary)] disabled:opacity-50"
+            className="rounded-md border border-[var(--panel-border)] bg-[var(--bg-tertiary)] px-2 py-1 text-[11px] text-[var(--text-primary)] disabled:opacity-50"
           >
             Create
           </button>

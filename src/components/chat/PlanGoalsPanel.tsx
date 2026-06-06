@@ -23,13 +23,13 @@ export function PlanGoalsPanel({ conversationId }: PlanGoalsPanelProps) {
     <button
       type="button"
       onClick={openPlanCard}
-      className="pointer-events-auto mb-2 flex w-full items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] px-3 py-1.5 text-left text-[12px] shadow-sm transition-colors hover:border-[var(--accent)] hover:bg-[var(--bg-tertiary)]"
+      className="pointer-events-auto mb-2 flex w-full items-center gap-2 rounded-md border border-[var(--panel-border)] bg-[var(--bg-tertiary)] px-3 py-1.5 text-left text-[12px] shadow-sm transition-colors hover:border-[var(--accent)] hover:bg-[var(--bg-secondary)]"
       aria-label="Open plan goals in the right sidebar"
     >
       <span className="font-mono text-[11px] uppercase tracking-wider text-[var(--text-muted)]">
         Plan
       </span>
-      <span className="rounded border border-[var(--border)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--text-muted)]">
+      <span className="rounded border border-[var(--panel-border)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--text-muted)]">
         {snapshot.totals.done}/{snapshot.totals.total}
       </span>
       {planModeActive && (

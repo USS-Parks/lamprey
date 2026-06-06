@@ -52,7 +52,7 @@ export function ChatView({ rightInset = 0 }: ChatViewProps = {}) {
 
   return (
     <div
-      className="chat-column relative flex flex-1 flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--bg-primary)]"
+      className="chat-column relative flex flex-1 flex-col overflow-hidden bg-transparent"
       style={{
         paddingRight: rightInset,
         transition: reducedMotion ? undefined : 'padding-right 220ms cubic-bezier(0.2, 0.8, 0.2, 1)'

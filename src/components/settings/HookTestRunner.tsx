@@ -124,7 +124,7 @@ export function HookTestRunner({
   const hasLogs = Boolean(lastTest?.result.logs.length)
 
   return (
-    <div className="mt-3 rounded border border-[var(--border)] bg-[var(--bg-secondary)] p-2">
+    <div className="mt-3 rounded border border-[var(--panel-border)] bg-[var(--bg-secondary)] p-2">
       <div className="mb-2 flex flex-wrap items-center gap-2">
         <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--text-muted)]">
           Test runner
@@ -132,7 +132,7 @@ export function HookTestRunner({
         <select
           value={sample?.id ?? ''}
           onChange={(e) => setSampleId(e.target.value)}
-          className="rounded border border-[var(--border)] bg-[var(--bg-primary)] px-2 py-1 text-[11px] text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+          className="rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] px-2 py-1 text-[11px] text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
         >
           {samples.map((item) => (
             <option key={item.id} value={item.id}>
@@ -144,19 +144,19 @@ export function HookTestRunner({
           onClick={() => sample && onRun(sample.context)}
           disabled={testing || language !== 'js' || !code.trim()}
           title={language !== 'js' ? 'test-run is JS-only' : undefined}
-          className="rounded border border-[var(--border)] bg-[var(--bg-primary)] px-3 py-1 text-[12px] hover:border-[var(--accent)] disabled:opacity-50"
+          className="rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] px-3 py-1 text-[12px] hover:border-[var(--accent)] disabled:opacity-50"
         >
           {testing ? 'Running...' : 'Run sample'}
         </button>
         <span className="text-[10px] text-[var(--text-muted)]">{timeoutMs} ms timeout</span>
       </div>
 
-      <pre className="max-h-28 overflow-auto rounded border border-[var(--border)] bg-[var(--bg-primary)] p-2 font-mono text-[11px] leading-relaxed text-[var(--text-muted)]">
+      <pre className="max-h-28 overflow-auto rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] p-2 font-mono text-[11px] leading-relaxed text-[var(--text-muted)]">
         {payloadText}
       </pre>
 
       {lastTest && (
-        <div className="mt-2 rounded border border-[var(--border)] bg-[var(--bg-primary)] p-2 text-[11px]">
+        <div className="mt-2 rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] p-2 text-[11px]">
           <div className="mb-1 flex items-center gap-2">
             <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--accent)]">
               result {lastTest.event}

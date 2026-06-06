@@ -83,8 +83,8 @@ function Tile({ file, index }: { file: ProcessedFile; index: number }) {
     : ragReady
       ? 'border-[var(--accent)] text-[var(--text-secondary)]'
       : isRagPending
-        ? 'border-[var(--border)] text-[var(--text-secondary)]'
-        : 'border-[var(--border)] text-[var(--text-secondary)]'
+        ? 'border-[var(--panel-border)] text-[var(--text-secondary)]'
+        : 'border-[var(--panel-border)] text-[var(--text-secondary)]'
 
   // Progress bar for rag-pending files mid-ingest. Sits as a thin strip
   // under the chip; clears when phase is ready or error (the description
@@ -150,7 +150,7 @@ export function AttachmentPreview() {
   if (attachments.length === 0 && !processing) return null
 
   return (
-    <div className="mx-4 mb-2 rounded-2xl border border-[var(--border)] bg-[var(--bg-secondary)] px-4 py-2.5 shadow-sm">
+    <div className="mx-4 mb-2 rounded-2xl border border-[var(--panel-border)] bg-[var(--bg-secondary)] px-4 py-2.5 shadow-sm">
       {processing && (
         <div className="mb-1 text-[12px] text-[var(--text-muted)]">Processing attachments…</div>
       )}

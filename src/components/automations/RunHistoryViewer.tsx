@@ -33,7 +33,7 @@ export function RunHistoryViewer({ lastRunAt, lastResult }: Props) {
       <span className="text-[var(--text-muted)]">Last run: </span>
       {formatWhen(lastRunAt)}
       {lastResult && (
-        <pre className="mt-1 max-h-32 overflow-y-auto rounded border border-[var(--border)] bg-[var(--bg-primary)] p-1.5 text-[10px] leading-snug text-[var(--text-primary)] whitespace-pre-wrap">
+        <pre className="mt-1 max-h-32 overflow-y-auto rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] p-1.5 text-[10px] leading-snug text-[var(--text-primary)] whitespace-pre-wrap">
           {lastResult}
         </pre>
       )}

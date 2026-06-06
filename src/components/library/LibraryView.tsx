@@ -54,7 +54,7 @@ export function LibraryView() {
           value={newName}
           onChange={(e) => setNewName(e.target.value)}
           placeholder="New collection name…"
-          className="flex-1 rounded border border-[var(--border)] bg-[var(--bg-primary)] px-2 py-1 font-mono text-[12px] text-[var(--text-primary)] placeholder-[var(--text-muted)]"
+          className="flex-1 rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] px-2 py-1 font-mono text-[12px] text-[var(--text-primary)] placeholder-[var(--text-muted)]"
           onKeyDown={(e) => {
             if (e.key === 'Enter' && newName.trim()) {
               void createCollection({ name: newName.trim() })
@@ -68,14 +68,14 @@ export function LibraryView() {
             await createCollection({ name: newName.trim() })
             setNewName('')
           }}
-          className="rounded border border-[var(--border)] px-2 py-1 font-mono text-[11px] text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)] disabled:opacity-50"
+          className="rounded border border-[var(--panel-border)] px-2 py-1 font-mono text-[11px] text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)] disabled:opacity-50"
         >
           + Collection
         </button>
         <select
           value={activeEmbedderId ?? ''}
           onChange={(e) => void setActiveEmbedder(e.target.value)}
-          className="rounded border border-[var(--border)] bg-[var(--bg-primary)] px-2 py-1 font-mono text-[11px] text-[var(--text-primary)]"
+          className="rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] px-2 py-1 font-mono text-[11px] text-[var(--text-primary)]"
         >
           {embedders.length === 0 && <option value="">Loading…</option>}
           {embedders.map((e) => (
@@ -118,7 +118,7 @@ export function LibraryView() {
 
 function EmptyCollections() {
   return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-2 rounded border border-dashed border-[var(--border)] p-6 text-center">
+    <div className="flex flex-1 flex-col items-center justify-center gap-2 rounded border border-dashed border-[var(--panel-border)] p-6 text-center">
       <p className="font-mono text-[12px] text-[var(--text-primary)]">
         No collections yet.
       </p>

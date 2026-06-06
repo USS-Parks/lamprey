@@ -1,4 +1,6 @@
 import { randomUUID } from 'crypto'
+import { existsSync, readFileSync } from 'fs'
+import { join } from 'path'
 import type { ChatCompletionMessageParam, ChatCompletionTool } from 'openai/resources/chat/completions'
 
 import * as convStore from './conversation-store'
@@ -14,6 +16,89 @@ import {
   type SubAgentRunner
 } from './multi-agent-run-tool'
 import { summarizeRun } from './final-response-composer'
+
+// T3 — Per-stage wall-clock budgets. The MAX_TOOL_ROUNDS cap (chat.ts:204)
+// protects against infinite loops but not against 50 rounds × 60s thinking-
+// mode = 50 minutes. Each pipeline stage gets its own wall-clock budget; on
+// expiry the stage's child AbortSignal fires (which threads down through
+// chatStream → tool execution → MCP calls so everything winds down cleanly),
+// the stage is flagged as "budget-exhausted", and the pipeline continues with
+// whatever partial output was produced. User-signal aborts and budget aborts
+// are kept distinct via the `budgetFired` flag so a user cancel still tears
+// the whole turn down.
+type BudgetedRole = 'planner' | 'coder' | 'reviewer'
+const DEFAULT_STAGE_BUDGETS: Record<BudgetedRole, number> = {
+  planner: 120_000, // 2 min — planner is meant to be quick
+  coder: 600_000, // 10 min — coder does real codebase work
+  reviewer: 120_000 // 2 min — review of summarized context
+}
+
+const MIN_STAGE_BUDGET_MS = 10_000
+
+let stageBudgetOverrides: Partial<Record<BudgetedRole, number>> | null = null
+export function __setStageBudgetsForTesting(
+  budgets: Partial<Record<BudgetedRole, number>> | null
+): void {
+  stageBudgetOverrides = budgets
+}
+
+let pipelineUserDataPathProvider: (() => string) | null = null
+export function setPipelineUserDataPathProvider(fn: (() => string) | null): void {
+  pipelineUserDataPathProvider = fn
+}
+
+function readStageBudgetMs(role: BudgetedRole): number {
+  if (stageBudgetOverrides && Object.prototype.hasOwnProperty.call(stageBudgetOverrides, role)) {
+    return stageBudgetOverrides[role] ?? DEFAULT_STAGE_BUDGETS[role]
+  }
+  if (!pipelineUserDataPathProvider) return DEFAULT_STAGE_BUDGETS[role]
+  try {
+    const path = join(pipelineUserDataPathProvider(), 'settings.json')
+    if (!existsSync(path)) return DEFAULT_STAGE_BUDGETS[role]
+    const raw = JSON.parse(readFileSync(path, 'utf-8')) as {
+      stageBudgetMs?: { planner?: unknown; coder?: unknown; reviewer?: unknown }
+    }
+    const cfg = raw.stageBudgetMs
+    if (!cfg) return DEFAULT_STAGE_BUDGETS[role]
+    const ms = cfg[role]
+    if (typeof ms !== 'number' || !Number.isFinite(ms)) return DEFAULT_STAGE_BUDGETS[role]
+    if (ms <= 0) return 0 // 0 disables the cap entirely
+    return Math.max(MIN_STAGE_BUDGET_MS, ms)
+  } catch {
+    return DEFAULT_STAGE_BUDGETS[role]
+  }
+}
+
+interface BudgetedSignal {
+  signal: AbortSignal
+  budgetFired: () => boolean
+  cleanup: () => void
+}
+
+function makeBudgetedSignal(parent: AbortSignal, budgetMs: number): BudgetedSignal {
+  const child = new AbortController()
+  let fired = false
+  const timer = budgetMs > 0
+    ? setTimeout(() => {
+        fired = true
+        child.abort()
+      }, budgetMs)
+    : null
+  const onParentAbort = (): void => child.abort()
+  if (parent.aborted) {
+    child.abort()
+  } else {
+    parent.addEventListener('abort', onParentAbort, { once: true })
+  }
+  return {
+    signal: child.signal,
+    budgetFired: () => fired,
+    cleanup: () => {
+      if (timer) clearTimeout(timer)
+      parent.removeEventListener('abort', onParentAbort)
+    }
+  }
+}
 
 // Prompt 11: turn-level agentic pipeline. Runs Planner → Coder → Reviewer
 // sequentially against the active model roster. The Planner and Reviewer
@@ -266,6 +351,7 @@ export async function runAgentPipeline(opts: RunAgentPipelineOptions): Promise<v
   // PLANNER ------------------------------------------------------------
   emitter.status({ conversationId, role: 'planner', model: roster.planner, state: 'running' })
   stageStarted('planner', roster.planner)
+  const plannerBudget = makeBudgetedSignal(signal, readStageBudgetMs('planner'))
   // Declared without an initializer because both error paths in the
   // try/catch below `return` before any read; TS' flow analysis confirms
   // assignment-before-use at the line that reads planText (the rewritten
@@ -285,44 +371,81 @@ export async function runAgentPipeline(opts: RunAgentPipelineOptions): Promise<v
         timeoutMs: opts.subAgentTimeoutMs
       },
       defaultModel: roster.planner,
-      parentSignal: signal,
+      parentSignal: plannerBudget.signal,
       runner: opts.subAgentRunner
     })
     const taken = takeOutput(planResult)
     if (taken.error) {
+      // Budget-exhausted planner: continue with a stub plan rather than
+      // erroring the whole turn. The coder will still try to satisfy the
+      // request; the banner shows that the planner ran out of time.
+      if (plannerBudget.budgetFired() && !signal.aborted) {
+        const partial = taken.output?.trim() || ''
+        planText = partial.length > 0
+          ? partial
+          : '(planner stage exceeded its wall-clock budget; proceed directly with the user request)'
+        emitter.status({
+          conversationId,
+          role: 'planner',
+          model: roster.planner,
+          state: 'done',
+          output: planText
+        })
+        stageDone('planner', roster.planner, planText)
+      } else {
+        emitter.status({
+          conversationId,
+          role: 'planner',
+          model: roster.planner,
+          state: 'error',
+          output: taken.error
+        })
+        stageFailed('planner', roster.planner, taken.error)
+        emitter.error({ conversationId, error: `Planner failed: ${taken.error}` })
+        plannerBudget.cleanup()
+        return
+      }
+    } else {
+      planText = taken.output
+      emitter.status({
+        conversationId,
+        role: 'planner',
+        model: roster.planner,
+        state: 'done',
+        output: planText
+      })
+      stageDone('planner', roster.planner, planText)
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    if (plannerBudget.budgetFired() && !signal.aborted) {
+      // Same recovery as the soft-error branch: keep the pipeline alive
+      // so the user gets *some* reply instead of waiting another minute
+      // to discover the planner timed out.
+      planText = '(planner stage exceeded its wall-clock budget; proceed directly with the user request)'
+      emitter.status({
+        conversationId,
+        role: 'planner',
+        model: roster.planner,
+        state: 'done',
+        output: planText
+      })
+      stageDone('planner', roster.planner, planText)
+    } else {
       emitter.status({
         conversationId,
         role: 'planner',
         model: roster.planner,
         state: 'error',
-        output: taken.error
+        output: message
       })
-      stageFailed('planner', roster.planner, taken.error)
-      emitter.error({ conversationId, error: `Planner failed: ${taken.error}` })
+      stageFailed('planner', roster.planner, message)
+      emitter.error({ conversationId, error: `Planner threw: ${message}` })
+      plannerBudget.cleanup()
       return
     }
-    planText = taken.output
-    emitter.status({
-      conversationId,
-      role: 'planner',
-      model: roster.planner,
-      state: 'done',
-      output: planText
-    })
-    stageDone('planner', roster.planner, planText)
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
-    emitter.status({
-      conversationId,
-      role: 'planner',
-      model: roster.planner,
-      state: 'error',
-      output: message
-    })
-    stageFailed('planner', roster.planner, message)
-    emitter.error({ conversationId, error: `Planner threw: ${message}` })
-    return
   }
+  plannerBudget.cleanup()
 
   if (signal.aborted) {
     emitter.error({ conversationId, error: 'Pipeline aborted before Coder stage' })
@@ -339,6 +462,7 @@ export async function runAgentPipeline(opts: RunAgentPipelineOptions): Promise<v
     ...opts.priorMessages,
     { role: 'user', content: buildCoderUserContent(opts.userContent, planText) }
   ]
+  const coderBudget = makeBudgetedSignal(signal, readStageBudgetMs('coder'))
   // Declared without an initializer for the same reason as planText above:
   // the catch returns, and the try always assigns. ESLint's
   // no-useless-assignment flags the dead initializer.
@@ -350,36 +474,56 @@ export async function runAgentPipeline(opts: RunAgentPipelineOptions): Promise<v
       messages: coderMessages,
       tools: opts.tools,
       workspacePath: opts.workspacePath,
-      signal
+      signal: coderBudget.signal
     })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
+    const budgetExhausted = coderBudget.budgetFired() && !signal.aborted
     emitter.status({
       conversationId,
       role: 'coder',
       model: roster.coder,
       state: 'error',
-      output: message
+      output: budgetExhausted
+        ? `Coder exceeded ${Math.round(readStageBudgetMs('coder') / 1000)}s budget — aborting and surfacing partial work.`
+        : message
     })
     stageFailed('coder', roster.coder, message)
-    emitter.error({ conversationId, error: `Coder failed: ${message}` })
+    coderBudget.cleanup()
+    emitter.error({
+      conversationId,
+      error: budgetExhausted
+        ? `Coder exceeded wall-clock budget. Partial work is saved in the conversation.`
+        : `Coder failed: ${message}`
+    })
     return
   }
   if (!coderMessage) {
+    const budgetExhausted = coderBudget.budgetFired() && !signal.aborted
     emitter.status({
       conversationId,
       role: 'coder',
       model: roster.coder,
       state: 'error',
-      output: 'Coder returned no assistant message'
+      output: budgetExhausted
+        ? 'Coder exceeded wall-clock budget; runner returned no message.'
+        : 'Coder returned no assistant message'
     })
-    stageFailed('coder', roster.coder, 'Coder runner returned null')
+    stageFailed(
+      'coder',
+      roster.coder,
+      budgetExhausted ? 'budget exhausted (runner returned null)' : 'Coder runner returned null'
+    )
+    coderBudget.cleanup()
     emitter.error({
       conversationId,
-      error: 'Coder runner returned null (max tool rounds hit or run aborted)'
+      error: budgetExhausted
+        ? 'Coder exceeded wall-clock budget — no reply was produced. Raise the budget in Settings → Streaming & Timeouts or re-prompt to continue.'
+        : 'Coder runner returned null (max tool rounds hit or run aborted)'
     })
     return
   }
+  coderBudget.cleanup()
   emitter.status({ conversationId, role: 'coder', model: roster.coder, state: 'done' })
   stageDone(
     'coder',
@@ -427,6 +571,7 @@ export async function runAgentPipeline(opts: RunAgentPipelineOptions): Promise<v
     reviewContext = reviewContext.slice(0, 32 * 1024)
   }
 
+  const reviewerBudget = makeBudgetedSignal(signal, readStageBudgetMs('reviewer'))
   try {
     const reviewResult = await executeMultiAgentRun({
       args: {
@@ -440,22 +585,26 @@ export async function runAgentPipeline(opts: RunAgentPipelineOptions): Promise<v
         timeoutMs: opts.subAgentTimeoutMs
       },
       defaultModel: roster.reviewer,
-      parentSignal: signal,
+      parentSignal: reviewerBudget.signal,
       runner: opts.subAgentRunner
     })
     const taken = takeOutput(reviewResult)
     if (taken.error) {
+      const budgetExhausted = reviewerBudget.budgetFired() && !signal.aborted
       emitter.status({
         conversationId,
         role: 'reviewer',
         model: roster.reviewer,
         state: 'error',
-        output: taken.error
+        output: budgetExhausted
+          ? `Reviewer exceeded ${Math.round(readStageBudgetMs('reviewer') / 1000)}s budget`
+          : taken.error
       })
       stageFailed('reviewer', roster.reviewer, taken.error)
       // Reviewer error does not abort the pipeline — the Coder's reply is
       // already in front of the user. Surface the review failure as the
       // run-banner state and stop.
+      reviewerBudget.cleanup()
       return
     }
     const reviewerMessage = convStore.saveMessage({
@@ -476,15 +625,20 @@ export async function runAgentPipeline(opts: RunAgentPipelineOptions): Promise<v
     emitter.done({ conversationId, message: reviewerMessage })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
+    const budgetExhausted = reviewerBudget.budgetFired() && !signal.aborted
     emitter.status({
       conversationId,
       role: 'reviewer',
       model: roster.reviewer,
       state: 'error',
-      output: message
+      output: budgetExhausted
+        ? `Reviewer exceeded ${Math.round(readStageBudgetMs('reviewer') / 1000)}s budget`
+        : message
     })
     stageFailed('reviewer', roster.reviewer, message)
     // No chat:error here — the user already has the Coder's reply on
     // screen. The error state lives in the banner row.
+  } finally {
+    reviewerBudget.cleanup()
   }
 }

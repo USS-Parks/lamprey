@@ -76,7 +76,7 @@ export function SnipSettings() {
       )}
 
       {/* Header card */}
-      <div className="rounded border border-[var(--border)] bg-[var(--bg-primary)] p-3">
+      <div className="rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] p-3">
         <div className="flex items-start justify-between">
           <div className="flex flex-col gap-2">
             <Toggle
@@ -117,7 +117,7 @@ export function SnipSettings() {
             </thead>
             <tbody>
               {stats.topByTokens.map((row) => (
-                <tr key={row.filter} className="border-t border-[var(--border)]">
+                <tr key={row.filter} className="border-t border-[var(--panel-border)]">
                   <td className="py-1 text-[var(--text-primary)]">{row.filter}</td>
                   <td className="py-1 text-right text-[var(--text-secondary)]">{row.runs}</td>
                   <td className="py-1 text-right text-[var(--text-secondary)]">
@@ -165,19 +165,19 @@ export function SnipSettings() {
           <div className="flex gap-2">
             <button
               onClick={() => void openFilterDir()}
-              className="rounded border border-[var(--border)] px-2 py-0.5 font-mono text-[10px] text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)]"
+              className="rounded border border-[var(--panel-border)] px-2 py-0.5 font-mono text-[10px] text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)]"
             >
               Open user filter dir
             </button>
             <button
               onClick={() => void reloadFilters()}
-              className="rounded border border-[var(--border)] px-2 py-0.5 font-mono text-[10px] text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)]"
+              className="rounded border border-[var(--panel-border)] px-2 py-0.5 font-mono text-[10px] text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)]"
             >
               Reload
             </button>
             <button
               onClick={() => setShowFilters((s) => !s)}
-              className="rounded border border-[var(--border)] px-2 py-0.5 font-mono text-[10px] text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)]"
+              className="rounded border border-[var(--panel-border)] px-2 py-0.5 font-mono text-[10px] text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)]"
             >
               {showFilters ? 'Hide' : 'Show'}
             </button>
@@ -197,7 +197,7 @@ export function SnipSettings() {
                       className={
                         f.source === 'user'
                           ? 'rounded bg-[var(--accent)] px-1 text-[10px] text-[var(--bg-primary)]'
-                          : 'rounded border border-[var(--border)] px-1 text-[10px] text-[var(--text-muted)]'
+                          : 'rounded border border-[var(--panel-border)] px-1 text-[10px] text-[var(--text-muted)]'
                       }
                     >
                       {f.source}
@@ -219,13 +219,13 @@ export function SnipSettings() {
       </Section>
 
       {/* Reset history */}
-      <div className="flex items-center justify-end gap-2 border-t border-[var(--border)] pt-2">
+      <div className="flex items-center justify-end gap-2 border-t border-[var(--panel-border)] pt-2">
         <button
           onClick={() => void onClearHistory()}
           className={`rounded border px-2 py-0.5 font-mono text-[10px] ${
             confirmClear
               ? 'border-[var(--error)] bg-[var(--error)] text-white hover:opacity-90'
-              : 'border-[var(--border)] text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)]'
+              : 'border-[var(--panel-border)] text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)]'
           }`}
         >
           {confirmClear ? 'Click again to confirm clear' : 'Reset history'}
@@ -322,7 +322,7 @@ function Toggle({
 
 function EmptyState({ children }: { children: React.ReactNode }) {
   return (
-    <div className="rounded border border-dashed border-[var(--border)] px-3 py-4 text-center font-mono text-[11px] text-[var(--text-muted)]">
+    <div className="rounded border border-dashed border-[var(--panel-border)] px-3 py-4 text-center font-mono text-[11px] text-[var(--text-muted)]">
       {children}
     </div>
   )

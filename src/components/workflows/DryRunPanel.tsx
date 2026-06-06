@@ -38,7 +38,7 @@ interface DryRunPanelProps {
 
 export function DryRunPanel({ result }: DryRunPanelProps): ReactElement {
   return (
-    <div className="rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] p-2" data-testid="workflow-dry-run">
+    <div className="rounded-md border border-[var(--panel-border)] bg-[var(--bg-secondary)] p-2" data-testid="workflow-dry-run">
       <div className="mb-1 flex items-center justify-between">
         <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--text-muted)]">
           Dry Run

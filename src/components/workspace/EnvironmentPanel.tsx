@@ -299,7 +299,7 @@ export function EnvironmentPanel(): React.ReactElement {
         disabled={commitDisabled || committing}
       />
 
-      <div className="my-2 border-t border-[var(--border)]" aria-hidden />
+      <div className="my-2 border-t border-[var(--panel-border)]" aria-hidden />
 
       <div className="px-3 pb-1 pt-1 text-[12px] font-medium text-[var(--text-secondary)]">
         GitHub
@@ -372,7 +372,7 @@ export function EnvironmentPanel(): React.ReactElement {
         </div>
       )}
 
-      <div className="my-2 border-t border-[var(--border)]" aria-hidden />
+      <div className="my-2 border-t border-[var(--panel-border)]" aria-hidden />
 
       <div className="px-3 pb-1 pt-1 text-[12px] font-medium text-[var(--text-secondary)]">
         Sources

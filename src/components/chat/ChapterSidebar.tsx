@@ -44,7 +44,7 @@ export function ChapterSidebar({ conversationId }: ChapterSidebarProps) {
   return (
     <aside
       aria-label="Session chapters"
-      className="pointer-events-auto absolute left-3 top-3 z-10 w-[200px] rounded-md border border-[var(--border)] bg-[var(--bg-primary)]/95 p-2 text-[12px] shadow-md backdrop-blur"
+      className="pointer-events-auto absolute left-3 top-3 z-10 w-[200px] rounded-md border border-[var(--panel-border)] bg-[var(--bg-primary)]/95 p-2 text-[12px] shadow-md backdrop-blur"
     >
       <div className="mb-1 flex items-center justify-between px-1">
         <span className="text-[10px] uppercase tracking-wider text-[var(--text-muted)]">

@@ -82,13 +82,13 @@ function MenuButton({ label, items, open, onToggle, onClose, onHover }: MenuButt
       {open && (
         <div
           role="menu"
-          className="absolute left-0 top-full z-50 mt-1 min-w-[220px] overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)] py-1 shadow-xl"
+          className="absolute left-0 top-full z-50 mt-1 min-w-[220px] overflow-hidden rounded-lg border border-[var(--panel-border)] bg-[var(--bg-secondary)] py-1 shadow-xl"
         >
           {items.map((item, i) =>
             item.separator ? (
               <div
                 key={`sep-${i}`}
-                className="my-1 border-t border-[var(--border)]"
+                className="my-1 border-t border-[var(--panel-border)]"
                 aria-hidden
               />
             ) : (
@@ -265,7 +265,7 @@ export function Titlebar({ onSettingsClick }: TitlebarProps) {
 
   return (
     <div
-      className="flex flex-col border-b border-[var(--border)] bg-[var(--bg-secondary)]"
+      className="flex flex-col border-b border-[var(--panel-border)] bg-[var(--bg-secondary)]"
       style={DRAG}
     >
       {/* ─── Row 1 ─── nav + menus (left) · centered logo (over chat column) · window controls (right) */}
@@ -459,7 +459,7 @@ export function SecondaryToolbar({ onSettingsClick }: SecondaryToolbarProps) {
 
   return (
     <div
-      className="flex h-9 items-center gap-2 border-b border-[var(--border)] bg-[var(--bg-secondary)] px-3"
+      className="flex h-9 items-center gap-2 bg-[var(--bg-tertiary)] px-3"
       style={NO_DRAG}
     >
       {/* Tool launcher button: opens the Codex-style VS Code / File Explorer
@@ -487,7 +487,7 @@ export function SecondaryToolbar({ onSettingsClick }: SecondaryToolbarProps) {
           type="button"
           onClick={closeActiveTool}
           title={`Close ${TOOL_TITLES[activeTool]}`}
-          className="flex items-center gap-1.5 rounded border border-[var(--border)] bg-[var(--bg-tertiary)] px-1.5 py-0.5 text-[11px] text-[var(--text-secondary)] hover:border-[var(--accent)] hover:text-[var(--text-primary)]"
+          className="flex items-center gap-1.5 rounded border border-[var(--panel-border)] bg-[var(--bg-tertiary)] px-1.5 py-0.5 text-[11px] text-[var(--text-secondary)] hover:border-[var(--accent)] hover:text-[var(--text-primary)]"
         >
           {TOOL_TITLES[activeTool]}
           <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -504,7 +504,7 @@ export function SecondaryToolbar({ onSettingsClick }: SecondaryToolbarProps) {
       <div className="flex-1" />
 
       <label
-        className="relative flex cursor-pointer items-center gap-1.5 rounded border border-[var(--border)] bg-[var(--bg-tertiary)] px-2 py-1 font-mono text-[12px] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+        className="relative flex cursor-pointer items-center gap-1.5 rounded border border-[var(--panel-border)] bg-[var(--bg-tertiary)] px-2 py-1 font-mono text-[12px] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
         title="Switch theme preset"
       >
         <span

@@ -113,7 +113,7 @@ export function ModelSwitcher() {
             ? 'Reasoner does not support tool use. MCP tools unavailable while this model is active.'
             : 'Switch model'
         }
-        className="flex items-center gap-1.5 rounded border border-[var(--border)] bg-[var(--bg-tertiary)] px-2 py-1 font-mono text-xs text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]"
+        className="flex items-center gap-1.5 rounded border border-[var(--panel-border)] bg-[var(--bg-tertiary)] px-2 py-1 font-mono text-xs text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]"
       >
         <span>{activeName}</span>
         <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -131,8 +131,8 @@ export function ModelSwitcher() {
       )}
 
       {open && (
-        <div className="absolute right-0 top-full z-30 mt-1 w-72 overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--bg-secondary)] shadow-xl">
-          <div className="border-b border-[var(--border)] px-3 py-1.5 text-[12px] font-medium uppercase tracking-wider text-[var(--text-muted)]">
+        <div className="absolute right-0 top-full z-30 mt-1 w-72 overflow-hidden rounded-2xl border border-[var(--panel-border)] bg-[var(--bg-secondary)] shadow-xl">
+          <div className="border-b border-[var(--panel-border)] px-3 py-1.5 text-[12px] font-medium uppercase tracking-wider text-[var(--text-muted)]">
             Active model
           </div>
           <div className="max-h-80 overflow-y-auto">
@@ -186,7 +186,7 @@ export function ModelSwitcher() {
               setOpen(false)
               openSettings()
             }}
-            className="block w-full border-t border-[var(--border)] px-3 py-2 text-left text-[13px] text-[var(--accent)] transition-colors hover:bg-[var(--bg-tertiary)]"
+            className="block w-full border-t border-[var(--panel-border)] px-3 py-2 text-left text-[13px] text-[var(--accent)] transition-colors hover:bg-[var(--bg-tertiary)]"
           >
             Configure models →
           </button>

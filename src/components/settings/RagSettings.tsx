@@ -78,7 +78,7 @@ export function RagSettings() {
             void setActiveEmbedder(e.target.value)
             void update({ defaultEmbedderId: e.target.value })
           }}
-          className="w-full rounded border border-[var(--border)] bg-[var(--bg-primary)] px-2 py-1 font-mono text-[12px] text-[var(--text-primary)]"
+          className="w-full rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] px-2 py-1 font-mono text-[12px] text-[var(--text-primary)]"
         >
           {embedders.length === 0 && <option value="">Loading…</option>}
           {embedders.map((e) => (
@@ -136,7 +136,7 @@ export function RagSettings() {
           onChange={(e) =>
             update({ rerankMode: e.target.value as RagSettingsValue['rerankMode'] })
           }
-          className="w-full rounded border border-[var(--border)] bg-[var(--bg-primary)] px-2 py-1 font-mono text-[12px] text-[var(--text-primary)]"
+          className="w-full rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] px-2 py-1 font-mono text-[12px] text-[var(--text-primary)]"
         >
           <option value="off">Off (fastest)</option>
           <option value="local-cross-encoder">
@@ -204,7 +204,7 @@ function NumericRow({
           const n = parseInt(e.target.value, 10)
           if (Number.isFinite(n)) onChange(Math.min(max, Math.max(min, n)))
         }}
-        className="w-24 rounded border border-[var(--border)] bg-[var(--bg-primary)] px-1 py-0.5 text-right font-mono text-[11px] text-[var(--text-primary)]"
+        className="w-24 rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] px-1 py-0.5 text-right font-mono text-[11px] text-[var(--text-primary)]"
       />
     </label>
   )

@@ -102,7 +102,7 @@ export function AutomationsPanel() {
       </div>
 
       {draft && (
-        <div className="flex flex-col gap-2 rounded border border-[var(--border)] bg-[var(--bg-secondary)] p-2">
+        <div className="flex flex-col gap-2 rounded border border-[var(--panel-border)] bg-[var(--bg-secondary)] p-2">
           <div className="grid grid-cols-[80px_1fr] items-center gap-2">
             <label className="text-[11px] uppercase tracking-wider text-[var(--text-muted)]">
               Label
@@ -112,7 +112,7 @@ export function AutomationsPanel() {
               value={draft.label}
               onChange={(e) => setDraft({ ...draft, label: e.target.value })}
               placeholder="Friendly name"
-              className="rounded border border-[var(--border)] bg-[var(--bg-primary)] px-2 py-1 text-[12px] text-[var(--text-primary)]"
+              className="rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] px-2 py-1 text-[12px] text-[var(--text-primary)]"
             />
             <label className="text-[11px] uppercase tracking-wider text-[var(--text-muted)]">
               Cron
@@ -130,7 +130,7 @@ export function AutomationsPanel() {
               value={draft.model}
               onChange={(e) => setDraft({ ...draft, model: e.target.value })}
               placeholder="(optional — defaults to deepseek-chat)"
-              className="rounded border border-[var(--border)] bg-[var(--bg-primary)] px-2 py-1 text-[12px] text-[var(--text-primary)]"
+              className="rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] px-2 py-1 text-[12px] text-[var(--text-primary)]"
             />
             <label className="self-start pt-1 text-[11px] uppercase tracking-wider text-[var(--text-muted)]">
               Prompt
@@ -140,7 +140,7 @@ export function AutomationsPanel() {
               onChange={(e) => setDraft({ ...draft, prompt: e.target.value })}
               rows={3}
               placeholder="Body sent to the model on each fire"
-              className="rounded border border-[var(--border)] bg-[var(--bg-primary)] px-2 py-1 text-[12px] text-[var(--text-primary)]"
+              className="rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] px-2 py-1 text-[12px] text-[var(--text-primary)]"
             />
           </div>
           {draft.id && (
@@ -185,7 +185,7 @@ export function AutomationsPanel() {
             {automations.map((a) => (
               <li
                 key={a.id}
-                className="rounded border border-[var(--border)] bg-[var(--bg-secondary)]"
+                className="rounded border border-[var(--panel-border)] bg-[var(--bg-secondary)]"
               >
                 <div className="flex items-center gap-2 px-2 py-1.5">
                   <input
@@ -232,7 +232,7 @@ export function AutomationsPanel() {
                   </button>
                 </div>
                 {expanded === a.id && (
-                  <div className="border-t border-[var(--border)] bg-[var(--bg-primary)]">
+                  <div className="border-t border-[var(--panel-border)] bg-[var(--bg-primary)]">
                     <pre className="px-2 py-1.5 text-[11px] text-[var(--text-secondary)] whitespace-pre-wrap">
                       {a.prompt}
                     </pre>

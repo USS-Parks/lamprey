@@ -12,7 +12,7 @@ export function GeneralSettings() {
         <h4 className="font-mono text-[13px] uppercase tracking-wider text-[var(--text-muted)]">
           Conversation titles
         </h4>
-        <label className="flex cursor-pointer items-start gap-3 rounded border border-[var(--border)] bg-[var(--bg-primary)] p-3 text-xs text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-tertiary)]">
+        <label className="flex cursor-pointer items-start gap-3 rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] p-3 text-xs text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-tertiary)]">
           <input
             type="checkbox"
             checked={settings.aiGeneratedTitles}

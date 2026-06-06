@@ -180,7 +180,7 @@ export function PlanGoalSettings() {
           type="button"
           disabled={states.length === 0 || busy === 'all'}
           onClick={handleClearAll}
-          className="shrink-0 rounded border border-[var(--border)] bg-[var(--bg-tertiary)] px-2 py-1 font-mono text-[10px] uppercase text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-secondary)] disabled:cursor-not-allowed disabled:opacity-50"
+          className="shrink-0 rounded border border-[var(--panel-border)] bg-[var(--bg-tertiary)] px-2 py-1 font-mono text-[10px] uppercase text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-secondary)] disabled:cursor-not-allowed disabled:opacity-50"
         >
           {busy === 'all' ? 'Clearing…' : 'Clear all'}
         </button>
@@ -189,7 +189,7 @@ export function PlanGoalSettings() {
       {loading && <div className="text-xs text-[var(--text-muted)]">Loading…</div>}
 
       {!loading && states.length === 0 && (
-        <div className="rounded border border-dashed border-[var(--border)] px-3 py-6 text-center text-xs text-[var(--text-muted)]">
+        <div className="rounded border border-dashed border-[var(--panel-border)] px-3 py-6 text-center text-xs text-[var(--text-muted)]">
           No stored plans or goals yet.
         </div>
       )}
@@ -206,7 +206,7 @@ export function PlanGoalSettings() {
           return (
             <section
               key={state.conversationId}
-              className="rounded-lg border border-[var(--border)] bg-[var(--bg-primary)] p-3"
+              className="rounded-lg border border-[var(--panel-border)] bg-[var(--bg-primary)] p-3"
             >
               <div className="mb-3 flex items-start justify-between gap-3">
                 <div className="min-w-0">
@@ -221,7 +221,7 @@ export function PlanGoalSettings() {
                   type="button"
                   disabled={clearing}
                   onClick={() => handleClearConversation(state.conversationId)}
-                  className="shrink-0 rounded border border-[var(--border)] bg-[var(--bg-tertiary)] px-2 py-1 font-mono text-[10px] uppercase text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-secondary)] disabled:cursor-not-allowed disabled:opacity-50"
+                  className="shrink-0 rounded border border-[var(--panel-border)] bg-[var(--bg-tertiary)] px-2 py-1 font-mono text-[10px] uppercase text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-secondary)] disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {clearing ? 'Clearing…' : 'Clear'}
                 </button>

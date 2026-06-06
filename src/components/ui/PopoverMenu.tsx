@@ -205,7 +205,7 @@ export function PopoverMenu({
       aria-label={ariaLabel}
       aria-orientation="vertical"
       style={style}
-      className="z-[100] overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)] py-1 shadow-xl"
+      className="z-[100] overflow-hidden rounded-lg border border-[var(--panel-border)] bg-[var(--bg-secondary)] py-1 shadow-xl"
     >
       {children}
     </div>,

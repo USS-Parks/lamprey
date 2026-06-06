@@ -46,7 +46,7 @@ export function ToolUseGroup({ group }: ToolUseGroupProps) {
       <button
         onClick={() => setExpanded((v) => !v)}
         aria-expanded={expanded}
-        className="flex w-full items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--bg-tertiary)] px-3 py-2 text-left transition-colors hover:bg-[var(--bg-secondary)]"
+        className="flex w-full items-center gap-2 rounded-lg border border-[var(--panel-border)] bg-[var(--bg-tertiary)] px-3 py-2 text-left transition-colors hover:bg-[var(--bg-secondary)]"
       >
         <span className="flex h-5 w-5 flex-none items-center justify-center rounded bg-[var(--accent-dim)] text-[12px] font-bold text-[var(--accent)]">
           {letter}
@@ -76,7 +76,7 @@ export function ToolUseGroup({ group }: ToolUseGroupProps) {
       </button>
 
       {expanded && (
-        <div className="mt-1 flex flex-col gap-0 border-l border-[var(--border)] pl-2">
+        <div className="mt-1 flex flex-col gap-0 border-l border-[var(--panel-border)] pl-2">
           {group.items.map((tc: ToolCallState) => (
             <ToolUseCard key={tc.callId} toolCall={tc} />
           ))}

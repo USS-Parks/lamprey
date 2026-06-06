@@ -208,7 +208,7 @@ export function CurrentInfoSettings() {
       </div>
 
       {/* Finance */}
-      <div className="space-y-2 rounded border border-[var(--border)] bg-[var(--bg-primary)] p-3">
+      <div className="space-y-2 rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] p-3">
         <div className="flex items-center gap-2">
           <span
             aria-hidden
@@ -227,7 +227,7 @@ export function CurrentInfoSettings() {
         <select
           value={financeProvider}
           onChange={(e) => setFinanceProvider(e.target.value as FinanceProvider)}
-          className="w-full rounded border border-[var(--border)] bg-[var(--bg-secondary)] px-2 py-1.5 font-mono text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+          className="w-full rounded border border-[var(--panel-border)] bg-[var(--bg-secondary)] px-2 py-1.5 font-mono text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
         >
           <option value="finnhub">Finnhub</option>
           <option value="alphavantage">Alpha Vantage</option>
@@ -248,12 +248,12 @@ export function CurrentInfoSettings() {
             value={financeKey}
             onChange={(e) => setFinanceKey(e.target.value)}
             placeholder={financeStatus?.hasKey ? 'Replace key…' : 'Paste API key'}
-            className="flex-1 rounded border border-[var(--border)] bg-[var(--bg-secondary)] px-2 py-1.5 font-mono text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+            className="flex-1 rounded border border-[var(--panel-border)] bg-[var(--bg-secondary)] px-2 py-1.5 font-mono text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
           />
           <button
             type="button"
             onClick={() => setShowFinanceKey((s) => !s)}
-            className="rounded border border-[var(--border)] bg-transparent px-3 py-1.5 text-xs text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]"
+            className="rounded border border-[var(--panel-border)] bg-transparent px-3 py-1.5 text-xs text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]"
           >
             {showFinanceKey ? 'Hide' : 'Show'}
           </button>
@@ -269,14 +269,14 @@ export function CurrentInfoSettings() {
           <button
             onClick={() => testProvider('finance')}
             disabled={busy === 'finance' || !financeStatus?.hasKey}
-            className="rounded border border-[var(--border)] bg-transparent px-3 py-1.5 text-xs text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)] disabled:opacity-40"
+            className="rounded border border-[var(--panel-border)] bg-transparent px-3 py-1.5 text-xs text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)] disabled:opacity-40"
           >
             Test
           </button>
           <button
             onClick={() => deleteKey('finance')}
             disabled={busy === 'finance' || !financeStatus?.hasKey}
-            className="rounded border border-[var(--border)] bg-transparent px-3 py-1.5 text-xs text-[var(--error)] transition-colors hover:bg-[var(--error)]/10 disabled:opacity-40"
+            className="rounded border border-[var(--panel-border)] bg-transparent px-3 py-1.5 text-xs text-[var(--error)] transition-colors hover:bg-[var(--error)]/10 disabled:opacity-40"
           >
             Delete key
           </button>
@@ -293,7 +293,7 @@ export function CurrentInfoSettings() {
       </div>
 
       {/* Weather */}
-      <div className="space-y-2 rounded border border-[var(--border)] bg-[var(--bg-primary)] p-3">
+      <div className="space-y-2 rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] p-3">
         <div className="flex items-center gap-2">
           <span
             aria-hidden
@@ -318,7 +318,7 @@ export function CurrentInfoSettings() {
         <select
           value={weatherProvider}
           onChange={(e) => setWeatherProvider(e.target.value as WeatherProvider)}
-          className="w-full rounded border border-[var(--border)] bg-[var(--bg-secondary)] px-2 py-1.5 font-mono text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+          className="w-full rounded border border-[var(--panel-border)] bg-[var(--bg-secondary)] px-2 py-1.5 font-mono text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
         >
           <option value="open-meteo">Open-Meteo (free, no key)</option>
           <option value="openweather">OpenWeatherMap</option>
@@ -342,12 +342,12 @@ export function CurrentInfoSettings() {
               value={weatherKey}
               onChange={(e) => setWeatherKey(e.target.value)}
               placeholder={weatherStatus?.hasKey ? 'Replace key…' : 'Paste API key'}
-              className="flex-1 rounded border border-[var(--border)] bg-[var(--bg-secondary)] px-2 py-1.5 font-mono text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+              className="flex-1 rounded border border-[var(--panel-border)] bg-[var(--bg-secondary)] px-2 py-1.5 font-mono text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
             />
             <button
               type="button"
               onClick={() => setShowWeatherKey((s) => !s)}
-              className="rounded border border-[var(--border)] bg-transparent px-3 py-1.5 text-xs text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]"
+              className="rounded border border-[var(--panel-border)] bg-transparent px-3 py-1.5 text-xs text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]"
             >
               {showWeatherKey ? 'Hide' : 'Show'}
             </button>
@@ -366,7 +366,7 @@ export function CurrentInfoSettings() {
             disabled={
               busy === 'weather' || (weatherStatus?.keyRequired === true && !weatherStatus.hasKey)
             }
-            className="rounded border border-[var(--border)] bg-transparent px-3 py-1.5 text-xs text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)] disabled:opacity-40"
+            className="rounded border border-[var(--panel-border)] bg-transparent px-3 py-1.5 text-xs text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)] disabled:opacity-40"
           >
             Test
           </button>
@@ -374,7 +374,7 @@ export function CurrentInfoSettings() {
             <button
               onClick={() => deleteKey('weather')}
               disabled={busy === 'weather' || !weatherStatus?.hasKey}
-              className="rounded border border-[var(--border)] bg-transparent px-3 py-1.5 text-xs text-[var(--error)] transition-colors hover:bg-[var(--error)]/10 disabled:opacity-40"
+              className="rounded border border-[var(--panel-border)] bg-transparent px-3 py-1.5 text-xs text-[var(--error)] transition-colors hover:bg-[var(--error)]/10 disabled:opacity-40"
             >
               Delete key
             </button>
@@ -392,7 +392,7 @@ export function CurrentInfoSettings() {
       </div>
 
       {/* Sports */}
-      <div className="space-y-2 rounded border border-[var(--border)] bg-[var(--bg-primary)] p-3">
+      <div className="space-y-2 rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] p-3">
         <div className="flex items-center gap-2">
           <span aria-hidden className="inline-block h-2 w-2 rounded-full bg-[var(--success)]" />
           <span className="font-mono text-xs font-semibold text-[var(--text-primary)]">Sports</span>
@@ -408,7 +408,7 @@ export function CurrentInfoSettings() {
           <button
             onClick={() => testProvider('sports')}
             disabled={busy === 'sports'}
-            className="rounded border border-[var(--border)] bg-transparent px-3 py-1.5 text-xs text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)] disabled:opacity-40"
+            className="rounded border border-[var(--panel-border)] bg-transparent px-3 py-1.5 text-xs text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)] disabled:opacity-40"
           >
             Test
           </button>

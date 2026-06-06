@@ -54,25 +54,25 @@ export function SpawnTaskTray() {
 
   return (
     <aside
-      className="fixed right-10 top-24 z-30 w-80 rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] shadow-xl transition-all duration-200"
+      className="fixed right-10 top-24 z-30 w-80 rounded-md border border-[var(--panel-border)] bg-[var(--bg-secondary)] shadow-xl transition-all duration-200"
       aria-label="Spawned tasks"
     >
-      <div className="flex items-center gap-2 border-b border-[var(--border)] px-3 py-2">
+      <div className="flex items-center gap-2 border-b border-[var(--panel-border)] px-3 py-2">
         <span className="font-mono text-[11px] uppercase tracking-wider text-[var(--text-muted)]">
           Spawn tasks
         </span>
-        <span className="rounded border border-[var(--border)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--text-muted)]">
+        <span className="rounded border border-[var(--panel-border)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--text-muted)]">
           {visible.length}
         </span>
         <button
           onClick={openAll}
-          className="ml-auto rounded border border-[var(--border)] bg-[var(--bg-primary)] px-2 py-0.5 text-[11px] hover:border-[var(--accent)]"
+          className="ml-auto rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] px-2 py-0.5 text-[11px] hover:border-[var(--accent)]"
         >
           Open all
         </button>
         <button
           onClick={() => setTasks([])}
-          className="rounded border border-[var(--border)] bg-[var(--bg-primary)] px-2 py-0.5 text-[11px] hover:border-[var(--accent)]"
+          className="rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] px-2 py-0.5 text-[11px] hover:border-[var(--accent)]"
         >
           Dismiss all
         </button>

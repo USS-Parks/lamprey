@@ -66,7 +66,7 @@ export function ActivityFeed() {
   return (
     <div className="flex flex-1 flex-col gap-3 overflow-y-auto pb-4 pl-4 pr-[28px] pt-4">
       {isStreaming && (
-        <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-primary)] px-3 py-2">
+        <div className="rounded-lg border border-[var(--panel-border)] bg-[var(--bg-primary)] px-3 py-2">
           <div className="flex items-center justify-between text-[12px] text-[var(--text-muted)]">
             <span className="flex items-center gap-2">
               <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--accent)]" />
@@ -91,7 +91,7 @@ export function ActivityFeed() {
       </div>
 
       {toolCalls.length === 0 ? (
-        <p className="rounded border border-dashed border-[var(--border)] px-3 py-3 text-center text-[12px] text-[var(--text-muted)]">
+        <p className="rounded border border-dashed border-[var(--panel-border)] px-3 py-3 text-center text-[12px] text-[var(--text-muted)]">
           No tools invoked yet.
         </p>
       ) : (
@@ -101,7 +101,7 @@ export function ActivityFeed() {
             return (
               <li
                 key={tc.callId}
-                className="rounded-md border border-[var(--border)] bg-[var(--bg-primary)] px-3 py-2"
+                className="rounded-md border border-[var(--panel-border)] bg-[var(--bg-primary)] px-3 py-2"
               >
                 <div className="flex items-start gap-2">
                   <span className="mt-0.5">

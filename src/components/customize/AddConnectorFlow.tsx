@@ -106,8 +106,8 @@ export function AddConnectorFlow({ onClose }: AddConnectorFlowProps) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-      <div className="flex h-[600px] w-[700px] flex-col overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)] shadow-2xl">
-        <header className="flex h-12 shrink-0 items-center border-b border-[var(--border)] px-4">
+      <div className="flex h-[600px] w-[700px] flex-col overflow-hidden rounded-lg border border-[var(--panel-border)] bg-[var(--bg-secondary)] shadow-2xl">
+        <header className="flex h-12 shrink-0 items-center border-b border-[var(--panel-border)] px-4">
           <span className="text-[14px] font-semibold text-[var(--text-primary)]">
             Add connector
           </span>
@@ -159,7 +159,7 @@ export function AddConnectorFlow({ onClose }: AddConnectorFlowProps) {
                       return (
                         <div
                           key={entry.id}
-                          className="flex items-start gap-3 rounded border border-[var(--border)] bg-[var(--bg-primary)] p-3"
+                          className="flex items-start gap-3 rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] p-3"
                         >
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2">
@@ -218,7 +218,7 @@ export function AddConnectorFlow({ onClose }: AddConnectorFlowProps) {
                 onChange={(e) => setJsonText(e.target.value)}
                 spellCheck={false}
                 rows={16}
-                className="w-full resize-y rounded border border-[var(--border)] bg-[var(--bg-primary)] p-2 font-mono text-[12px] leading-relaxed text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+                className="w-full resize-y rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] p-2 font-mono text-[12px] leading-relaxed text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
               />
               {parseError && (
                 <div className="rounded border border-[var(--error)] bg-[var(--error)]/10 px-2 py-1.5 text-[11px] text-[var(--error)]">
@@ -229,10 +229,10 @@ export function AddConnectorFlow({ onClose }: AddConnectorFlowProps) {
           )}
         </div>
 
-        <footer className="flex shrink-0 items-center gap-2 border-t border-[var(--border)] px-4 py-3">
+        <footer className="flex shrink-0 items-center gap-2 border-t border-[var(--panel-border)] px-4 py-3">
           <button
             onClick={onClose}
-            className="rounded border border-[var(--border)] bg-[var(--bg-primary)] px-3 py-1.5 text-[12px] hover:border-[var(--accent)]"
+            className="rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] px-3 py-1.5 text-[12px] hover:border-[var(--accent)]"
           >
             Cancel
           </button>

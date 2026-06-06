@@ -136,7 +136,7 @@ function Submenu<T extends string>({
   onSelect
 }: SubmenuProps<T>) {
   return (
-    <div className="min-w-[220px] overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)] py-1 shadow-xl">
+    <div className="min-w-[220px] overflow-hidden rounded-lg border border-[var(--panel-border)] bg-[var(--bg-secondary)] py-1 shadow-xl">
       <div className="px-3 pb-1 pt-2 text-[11px] font-medium uppercase tracking-wider text-[var(--text-muted)]">
         {title}
       </div>
@@ -216,7 +216,7 @@ export function SidebarFilterMenu() {
 
       {open && (
         <div className="absolute right-0 top-full z-40 mt-1 flex items-start gap-1">
-          <div className="min-w-[240px] overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)] py-1 shadow-xl">
+          <div className="min-w-[240px] overflow-hidden rounded-lg border border-[var(--panel-border)] bg-[var(--bg-secondary)] py-1 shadow-xl">
             <Row
               label="Status"
               value={labelFor(STATUS_OPTIONS, filters.status)}
@@ -247,7 +247,7 @@ export function SidebarFilterMenu() {
               onHover={() => setActiveSub('lastActivity')}
               onClick={() => setActiveSub('lastActivity')}
             />
-            <div className="my-1 border-t border-[var(--border)]" aria-hidden />
+            <div className="my-1 border-t border-[var(--panel-border)]" aria-hidden />
             <Row
               label="Group by"
               value={labelFor(GROUP_BY_OPTIONS, filters.groupBy)}
@@ -262,7 +262,7 @@ export function SidebarFilterMenu() {
               onHover={() => setActiveSub('sortBy')}
               onClick={() => setActiveSub('sortBy')}
             />
-            <div className="my-1 border-t border-[var(--border)]" aria-hidden />
+            <div className="my-1 border-t border-[var(--panel-border)]" aria-hidden />
             <button
               type="button"
               onClick={() => {

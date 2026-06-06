@@ -192,7 +192,7 @@ export function PermissionsSettings() {
           return (
             <section
               key={scope}
-              className="rounded-lg border border-[var(--border)] bg-[var(--bg-primary)] p-3"
+              className="rounded-lg border border-[var(--panel-border)] bg-[var(--bg-primary)] p-3"
             >
               <div className="mb-3 flex items-start justify-between gap-3">
                 <div className="min-w-0">
@@ -210,14 +210,14 @@ export function PermissionsSettings() {
                   type="button"
                   disabled={rows.length === 0 || clearing}
                   onClick={() => handleClearScope(scope)}
-                  className="shrink-0 rounded border border-[var(--border)] bg-[var(--bg-tertiary)] px-2 py-1 font-mono text-[10px] uppercase text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-secondary)] disabled:cursor-not-allowed disabled:opacity-50"
+                  className="shrink-0 rounded border border-[var(--panel-border)] bg-[var(--bg-tertiary)] px-2 py-1 font-mono text-[10px] uppercase text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-secondary)] disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {clearing ? 'Clearing…' : 'Clear all'}
                 </button>
               </div>
 
               {rows.length === 0 ? (
-                <div className="rounded border border-dashed border-[var(--border)] px-3 py-4 text-center text-xs text-[var(--text-muted)]">
+                <div className="rounded border border-dashed border-[var(--panel-border)] px-3 py-4 text-center text-xs text-[var(--text-muted)]">
                   No {SCOPE_LABEL[scope].toLowerCase()} policies.
                 </div>
               ) : (
@@ -228,7 +228,7 @@ export function PermissionsSettings() {
                     return (
                       <li
                         key={policy.id}
-                        className="flex items-start justify-between gap-3 rounded border border-[var(--border)] bg-[var(--bg-secondary)] px-3 py-2"
+                        className="flex items-start justify-between gap-3 rounded border border-[var(--panel-border)] bg-[var(--bg-secondary)] px-3 py-2"
                       >
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2">
@@ -258,7 +258,7 @@ export function PermissionsSettings() {
                           type="button"
                           disabled={isBusy}
                           onClick={() => handleDelete(policy.id)}
-                          className="shrink-0 rounded border border-[var(--border)] bg-[var(--bg-tertiary)] px-2 py-1 font-mono text-[10px] uppercase text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-primary)] disabled:cursor-not-allowed disabled:opacity-50"
+                          className="shrink-0 rounded border border-[var(--panel-border)] bg-[var(--bg-tertiary)] px-2 py-1 font-mono text-[10px] uppercase text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-primary)] disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           {isBusy ? 'Removing…' : 'Delete'}
                         </button>
@@ -271,7 +271,7 @@ export function PermissionsSettings() {
           )
         })}
 
-      <div className="rounded border border-[var(--border)] bg-[var(--bg-primary)] p-3 text-[11px] text-[var(--text-muted)]">
+      <div className="rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] p-3 text-[11px] text-[var(--text-muted)]">
         Policies are matched in order: conversation, workspace, then global —
         and within a level a Deny beats an Allow. Risk policies (Network,
         Destructive, Secret) match every tool that carries the same risk, so

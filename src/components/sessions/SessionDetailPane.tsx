@@ -22,14 +22,14 @@ export function SessionDetailPane({
 }: SessionDetailPaneProps): ReactElement {
   if (!session) {
     return (
-      <div className="border-t border-[var(--border)] px-3 py-2 text-[11px] text-[var(--text-muted)]">
+      <div className="border-t border-[var(--panel-border)] px-3 py-2 text-[11px] text-[var(--text-muted)]">
         No session selected.
       </div>
     )
   }
 
   return (
-    <div className="border-t border-[var(--border)] bg-[var(--bg-primary)]/50 px-3 py-2" data-testid="session-detail-pane">
+    <div className="border-t border-[var(--panel-border)] bg-[var(--bg-primary)]/50 px-3 py-2" data-testid="session-detail-pane">
       <div className="truncate text-[12px] font-medium text-[var(--text-primary)]">{session.title}</div>
       <div className="mt-0.5 font-mono text-[10px] text-[var(--text-muted)]">
         {session.messageCount} messages · last active {fullWhen(session.updatedAt)}
@@ -50,14 +50,14 @@ export function SessionDetailPane({
         <button
           type="button"
           onClick={() => onDuplicate(session.id)}
-          className="rounded border border-[var(--border)] px-2 py-1 text-[11px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]"
+          className="rounded border border-[var(--panel-border)] px-2 py-1 text-[11px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]"
         >
           Duplicate
         </button>
         <button
           type="button"
           onClick={() => onArchive(session.id, !session.archived)}
-          className="rounded border border-[var(--border)] px-2 py-1 text-[11px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]"
+          className="rounded border border-[var(--panel-border)] px-2 py-1 text-[11px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]"
         >
           {session.archived ? 'Restore' : 'Archive'}
         </button>
@@ -66,7 +66,7 @@ export function SessionDetailPane({
         <button
           type="button"
           onClick={() => onResume(session.id)}
-          className="mt-1 w-full rounded border border-[var(--border)] px-2 py-1 text-[11px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]"
+          className="mt-1 w-full rounded border border-[var(--panel-border)] px-2 py-1 text-[11px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]"
         >
           Resume workflow
         </button>

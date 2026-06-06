@@ -55,6 +55,16 @@ interface ChatState {
    *  rendering during the streaming bubble. */
   streamingDocuments: DocumentAttachment[]
   streamStartedAt: number | null
+  /** T4 — last streaming-vitals heartbeat (lastChunkAt, chunkCount, etc.).
+   *  Null when no stream is active or the provider hasn't fired a heartbeat
+   *  yet. Drives the "Ns since last chunk" indicator in the streaming pill. */
+  streamingVitals: {
+    lastChunkAt: number
+    msSinceLastChunk: number
+    chunkCount: number
+    tokenEstimate: number
+    attemptElapsedMs: number
+  } | null
   activeModel: string
   toolCalls: ToolCallState[]
   pendingAttachments: ProcessedFile[]
@@ -76,6 +86,9 @@ interface ChatState {
   appendStreamingDocument: (doc: DocumentAttachment) => void
   finishStream: (message: Message) => void
   streamError: (error: string) => void
+  setStreamingVitals: (
+    v: ChatState['streamingVitals']
+  ) => void
   addToolCall: (event: ToolCallEvent) => void
   updateToolCall: (event: ToolCallResultEvent) => void
   clearToolCalls: () => void
@@ -201,6 +214,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   streamingReasoning: '',
   streamingDocuments: [],
   streamStartedAt: null,
+  streamingVitals: null,
   activeModel: 'deepseek-v4-pro',
   toolCalls: [],
   pendingAttachments: [],
@@ -322,6 +336,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       streamingContent: '',
       streamingReasoning: '',
       streamingDocuments: [],
+      streamingVitals: null,
       streamStartedAt: Date.now(),
       toolCalls: [],
       runPhase: 'understanding',
@@ -417,6 +432,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }))
   },
 
+  setStreamingVitals: (v) => {
+    set({ streamingVitals: v })
+  },
+
   finishStream: (message: Message) => {
     set((state) => ({
       messages: [...state.messages, message],
@@ -424,6 +443,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       streamingContent: '',
       streamingReasoning: '',
       streamingDocuments: [],
+      streamingVitals: null,
       streamStartedAt: null,
       runPhase: null
     }))
@@ -436,6 +456,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       streamingContent: '',
       streamingReasoning: '',
       streamingDocuments: [],
+      streamingVitals: null,
       streamStartedAt: null,
       runPhase: null
     })

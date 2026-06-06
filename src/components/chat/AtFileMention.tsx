@@ -77,7 +77,7 @@ export function AtFileMention({
   }, [activeIdx])
 
   return (
-    <div className="pointer-events-auto absolute bottom-full left-0 mb-2 max-h-[260px] w-full max-w-md overflow-y-auto rounded-md border border-[var(--border)] bg-[var(--bg-primary)] shadow-md">
+    <div className="pointer-events-auto absolute bottom-full left-0 mb-2 max-h-[260px] w-full max-w-md overflow-y-auto rounded-md border border-[var(--panel-border)] bg-[var(--bg-primary)] shadow-md">
       {loading && (
         <p className="px-3 py-2 text-[11px] text-[var(--text-muted)]">
           Indexing workspace files…
@@ -102,7 +102,7 @@ export function AtFileMention({
               onMouseEnter={() => setActiveIdx(i)}
               onClick={() => onApply(rel)}
               className={
-                'flex w-full items-baseline gap-2 border-b border-[var(--border)] px-3 py-1.5 text-left text-[12px] transition-colors last:border-b-0 ' +
+                'flex w-full items-baseline gap-2 border-b border-[var(--panel-border)] px-3 py-1.5 text-left text-[12px] transition-colors last:border-b-0 ' +
                 (active
                   ? 'bg-[var(--bg-secondary)] text-[var(--text-primary)]'
                   : 'text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)]')
@@ -118,7 +118,7 @@ export function AtFileMention({
           )
         })}
       </div>
-      <div className="border-t border-[var(--border)] px-3 py-1 text-[10px] font-mono uppercase tracking-wider text-[var(--text-muted)]">
+      <div className="border-t border-[var(--panel-border)] px-3 py-1 text-[10px] font-mono uppercase tracking-wider text-[var(--text-muted)]">
         ↑↓ pick · ⏎ insert · Esc cancel
       </div>
     </div>

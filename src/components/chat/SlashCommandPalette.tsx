@@ -105,7 +105,7 @@ export function SlashCommandPalette({
 
   if (ranked.length === 0) {
     return (
-      <div className="pointer-events-auto absolute bottom-full left-0 mb-2 w-full max-w-md rounded-md border border-[var(--border)] bg-[var(--bg-primary)] p-2 text-[11px] text-[var(--text-muted)] shadow-md">
+      <div className="pointer-events-auto absolute bottom-full left-0 mb-2 w-full max-w-md rounded-md border border-[var(--panel-border)] bg-[var(--bg-primary)] p-2 text-[11px] text-[var(--text-muted)] shadow-md">
         No slash command matches “/{query}”. Drop a markdown file in{' '}
         <code className="font-mono">userData/slash-commands/</code> to add one.
       </div>
@@ -115,7 +115,7 @@ export function SlashCommandPalette({
   return (
     <div
       ref={listRef}
-      className="pointer-events-auto absolute bottom-full left-0 mb-2 max-h-[260px] w-full max-w-md overflow-y-auto rounded-md border border-[var(--border)] bg-[var(--bg-primary)] shadow-md"
+      className="pointer-events-auto absolute bottom-full left-0 mb-2 max-h-[260px] w-full max-w-md overflow-y-auto rounded-md border border-[var(--panel-border)] bg-[var(--bg-primary)] shadow-md"
     >
       {ranked.map((c, i) => {
         const active = i === activeIdx
@@ -125,7 +125,7 @@ export function SlashCommandPalette({
             onMouseEnter={() => setActiveIdx(i)}
             onClick={() => onApply(c.name)}
             className={
-              'flex w-full items-start gap-2 border-b border-[var(--border)] px-2 py-1.5 text-left last:border-b-0 ' +
+              'flex w-full items-start gap-2 border-b border-[var(--panel-border)] px-2 py-1.5 text-left last:border-b-0 ' +
               (active ? 'bg-[var(--bg-secondary)]' : 'hover:bg-[var(--bg-secondary)]')
             }
           >

@@ -128,7 +128,7 @@ export function SessionsSidebar({ embedded = false }: SessionsSidebarProps) {
   return (
     <div
       className={`flex h-full w-full flex-col gap-2 bg-[var(--bg-secondary)] py-2 text-[12px] text-[var(--text-primary)] ${
-        embedded ? '' : 'border-r border-[var(--border)]'
+        embedded ? '' : 'border-r border-[var(--panel-border)]'
       }`}
       data-testid="sessions-sidebar"
     >
@@ -240,7 +240,7 @@ function SearchHits({
   onSelect: (id: string) => void
 }) {
   return (
-    <div className="border-y border-[var(--border)] bg-[var(--bg-primary)] px-2 py-1 text-[11px] text-[var(--text-secondary)]">
+    <div className="border-y border-[var(--panel-border)] bg-[var(--bg-primary)] px-2 py-1 text-[11px] text-[var(--text-secondary)]">
       <span className="px-1 text-[var(--text-muted)]">
         {hits.length} match{hits.length === 1 ? '' : 'es'}
       </span>

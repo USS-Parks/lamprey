@@ -50,7 +50,7 @@ export function ContextAttachBar({ conversationId }: ContextAttachBarProps) {
         return (
           <span
             key={`${a.collectionId ?? ''}|${a.documentId ?? ''}`}
-            className="flex items-center gap-1 rounded-full border border-[var(--border)] bg-[var(--bg-secondary)] px-2 py-0.5 font-mono text-[11px] text-[var(--text-primary)]"
+            className="flex items-center gap-1 rounded-full border border-[var(--panel-border)] bg-[var(--bg-secondary)] px-2 py-0.5 font-mono text-[11px] text-[var(--text-primary)]"
             title={
               a.collectionId
                 ? `collection: ${label}`

@@ -61,7 +61,7 @@ export function PullRequestListPopover({
       ariaLabel="Pull requests"
       autoFocus={false}
     >
-      <div className="flex items-center gap-1 border-b border-[var(--border)] px-2 py-1.5">
+      <div className="flex items-center gap-1 border-b border-[var(--panel-border)] px-2 py-1.5">
         {(['open', 'closed', 'all'] as const).map((state) => (
           <button
             key={state}
@@ -96,7 +96,7 @@ export function PullRequestListPopover({
           return (
             <div
               key={pr.number}
-              className="flex items-start gap-2 border-b border-[var(--border)] px-3 py-2 hover:bg-[var(--bg-tertiary)]/50"
+              className="flex items-start gap-2 border-b border-[var(--panel-border)] px-3 py-2 hover:bg-[var(--bg-tertiary)]/50"
             >
               <span
                 className={`mt-0.5 shrink-0 rounded px-1 py-0.5 font-mono text-[10px] uppercase ${status.cls}`}
@@ -115,14 +115,14 @@ export function PullRequestListPopover({
                 <button
                   type="button"
                   onClick={() => handleOpen(pr.htmlUrl)}
-                  className="rounded border border-[var(--border)] bg-transparent px-2 py-0.5 text-[10px] text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]"
+                  className="rounded border border-[var(--panel-border)] bg-transparent px-2 py-0.5 text-[10px] text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]"
                 >
                   Open
                 </button>
                 <button
                   type="button"
                   onClick={() => void handleCopy(pr.htmlUrl)}
-                  className="rounded border border-[var(--border)] bg-transparent px-2 py-0.5 text-[10px] text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]"
+                  className="rounded border border-[var(--panel-border)] bg-transparent px-2 py-0.5 text-[10px] text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]"
                 >
                   Copy
                 </button>

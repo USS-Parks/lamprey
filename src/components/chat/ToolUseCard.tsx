@@ -77,7 +77,7 @@ function RiskBadges({ risks }: { risks: ToolRisk[] | undefined }) {
           title={RISK_LABEL[r]}
           className={
             'rounded-full border bg-transparent px-1.5 py-[1px] text-[10px] font-mono uppercase tracking-wider ' +
-            (RISK_TONE[r] ?? 'border-[var(--border)] text-[var(--text-muted)]')
+            (RISK_TONE[r] ?? 'border-[var(--panel-border)] text-[var(--text-muted)]')
           }
         >
           {r}
@@ -151,7 +151,7 @@ export function ToolUseCard({ toolCall }: ToolUseCardProps) {
     ? 'border-[var(--error)]/40'
     : isDenied
       ? 'border-[var(--text-muted)]/40'
-      : 'border-[var(--border)]'
+      : 'border-transparent'
 
   const argsJson = (() => {
     try {

@@ -9,9 +9,9 @@ const STATE_TONES: Record<string, string> = {
   error: 'text-red-300 border-red-900/50',
   timed_out: 'text-red-300 border-red-900/50',
   action_required: 'text-amber-300 border-amber-900/50',
-  neutral: 'text-[var(--text-muted)] border-[var(--border)]',
-  skipped: 'text-[var(--text-muted)] border-[var(--border)]',
-  cancelled: 'text-[var(--text-muted)] border-[var(--border)]'
+  neutral: 'text-[var(--text-muted)] border-[var(--panel-border)]',
+  skipped: 'text-[var(--text-muted)] border-[var(--panel-border)]',
+  cancelled: 'text-[var(--text-muted)] border-[var(--panel-border)]'
 }
 
 // F3 — status checks rollup for a PR. Auto-refreshes every 15s while

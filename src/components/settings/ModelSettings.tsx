@@ -278,7 +278,7 @@ export function ModelSettings() {
         </p>
       </div>
 
-      <div className="rounded border border-[var(--border)] bg-[var(--bg-primary)] p-3">
+      <div className="rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] p-3">
         <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={handleVerifyCatalog}
@@ -330,7 +330,7 @@ export function ModelSettings() {
               className={`rounded border px-3 py-1.5 font-mono text-xs transition-colors ${
                 selectedId === m.id
                   ? 'border-[var(--accent)] bg-[var(--accent-dim)] text-[var(--accent)]'
-                  : 'border-[var(--border)] bg-[var(--bg-primary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                  : 'border-[var(--panel-border)] bg-[var(--bg-primary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
               }`}
             >
               {m.name}
@@ -350,7 +350,7 @@ export function ModelSettings() {
       </div>
 
       {selectedModel && (
-        <div className="space-y-3 rounded border border-[var(--border)] bg-[var(--bg-primary)] p-3">
+        <div className="space-y-3 rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] p-3">
           <div className="grid grid-cols-2 gap-3">
             <label className="flex flex-col gap-1">
               <span className="text-[12px] uppercase tracking-wider text-[var(--text-muted)]">
@@ -395,7 +395,7 @@ export function ModelSettings() {
                 writeConfig({ maxTokens: raw === '' ? null : Math.max(1, Number(raw)) })
               }}
               placeholder="Unlimited"
-              className="rounded border border-[var(--border)] bg-[var(--bg-secondary)] px-2 py-1 font-mono text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+              className="rounded border border-[var(--panel-border)] bg-[var(--bg-secondary)] px-2 py-1 font-mono text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
             />
           </label>
 
@@ -409,7 +409,7 @@ export function ModelSettings() {
               rows={3}
               spellCheck={false}
               placeholder="Replaces 'You are Lamprey, a helpful AI assistant...' when set."
-              className="resize-none rounded border border-[var(--border)] bg-[var(--bg-secondary)] px-2 py-1.5 font-mono text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+              className="resize-none rounded border border-[var(--panel-border)] bg-[var(--bg-secondary)] px-2 py-1.5 font-mono text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
             />
           </label>
 
@@ -417,7 +417,7 @@ export function ModelSettings() {
             <button
               onClick={handleSetDefault}
               disabled={settings.defaultModel === selectedId}
-              className="rounded border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)] disabled:opacity-40"
+              className="rounded border border-[var(--panel-border)] px-3 py-1.5 text-xs text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)] disabled:opacity-40"
             >
               Set as default
             </button>
@@ -443,7 +443,7 @@ export function ModelSettings() {
         </div>
       )}
 
-      <div className="space-y-3 border-t border-[var(--border)] pt-4">
+      <div className="space-y-3 border-t border-[var(--panel-border)] pt-4">
         <div>
           <h4 className="font-mono text-[13px] uppercase tracking-wider text-[var(--text-muted)]">
             Custom models
@@ -459,7 +459,7 @@ export function ModelSettings() {
             {customModels.map((m) => (
               <div
                 key={m.id}
-                className="flex items-center gap-2 rounded border border-[var(--border)] bg-[var(--bg-primary)] px-2 py-1.5 text-xs"
+                className="flex items-center gap-2 rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] px-2 py-1.5 text-xs"
               >
                 <div className="min-w-0 flex-1">
                   <div className="font-mono text-[var(--text-primary)]">{m.name}</div>
@@ -483,7 +483,7 @@ export function ModelSettings() {
           </div>
         )}
 
-        <div className="space-y-2 rounded border border-[var(--border)] bg-[var(--bg-primary)] p-3">
+        <div className="space-y-2 rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] p-3">
           <div className="flex flex-wrap items-center gap-1">
             <span className="mr-1 text-[12px] uppercase tracking-wider text-[var(--text-muted)]">
               Quick presets:
@@ -509,7 +509,7 @@ export function ModelSettings() {
                 value={draft.id}
                 onChange={(e) => setDraft({ ...draft, id: e.target.value })}
                 placeholder="deepseek-v4-pro"
-                className="rounded border border-[var(--border)] bg-[var(--bg-secondary)] px-2 py-1 font-mono text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+                className="rounded border border-[var(--panel-border)] bg-[var(--bg-secondary)] px-2 py-1 font-mono text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
               />
             </label>
             <label className="flex flex-col gap-1">
@@ -521,7 +521,7 @@ export function ModelSettings() {
                 value={draft.name}
                 onChange={(e) => setDraft({ ...draft, name: e.target.value })}
                 placeholder="DeepSeek V4 Pro"
-                className="rounded border border-[var(--border)] bg-[var(--bg-secondary)] px-2 py-1 text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+                className="rounded border border-[var(--panel-border)] bg-[var(--bg-secondary)] px-2 py-1 text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
               />
             </label>
             <label className="flex flex-col gap-1">
@@ -536,7 +536,7 @@ export function ModelSettings() {
                 onChange={(e) =>
                   setDraft({ ...draft, contextWindow: Math.max(1024, Number(e.target.value) || 65536) })
                 }
-                className="rounded border border-[var(--border)] bg-[var(--bg-secondary)] px-2 py-1 font-mono text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+                className="rounded border border-[var(--panel-border)] bg-[var(--bg-secondary)] px-2 py-1 font-mono text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
               />
             </label>
             <div className="flex flex-col justify-end gap-1">

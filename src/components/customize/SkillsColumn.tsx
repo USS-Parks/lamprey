@@ -54,8 +54,8 @@ function EditDrawer({ skill, onClose }: EditDrawerProps) {
 
   return (
     <div className="fixed inset-0 z-40 flex items-stretch justify-end bg-black/40">
-      <div className="flex h-full w-[480px] flex-col border-l border-[var(--border)] bg-[var(--bg-secondary)] shadow-2xl">
-        <header className="flex h-12 shrink-0 items-center gap-2 border-b border-[var(--border)] px-4">
+      <div className="flex h-full w-[480px] flex-col border-l border-[var(--panel-border)] bg-[var(--bg-secondary)] shadow-2xl">
+        <header className="flex h-12 shrink-0 items-center gap-2 border-b border-[var(--panel-border)] px-4">
           <span className="text-[14px] font-semibold text-[var(--text-primary)]">
             Edit skill
           </span>
@@ -102,7 +102,7 @@ function EditDrawer({ skill, onClose }: EditDrawerProps) {
             <input
               value={draft.name}
               onChange={(e) => setDraft((s) => ({ ...s, name: e.target.value }))}
-              className="mt-1 w-full rounded border border-[var(--border)] bg-[var(--bg-primary)] px-2 py-1.5 text-[13px] text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+              className="mt-1 w-full rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] px-2 py-1.5 text-[13px] text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
             />
           </label>
 
@@ -111,7 +111,7 @@ function EditDrawer({ skill, onClose }: EditDrawerProps) {
             <input
               value={draft.description}
               onChange={(e) => setDraft((s) => ({ ...s, description: e.target.value }))}
-              className="mt-1 w-full rounded border border-[var(--border)] bg-[var(--bg-primary)] px-2 py-1.5 text-[13px] text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+              className="mt-1 w-full rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] px-2 py-1.5 text-[13px] text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
             />
           </label>
 
@@ -121,7 +121,7 @@ function EditDrawer({ skill, onClose }: EditDrawerProps) {
               value={draft.content}
               onChange={(e) => setDraft((s) => ({ ...s, content: e.target.value }))}
               spellCheck={false}
-              className="mt-1 h-72 w-full resize-y rounded border border-[var(--border)] bg-[var(--bg-primary)] p-2 font-mono text-[12px] leading-relaxed text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+              className="mt-1 h-72 w-full resize-y rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] p-2 font-mono text-[12px] leading-relaxed text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
             />
           </label>
 
@@ -137,10 +137,10 @@ function EditDrawer({ skill, onClose }: EditDrawerProps) {
           </div>
         </div>
 
-        <footer className="flex shrink-0 items-center gap-2 border-t border-[var(--border)] px-4 py-3">
+        <footer className="flex shrink-0 items-center gap-2 border-t border-[var(--panel-border)] px-4 py-3">
           <button
             onClick={onClose}
-            className="rounded border border-[var(--border)] bg-[var(--bg-primary)] px-3 py-1.5 text-[12px] hover:border-[var(--accent)]"
+            className="rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] px-3 py-1.5 text-[12px] hover:border-[var(--accent)]"
           >
             Cancel
           </button>
@@ -226,16 +226,16 @@ export function SkillsColumn({ onOpenImport }: SkillsColumnProps = {}) {
   return (
     <div className="flex h-full flex-col">
       {/* Header */}
-      <div className="flex shrink-0 items-center gap-2 border-b border-[var(--border)] px-3 py-2">
+      <div className="flex shrink-0 items-center gap-2 border-b border-[var(--panel-border)] px-3 py-2">
         <input
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
           placeholder={`Filter ${skills.length} skill${skills.length === 1 ? '' : 's'}…`}
-          className="min-w-0 flex-1 rounded border border-[var(--border)] bg-[var(--bg-primary)] px-2 py-1 text-[12px] text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+          className="min-w-0 flex-1 rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] px-2 py-1 text-[12px] text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
         />
         <button
           onClick={() => setWizardOpen(true)}
-          className="rounded border border-[var(--border)] bg-[var(--bg-primary)] px-2 py-1 text-[12px] hover:border-[var(--accent)]"
+          className="rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] px-2 py-1 text-[12px] hover:border-[var(--accent)]"
           title="Create a new skill"
         >
           + New
@@ -264,7 +264,7 @@ export function SkillsColumn({ onOpenImport }: SkillsColumnProps = {}) {
           return (
             <div
               key={skill.id}
-              className="group mb-1 flex items-start gap-2 rounded border border-transparent p-2 hover:border-[var(--border)] hover:bg-[var(--bg-tertiary)]"
+              className="group mb-1 flex items-start gap-2 rounded border border-transparent p-2 hover:border-[var(--panel-border)] hover:bg-[var(--bg-tertiary)]"
             >
               <button
                 onClick={() => toggleSkill(skill.id)}
@@ -273,7 +273,7 @@ export function SkillsColumn({ onOpenImport }: SkillsColumnProps = {}) {
                 className={`mt-0.5 h-5 w-9 shrink-0 rounded-full border transition-colors ${
                   enabled
                     ? 'border-[var(--accent)] bg-[var(--accent)]'
-                    : 'border-[var(--border)] bg-[var(--bg-primary)]'
+                    : 'border-[var(--panel-border)] bg-[var(--bg-primary)]'
                 }`}
               >
                 <span

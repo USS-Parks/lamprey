@@ -142,7 +142,7 @@ export const MenuRow = forwardRef<HTMLButtonElement, MenuRowProps>(function Menu
 })
 
 export function MenuSeparator(): React.ReactElement {
-  return <div className="my-1 border-t border-[var(--border)]" aria-hidden />
+  return <div className="my-1 border-t border-[var(--panel-border)]" aria-hidden />
 }
 
 interface MenuSectionLabelProps {

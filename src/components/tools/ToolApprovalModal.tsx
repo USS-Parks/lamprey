@@ -25,7 +25,7 @@ const RISK_LABEL: Record<ToolRisk, string> = {
 }
 
 const RISK_COLOR: Record<ToolRisk, string> = {
-  read: 'text-[var(--text-muted)] border-[var(--border)]',
+  read: 'text-[var(--text-muted)] border-[var(--panel-border)]',
   write: 'text-amber-300 border-amber-500/30',
   network: 'text-sky-300 border-sky-500/30',
   destructive: 'text-red-300 border-red-500/40',
@@ -70,7 +70,7 @@ export function ToolApprovalModal({ request, onResolved, onAllowed }: ToolApprov
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-      <div className="w-full max-w-md rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)] p-6 shadow-2xl">
+      <div className="w-full max-w-md rounded-lg border border-[var(--panel-border)] bg-[var(--bg-secondary)] p-6 shadow-2xl">
         <h2 className="mb-4 text-lg font-semibold text-[var(--text-primary)]">
           Allow this action?
         </h2>
@@ -97,7 +97,7 @@ export function ToolApprovalModal({ request, onResolved, onAllowed }: ToolApprov
           </div>
         )}
 
-        <div className="mb-4 rounded border border-[var(--border)] bg-[var(--bg-primary)] p-3">
+        <div className="mb-4 rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] p-3">
           <pre className="max-h-48 overflow-auto text-xs font-mono text-[var(--text-secondary)]">
             {JSON.stringify(request.args, null, 2)}
           </pre>
@@ -109,7 +109,7 @@ export function ToolApprovalModal({ request, onResolved, onAllowed }: ToolApprov
             <select
               value={scope}
               onChange={(e) => setScope(e.target.value as ApprovalScope)}
-              className="rounded border border-[var(--border)] bg-[var(--bg-tertiary)] px-2 py-1 text-xs text-[var(--text-secondary)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
+              className="rounded border border-[var(--panel-border)] bg-[var(--bg-tertiary)] px-2 py-1 text-xs text-[var(--text-secondary)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
               disabled={!request.conversationId && scope === 'conversation'}
             >
               <option value="once">Just this once</option>
@@ -126,7 +126,7 @@ export function ToolApprovalModal({ request, onResolved, onAllowed }: ToolApprov
         <div className="flex gap-3">
           <button
             onClick={() => respond('deny', scope)}
-            className="flex-1 rounded-lg border border-[var(--border)] bg-[var(--bg-tertiary)] px-4 py-2 text-sm font-medium text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-primary)]"
+            className="flex-1 rounded-lg border border-[var(--panel-border)] bg-[var(--bg-tertiary)] px-4 py-2 text-sm font-medium text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-primary)]"
           >
             Deny
           </button>
