@@ -1,5 +1,25 @@
 # Lamprey Harness Dev Log
 
+## [Reasoning Audit — Prompt R9] Tests + Settings UI panel  —  2026-06-06
+
+**Files changed:** `src/components/settings/ReasoningAuditSettings.tsx` (new file — single-toggle panel), `src/components/settings/SettingsDialog.tsx` (registered tab + renderer hook), `electron/services/agent-pipeline.test.ts` (end-to-end "every stage's reasoning lands on its own audit row with the right stage tag" case)
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- vitest ✓ (1916 pass / 38 skip — 1 new R9 end-to-end pipeline reasoning-trail case)
+- electron-vite build ✓ (4.97s)
+- user-verification-needed: open Settings → Reasoning Audit tab in Electron; confirm the toggle reads as ON by default, flips OFF persists across launches; flip back to ON and run a multi-agent turn; confirm the next turn's API stack carries past `<think>` blocks (debug-trace log or model-request audit).
+
+**Notes:**
+- ReasoningAuditSettings.tsx is intentionally minimal: one toggle, multi-paragraph explanation of the trade-off (audit continuity vs. token cost), no extra knobs. Per Invariant §2.7 default is ON.
+- The other R-phase outputs (Planner row save, Reviewer stage, Composer trail, MessageBubble chip + toggle) are always-on by design — there's nothing user-toggleable about them, hence no additional settings rows.
+- End-to-end test asserts: Planner row exists with `stage='planner'` + native reasoning preserved + model=roster.planner; Reviewer row exists with `stage='reviewer'` + reasoning preserved + model=roster.reviewer. Coder row is owned by chat.ts's runChatRound in production (outside agent-pipeline's scope), so it's not asserted here — R6's composer-trail tests cover that path.
+
+**Commit:** _pending — current commit_
+
+---
+
 ## [Reasoning Audit — Prompt R8] Re-feed past reasoning to the API on rehydrate (gated)  —  2026-06-06
 
 **Files changed:** `electron/services/chat-history.ts` (`StoredChatMessage.reasoning?`, `shouldIncludePastReasoning()` setting read, `reasoningRehydratedContent()` helper, rehydration applied to both tool-call-carrying + plain assistant branches), `electron/services/chat-history.test.ts` (5 new R8 cases), `electron/services/context-compressor.ts` (`CompressorMessage.reasoning?`, SELECT/map includes the new column), `src/lib/types.ts` (`AppSettings.includePastReasoningInContext?: boolean`), `src/stores/settings-store.ts` (default = `true`)
