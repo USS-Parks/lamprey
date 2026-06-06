@@ -265,7 +265,7 @@ export function Titlebar({ onSettingsClick }: TitlebarProps) {
 
   return (
     <div
-      className="flex flex-col border-b border-[var(--panel-border)] bg-[var(--bg-secondary)]"
+      className="flex flex-col bg-transparent"
       style={DRAG}
     >
       {/* ─── Row 1 ─── nav + menus (left) · centered logo (over chat column) · window controls (right) */}

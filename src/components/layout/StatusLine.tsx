@@ -317,7 +317,7 @@ export function StatusLine() {
     <div
       role="status"
       aria-label="Lamprey status line"
-      className="flex h-7 shrink-0 items-center gap-2 border-t border-[var(--panel-border)] bg-[var(--bg-secondary)] px-3 text-[11px] text-[var(--text-muted)]"
+      className="flex h-7 shrink-0 items-center gap-2 bg-transparent px-3 text-[11px] text-[var(--text-muted)]"
       data-testid="statusline"
     >
       {renderedSlots.length === 0 ? (
