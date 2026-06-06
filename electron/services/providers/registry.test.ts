@@ -292,3 +292,48 @@ describe('chatStream — SSE inactivity watchdog (T1)', () => {
     expect(e.message).toMatch(/45s/)
   })
 })
+
+describe('chatStream — streaming-vitals heartbeat (T4)', () => {
+  it('fires onVitals while the stream is active and stops when it ends', async () => {
+    __setStreamInactivityForTesting(0)
+
+    const controllable = makeControllableStream()
+    mockCreate.mockImplementation((_req: unknown, opts: { signal: AbortSignal }) => {
+      controllable.stream.attachSignal(opts.signal)
+      // Drip chunks across a window long enough for at least one heartbeat
+      // (provider fires every 2s; we tick out chunks slowly).
+      setTimeout(() => controllable.push(makeChunk('a')), 100)
+      setTimeout(() => controllable.push(makeChunk('b')), 2_200)
+      setTimeout(() => controllable.end(), 2_400)
+      return Promise.resolve(controllable.stream)
+    })
+
+    const vitalsCalls: Array<{ lastChunkAt: number; chunkCount: number }> = []
+    let done = false
+    await chatStream(
+      [{ role: 'user', content: 'hi' }],
+      'deepseek-v4-pro',
+      undefined,
+      {
+        onChunk: () => {},
+        onVitals: (v) =>
+          vitalsCalls.push({ lastChunkAt: v.lastChunkAt, chunkCount: v.chunkCount }),
+        onDone: () => {
+          done = true
+        },
+        onError: () => {}
+      }
+    )
+
+    expect(done).toBe(true)
+    // At least one heartbeat fired in the ~2.4s window. Provider lifts the
+    // 2s heartbeat regardless of chunk arrival so the renderer can show a
+    // staleness indicator on slow providers.
+    expect(vitalsCalls.length).toBeGreaterThanOrEqual(1)
+    const last = vitalsCalls[vitalsCalls.length - 1]
+    expect(last.chunkCount).toBeGreaterThanOrEqual(1)
+    expect(last.lastChunkAt).toBeGreaterThan(0)
+
+    __setStreamInactivityForTesting(null)
+  }, 10_000)
+})

@@ -327,12 +327,25 @@ export interface ModelRequestAudit {
   purpose?: 'main' | 'composer' | 'title' | 'pipeline' | 'sub-agent' | 'other'
 }
 
+export interface StreamingVitals {
+  lastChunkAt: number
+  msSinceLastChunk: number
+  chunkCount: number
+  tokenEstimate: number
+  attemptElapsedMs: number
+}
+
 export interface ChatStreamCallbacks {
   onChunk: (content: string) => void
   /** Reasoning-channel deltas. DeepSeek's reasoner / V4-Flash thinking mode
    *  streams chain-of-thought on `delta.reasoning_content` (some providers
    *  alias it to `delta.reasoning`). When omitted, reasoning is dropped. */
   onReasoning?: (content: string) => void
+  /** T4 — heartbeat the provider fires ~every 2s during a streaming attempt
+   *  so the caller can broadcast a `chat:streaming-vitals` event. Lets the
+   *  renderer show "last chunk Ns ago / N tokens" so the user can tell a
+   *  slow think from a dead socket without canceling. */
+  onVitals?: (vitals: StreamingVitals) => void
   onDone: (
     fullContent: string,
     toolCalls?: ToolCallAccumulator[],
@@ -666,6 +679,42 @@ export async function chatStream(
   const maxRetries = 3
   const inactivityMs = readStreamInactivityMs()
 
+  // T4 — vitals heartbeat. Fires every 2s while the attempt streams. Counters
+  // reset on each retry so the renderer's "Ns since last chunk" reflects the
+  // CURRENT attempt, not the cumulative attempt history.
+  const VITALS_HEARTBEAT_MS = 2_000
+  let vitalsTimer: ReturnType<typeof setInterval> | null = null
+  let lastChunkAt = 0
+  let chunkCount = 0
+  let attemptStartedAt = Date.now()
+  const startVitalsHeartbeat = (): void => {
+    if (!callbacks.onVitals) return
+    if (vitalsTimer) clearInterval(vitalsTimer)
+    vitalsTimer = setInterval(() => {
+      try {
+        const now = Date.now()
+        const tokenEstimate = Math.round(
+          (fullContent.length + fullReasoning.length) / 4
+        )
+        callbacks.onVitals?.({
+          lastChunkAt,
+          msSinceLastChunk: lastChunkAt === 0 ? now - attemptStartedAt : now - lastChunkAt,
+          chunkCount,
+          tokenEstimate,
+          attemptElapsedMs: now - attemptStartedAt
+        })
+      } catch (err) {
+        console.warn('[providers] vitals heartbeat threw:', err)
+      }
+    }, VITALS_HEARTBEAT_MS)
+  }
+  const stopVitalsHeartbeat = (): void => {
+    if (vitalsTimer) {
+      clearInterval(vitalsTimer)
+      vitalsTimer = null
+    }
+  }
+
   while (retries <= maxRetries) {
     // T1 — Per-attempt controller. User-signal aborts route through this;
     // the inactivity timer also fires it. We use the `inactivityFired` flag
@@ -696,6 +745,10 @@ export async function chatStream(
     }
 
     try {
+      attemptStartedAt = Date.now()
+      lastChunkAt = 0
+      chunkCount = 0
+      startVitalsHeartbeat()
       armInactivityTimer()
       const stream = await client.chat.completions.create(
         {
@@ -712,7 +765,10 @@ export async function chatStream(
 
       for await (const chunk of stream) {
         clearInactivityTimer()
+        lastChunkAt = Date.now()
+        chunkCount++
         if (signal?.aborted) {
+          stopVitalsHeartbeat()
           callbacks.onDone(
             fullContent + ' [cancelled]',
             undefined,
@@ -774,6 +830,7 @@ export async function chatStream(
       }
 
       clearInactivityTimer()
+      stopVitalsHeartbeat()
       if (signal) signal.removeEventListener('abort', onUserAbort)
 
       const toolCalls = toolCallsAccumulator.size > 0
@@ -792,6 +849,7 @@ export async function chatStream(
       return
     } catch (err: any) {
       clearInactivityTimer()
+      stopVitalsHeartbeat()
       if (signal) signal.removeEventListener('abort', onUserAbort)
 
       // User-cancelled — the attempt controller was fired by the user signal,

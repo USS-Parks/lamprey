@@ -48,6 +48,27 @@ export interface ChatPhasePayload {
   phase: AgentRunPhase
 }
 
+/** T4 — Streaming-vitals heartbeat. Fires ~every 2s while a stream is active
+ *  so the renderer can show "last chunk Ns ago" alongside the running token
+ *  count. Lets the user distinguish "model is thinking" from "the socket
+ *  is dead" before resorting to manual cancel. `lastChunkAt` is 0 when no
+ *  chunk has arrived yet; `chunkCount` aggregates both visible body deltas
+ *  and reasoning-channel deltas; `tokenEstimate` is a cheap byte-divided
+ *  approximation, NOT an exact tokenizer count. */
+export interface ChatStreamingVitalsPayload {
+  conversationId: string
+  /** Epoch ms of the last chunk OR reasoning delta. 0 when none have arrived. */
+  lastChunkAt: number
+  /** ms since the last chunk (0 means we just received one). */
+  msSinceLastChunk: number
+  /** Total chunks (body + reasoning) received this attempt. */
+  chunkCount: number
+  /** Rough byte-divided token estimate for the running buffers. */
+  tokenEstimate: number
+  /** ms since the chatStream attempt started. */
+  attemptElapsedMs: number
+}
+
 export interface ChatToolCallPayload {
   callId: string
   conversationId: string
@@ -225,6 +246,7 @@ export interface ChatEventMap {
   'chat:done': ChatDonePayload
   'chat:error': ChatErrorPayload
   'chat:phase': ChatPhasePayload
+  'chat:streaming-vitals': ChatStreamingVitalsPayload
   'chat:tool-call': ChatToolCallPayload
   'chat:tool-call-result': ChatToolCallResultPayload
   'plan:updated': PlanUpdatedPayload

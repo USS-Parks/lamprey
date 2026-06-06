@@ -24,6 +24,20 @@ const api = {
       ipcRenderer.on('chat:tool-call-result', (_, e) => cb(e)),
     onPhase: (cb: (e: { conversationId: string; phase: string }) => void) =>
       ipcRenderer.on('chat:phase', (_, e) => cb(e)),
+    onStreamingVitals: (
+      cb: (e: {
+        conversationId: string
+        lastChunkAt: number
+        msSinceLastChunk: number
+        chunkCount: number
+        tokenEstimate: number
+        attemptElapsedMs: number
+      }) => void
+    ): (() => void) => {
+      const handler = (_: unknown, e: any): void => cb(e)
+      ipcRenderer.on('chat:streaming-vitals', handler)
+      return () => ipcRenderer.removeListener('chat:streaming-vitals', handler)
+    },
     onDocumentCreated: (
       cb: (e: {
         conversationId: string
@@ -56,6 +70,7 @@ const api = {
         'chat:tool-call',
         'chat:tool-call-result',
         'chat:phase',
+        'chat:streaming-vitals',
         'chat:document-created',
         'agent:status'
       ].forEach((ch) => ipcRenderer.removeAllListeners(ch))
