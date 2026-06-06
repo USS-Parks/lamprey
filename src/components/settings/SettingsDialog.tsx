@@ -17,6 +17,7 @@ import { ActivityTimeline } from '@/components/activity/ActivityTimeline'
 import { LibraryView } from '@/components/library/LibraryView'
 import { RagSettings } from './RagSettings'
 import { SnipSettings } from './SnipSettings'
+import { StreamingTimeoutsSettings } from './StreamingTimeoutsSettings'
 import { useUiStore } from '@/stores/ui-store'
 
 interface SettingsDialogProps {
@@ -41,6 +42,7 @@ const TABS = [
   { id: 'library', label: 'Library' },
   { id: 'rag', label: 'RAG' },
   { id: 'snip', label: 'Snip' },
+  { id: 'timeouts', label: 'Timeouts' },
   { id: 'activity', label: 'Activity' }
 ] as const
 
@@ -111,6 +113,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
             {activeTab === 'library' && <LibraryView />}
             {activeTab === 'rag' && <RagSettings />}
             {activeTab === 'snip' && <SnipSettings />}
+            {activeTab === 'timeouts' && <StreamingTimeoutsSettings />}
             {activeTab === 'activity' && <ActivityTimeline />}
           </div>
         </div>

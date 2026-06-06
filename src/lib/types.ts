@@ -313,6 +313,28 @@ export interface AppSettings {
    * would corrupt structured tool output (Invariant 13).
    */
   snipVerbose: boolean
+  /**
+   * T1 — SSE inactivity watchdog threshold (ms). 0 disables, min 5_000,
+   * default 60_000. Caps how long a streaming attempt can sit without
+   * receiving a chunk before being retried/aborted with a clear error.
+   */
+  streamInactivityMs?: number
+  /**
+   * T2 — Per-call MCP tool timeout (ms). 0 falls back to the MCP SDK's
+   * default, min 5_000, default 120_000. Capping it here prevents one
+   * stalled MCP server from blocking the whole turn.
+   */
+  mcpCallTimeoutMs?: number
+  /**
+   * T3 — Per-stage wall-clock budgets (ms) for the multi-agent pipeline.
+   * 0 disables a stage's budget, min 10_000. Defaults: planner 120_000,
+   * coder 600_000, reviewer 120_000.
+   */
+  stageBudgetMs?: {
+    planner?: number
+    coder?: number
+    reviewer?: number
+  }
 }
 
 export const DEFAULT_AGENTIC_CODING_SKILLS: string[] = [
