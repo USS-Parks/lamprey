@@ -46,7 +46,7 @@ export function CollectionList() {
                     }
                     if (e.key === 'Escape') setRenamingId(null)
                   }}
-                  className="flex-1 rounded border border-[var(--border)] bg-[var(--bg-primary)] px-1 font-mono text-[11px] text-[var(--text-primary)]"
+                  className="flex-1 rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] px-1 font-mono text-[11px] text-[var(--text-primary)]"
                 />
               ) : (
                 <button

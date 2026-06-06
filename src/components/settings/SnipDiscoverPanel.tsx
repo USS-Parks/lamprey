@@ -39,7 +39,7 @@ export function SnipDiscoverPanel() {
               className={`rounded border px-2 py-0.5 font-mono text-[10px] ${
                 sinceDays === w.days
                   ? 'border-[var(--accent)] bg-[var(--accent)] text-[var(--bg-primary)]'
-                  : 'border-[var(--border)] text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)]'
+                  : 'border-[var(--panel-border)] text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)]'
               }`}
             >
               {w.label}
@@ -61,7 +61,7 @@ export function SnipDiscoverPanel() {
           </thead>
           <tbody>
             {discover.suggestions.map((s) => (
-              <tr key={s.commandPattern} className="border-t border-[var(--border)]">
+              <tr key={s.commandPattern} className="border-t border-[var(--panel-border)]">
                 <td className="py-1 text-[var(--text-primary)]" title={s.sampleCommand}>
                   {s.commandPattern}
                 </td>
@@ -73,7 +73,7 @@ export function SnipDiscoverPanel() {
                 <td className="py-1 text-right">
                   <button
                     onClick={() => void openFilterDir()}
-                    className="rounded border border-[var(--border)] px-2 py-0.5 text-[10px] text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)]"
+                    className="rounded border border-[var(--panel-border)] px-2 py-0.5 text-[10px] text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)]"
                     title={`Drop a YAML filter into the ${s.suggestedCategory}/ folder under userData/snip/filters/.`}
                   >
                     Write a filter
@@ -84,7 +84,7 @@ export function SnipDiscoverPanel() {
           </tbody>
         </table>
       ) : (
-        <div className="rounded border border-dashed border-[var(--border)] px-3 py-4 text-center font-mono text-[11px] text-[var(--text-muted)]">
+        <div className="rounded border border-dashed border-[var(--panel-border)] px-3 py-4 text-center font-mono text-[11px] text-[var(--text-muted)]">
           No unfiltered commands in the last {sinceDays}d. Run some shell calls and check back.
         </div>
       )}

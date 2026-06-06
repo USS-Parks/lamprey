@@ -148,7 +148,7 @@ export function GitHubSettings(): React.ReactElement {
       />
 
       {status?.connected ? null : (
-        <div className="space-y-3 rounded border border-[var(--border)] bg-[var(--bg-primary)] p-3">
+        <div className="space-y-3 rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] p-3">
           {/*
             Primary action defaults to the bundled Lamprey OAuth App when
             the build provided one (LAMPREY_GITHUB_CLIENT_ID + SECRET env
@@ -172,7 +172,7 @@ export function GitHubSettings(): React.ReactElement {
           )}
 
           {(showAdvanced || !hasBundled) && (
-            <div className={hasBundled ? 'space-y-3 border-t border-[var(--border)] pt-3' : 'space-y-3'}>
+            <div className={hasBundled ? 'space-y-3 border-t border-[var(--panel-border)] pt-3' : 'space-y-3'}>
               <div>
                 <div className="font-mono text-[12px] font-semibold text-[var(--text-primary)]">
                   Bring your own OAuth App
@@ -205,7 +205,7 @@ export function GitHubSettings(): React.ReactElement {
                   <button
                     type="button"
                     onClick={() => setEditingClient(true)}
-                    className="rounded border border-[var(--border)] bg-transparent px-3 py-1 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]"
+                    className="rounded border border-[var(--panel-border)] bg-transparent px-3 py-1 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]"
                   >
                     Replace
                   </button>
@@ -217,7 +217,7 @@ export function GitHubSettings(): React.ReactElement {
                     value={clientId}
                     onChange={(e) => setClientId(e.target.value)}
                     placeholder="OAuth App Client ID (Iv1.xxxxx)"
-                    className="w-full rounded border border-[var(--border)] bg-[var(--bg-secondary)] px-2 py-1.5 font-mono text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+                    className="w-full rounded border border-[var(--panel-border)] bg-[var(--bg-secondary)] px-2 py-1.5 font-mono text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
                   />
                   <div className="flex gap-2">
                     <input
@@ -225,12 +225,12 @@ export function GitHubSettings(): React.ReactElement {
                       value={clientSecret}
                       onChange={(e) => setClientSecret(e.target.value)}
                       placeholder="OAuth App Client Secret"
-                      className="flex-1 rounded border border-[var(--border)] bg-[var(--bg-secondary)] px-2 py-1.5 font-mono text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+                      className="flex-1 rounded border border-[var(--panel-border)] bg-[var(--bg-secondary)] px-2 py-1.5 font-mono text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
                     />
                     <button
                       type="button"
                       onClick={() => setShowSecret((v) => !v)}
-                      className="rounded border border-[var(--border)] bg-transparent px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                      className="rounded border border-[var(--panel-border)] bg-transparent px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
                     >
                       {showSecret ? 'Hide' : 'Show'}
                     </button>
@@ -252,7 +252,7 @@ export function GitHubSettings(): React.ReactElement {
                           setClientId('')
                           setClientSecret('')
                         }}
-                        className="rounded border border-[var(--border)] bg-transparent px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                        className="rounded border border-[var(--panel-border)] bg-transparent px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
                       >
                         Cancel
                       </button>
@@ -260,7 +260,7 @@ export function GitHubSettings(): React.ReactElement {
                   </div>
                 </div>
               )}
-              <div className="flex flex-wrap gap-2 border-t border-[var(--border)] pt-3">
+              <div className="flex flex-wrap gap-2 border-t border-[var(--panel-border)] pt-3">
                 <button
                   type="button"
                   onClick={() => void handleConnect()}
@@ -274,7 +274,7 @@ export function GitHubSettings(): React.ReactElement {
                   <button
                     type="button"
                     onClick={() => void handleUseGhCli()}
-                    className="rounded border border-[var(--border)] bg-transparent px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]"
+                    className="rounded border border-[var(--panel-border)] bg-transparent px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]"
                   >
                     Use local `gh` CLI
                   </button>
@@ -310,7 +310,7 @@ function StatusCard({ status, loading, onDisconnect, onRefresh }: StatusCardProp
     status?.connected ? 'bg-[var(--success)]' : status?.reason ? 'bg-[var(--warning)]' : 'bg-[var(--text-muted)]'
 
   return (
-    <div className="rounded border border-[var(--border)] bg-[var(--bg-primary)] p-3">
+    <div className="rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] p-3">
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-3">
           {status?.avatarUrl ? (
@@ -319,10 +319,10 @@ function StatusCard({ status, loading, onDisconnect, onRefresh }: StatusCardProp
               alt=""
               width={32}
               height={32}
-              className="rounded-full border border-[var(--border)]"
+              className="rounded-full border border-[var(--panel-border)]"
             />
           ) : (
-            <div className="flex h-8 w-8 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--bg-tertiary)] text-[var(--text-muted)]">
+            <div className="flex h-8 w-8 items-center justify-center rounded-full border border-[var(--panel-border)] bg-[var(--bg-tertiary)] text-[var(--text-muted)]">
               <GitHubGlyph />
             </div>
           )}
@@ -351,7 +351,7 @@ function StatusCard({ status, loading, onDisconnect, onRefresh }: StatusCardProp
             type="button"
             onClick={onRefresh}
             disabled={loading}
-            className="rounded border border-[var(--border)] bg-transparent px-3 py-1 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)] disabled:opacity-40"
+            className="rounded border border-[var(--panel-border)] bg-transparent px-3 py-1 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)] disabled:opacity-40"
           >
             {loading ? 'Refreshing…' : 'Refresh'}
           </button>
@@ -359,7 +359,7 @@ function StatusCard({ status, loading, onDisconnect, onRefresh }: StatusCardProp
             <button
               type="button"
               onClick={onDisconnect}
-              className="rounded border border-[var(--border)] bg-transparent px-3 py-1 text-xs text-[var(--error)] hover:bg-[var(--error)]/10"
+              className="rounded border border-[var(--panel-border)] bg-transparent px-3 py-1 text-xs text-[var(--error)] hover:bg-[var(--error)]/10"
             >
               Disconnect
             </button>
@@ -378,7 +378,7 @@ interface RepoCounterProps {
 
 function RepoCounter({ repos, loading, onRefresh }: RepoCounterProps): React.ReactElement {
   return (
-    <div className="rounded border border-[var(--border)] bg-[var(--bg-primary)] p-3">
+    <div className="rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] p-3">
       <div className="flex items-center justify-between">
         <div>
           <div className="font-mono text-[12px] font-semibold text-[var(--text-primary)]">
@@ -392,7 +392,7 @@ function RepoCounter({ repos, loading, onRefresh }: RepoCounterProps): React.Rea
           type="button"
           onClick={() => void onRefresh()}
           disabled={loading}
-          className="rounded border border-[var(--border)] bg-transparent px-3 py-1 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)] disabled:opacity-40"
+          className="rounded border border-[var(--panel-border)] bg-transparent px-3 py-1 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)] disabled:opacity-40"
         >
           Refresh repo list
         </button>
@@ -440,7 +440,7 @@ function ConnectWithBundled({
         <button
           type="button"
           onClick={onUseGhCli}
-          className="rounded border border-[var(--border)] bg-transparent px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]"
+          className="rounded border border-[var(--panel-border)] bg-transparent px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]"
         >
           Use local `gh` CLI
         </button>

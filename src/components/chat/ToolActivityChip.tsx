@@ -73,12 +73,12 @@ export function ToolActivityChip({
   const grouped = groupConsecutiveToolCalls(visible)
 
   const toneClass = isEmpty
-    ? 'border-[var(--border)] text-[var(--text-muted)] hover:border-[var(--accent)] hover:text-[var(--text-secondary)]'
+    ? 'border-[var(--panel-border)] text-[var(--text-muted)] hover:border-[var(--accent)] hover:text-[var(--text-secondary)]'
     : running
       ? 'border-[var(--accent)] text-[var(--accent)]'
       : errored
         ? 'border-[var(--error)]/40 text-[var(--error)]'
-        : 'border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--accent)] hover:text-[var(--text-primary)]'
+        : 'border-[var(--panel-border)] text-[var(--text-secondary)] hover:border-[var(--accent)] hover:text-[var(--text-primary)]'
 
   return (
     <div ref={wrapRef} className="relative ml-auto">
@@ -121,9 +121,9 @@ export function ToolActivityChip({
         <div
           role="dialog"
           aria-label="Tool activity"
-          className="absolute bottom-full right-0 z-30 mb-1 flex w-[min(520px,calc(100vw-2rem))] max-h-[60vh] flex-col overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)] shadow-xl"
+          className="absolute bottom-full right-0 z-30 mb-1 flex w-[min(520px,calc(100vw-2rem))] max-h-[60vh] flex-col overflow-hidden rounded-lg border border-[var(--panel-border)] bg-[var(--bg-secondary)] shadow-xl"
         >
-          <div className="flex items-center justify-between border-b border-[var(--border)] px-3 py-2">
+          <div className="flex items-center justify-between border-b border-[var(--panel-border)] px-3 py-2">
             <span className="text-[11px] font-medium uppercase tracking-wider text-[var(--text-muted)]">
               Tool activity · {count} call{count === 1 ? '' : 's'}
             </span>

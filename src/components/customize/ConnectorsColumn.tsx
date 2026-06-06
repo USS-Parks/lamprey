@@ -84,7 +84,7 @@ function GoogleOAuthPanel({ onComplete }: GoogleOAuthPanelProps) {
   }
 
   return (
-    <div className="space-y-2 border-t border-[var(--border)] bg-[var(--bg-tertiary)]/30 px-3 py-3">
+    <div className="space-y-2 border-t border-[var(--panel-border)] bg-[var(--bg-tertiary)]/30 px-3 py-3">
       <div className="flex items-center gap-2">
         <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
           Google OAuth
@@ -98,20 +98,20 @@ function GoogleOAuthPanel({ onComplete }: GoogleOAuthPanelProps) {
         value={clientId}
         onChange={(e) => setClientId(e.target.value)}
         placeholder="client_id"
-        className="w-full rounded border border-[var(--border)] bg-[var(--bg-primary)] px-2 py-1 font-mono text-[11px] text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+        className="w-full rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] px-2 py-1 font-mono text-[11px] text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
       />
       <input
         type="password"
         value={clientSecret}
         onChange={(e) => setClientSecret(e.target.value)}
         placeholder="client_secret"
-        className="w-full rounded border border-[var(--border)] bg-[var(--bg-primary)] px-2 py-1 font-mono text-[11px] text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+        className="w-full rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] px-2 py-1 font-mono text-[11px] text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
       />
       <div className="flex items-center gap-2">
         <button
           onClick={() => void onSaveCreds()}
           disabled={saving || !clientId.trim() || !clientSecret.trim()}
-          className="rounded border border-[var(--border)] bg-[var(--bg-primary)] px-2 py-1 text-[11px] hover:border-[var(--accent)] disabled:opacity-50"
+          className="rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] px-2 py-1 text-[11px] hover:border-[var(--accent)] disabled:opacity-50"
         >
           Save credentials
         </button>
@@ -160,16 +160,16 @@ export function ConnectorsColumn() {
   return (
     <div className="flex h-full flex-col">
       {/* Header */}
-      <div className="flex shrink-0 items-center gap-2 border-b border-[var(--border)] px-3 py-2">
+      <div className="flex shrink-0 items-center gap-2 border-b border-[var(--panel-border)] px-3 py-2">
         <input
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
           placeholder={`Filter ${servers.length} connector${servers.length === 1 ? '' : 's'}…`}
-          className="min-w-0 flex-1 rounded border border-[var(--border)] bg-[var(--bg-primary)] px-2 py-1 text-[12px] text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+          className="min-w-0 flex-1 rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] px-2 py-1 text-[12px] text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
         />
         <button
           onClick={() => setAddOpen(true)}
-          className="rounded border border-[var(--border)] bg-[var(--bg-primary)] px-2 py-1 text-[12px] hover:border-[var(--accent)]"
+          className="rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] px-2 py-1 text-[12px] hover:border-[var(--accent)]"
           title="Add a connector"
         >
           + Add
@@ -191,7 +191,7 @@ export function ConnectorsColumn() {
           return (
             <div
               key={server.id}
-              className="group mb-1 flex items-start gap-2 rounded border border-transparent p-2 hover:border-[var(--border)] hover:bg-[var(--bg-tertiary)]"
+              className="group mb-1 flex items-start gap-2 rounded border border-transparent p-2 hover:border-[var(--panel-border)] hover:bg-[var(--bg-tertiary)]"
             >
               <span className={`mt-1.5 inline-block h-2 w-2 shrink-0 rounded-full ${badge.dotClass}`} />
               <div className="min-w-0 flex-1">
@@ -224,7 +224,7 @@ export function ConnectorsColumn() {
               <button
                 onClick={() => void reconnect(server.id)}
                 disabled={server.status === 'connecting'}
-                className="shrink-0 rounded border border-[var(--border)] bg-[var(--bg-primary)] px-2 py-1 text-[11px] hover:border-[var(--accent)] disabled:opacity-50"
+                className="shrink-0 rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] px-2 py-1 text-[11px] hover:border-[var(--accent)] disabled:opacity-50"
               >
                 Reconnect
               </button>

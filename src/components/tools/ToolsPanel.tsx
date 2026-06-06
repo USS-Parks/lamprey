@@ -145,7 +145,7 @@ export function ToolsPanel({ onCollapse }: ToolsPanelProps) {
 
   return (
     <>
-      <div className="flex h-12 items-center justify-between border-b border-[var(--border)] pl-3 pr-[28px] text-sm font-medium text-[var(--text-secondary)]">
+      <div className="flex h-12 items-center justify-between pl-3 pr-[28px] text-sm font-medium text-[var(--text-secondary)]">
         <span className="flex items-center gap-2">
           <ToolHeaderIcon tool={activeTool} />
           {TOOL_LABELS[activeTool]}

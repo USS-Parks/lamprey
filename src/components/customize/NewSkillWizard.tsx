@@ -125,9 +125,9 @@ export function NewSkillWizard({ onClose }: NewSkillWizardProps) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-      <div className="flex h-[600px] w-[640px] flex-col overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)] shadow-2xl">
+      <div className="flex h-[600px] w-[640px] flex-col overflow-hidden rounded-lg border border-[var(--panel-border)] bg-[var(--bg-secondary)] shadow-2xl">
         {/* Header */}
-        <header className="flex h-12 shrink-0 items-center border-b border-[var(--border)] px-4">
+        <header className="flex h-12 shrink-0 items-center border-b border-[var(--panel-border)] px-4">
           <span className="text-[14px] font-semibold text-[var(--text-primary)]">
             New skill
           </span>
@@ -170,7 +170,7 @@ export function NewSkillWizard({ onClose }: NewSkillWizardProps) {
                   value={draft.name}
                   onChange={(e) => update({ name: e.target.value })}
                   placeholder="my-research-helper"
-                  className="mt-1 w-full rounded border border-[var(--border)] bg-[var(--bg-primary)] px-2 py-1.5 text-[13px] text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+                  className="mt-1 w-full rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] px-2 py-1.5 text-[13px] text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
                 />
               </label>
               <label className="block text-[12px] text-[var(--text-muted)]">
@@ -180,7 +180,7 @@ export function NewSkillWizard({ onClose }: NewSkillWizardProps) {
                   onChange={(e) => update({ description: e.target.value })}
                   rows={3}
                   placeholder="One or two sentences describing when this skill should activate."
-                  className="mt-1 w-full resize-y rounded border border-[var(--border)] bg-[var(--bg-primary)] px-2 py-1.5 text-[13px] text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+                  className="mt-1 w-full resize-y rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] px-2 py-1.5 text-[13px] text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
                 />
               </label>
               <label className="block text-[12px] text-[var(--text-muted)]">
@@ -190,7 +190,7 @@ export function NewSkillWizard({ onClose }: NewSkillWizardProps) {
                   onChange={(e) => update({ content: e.target.value })}
                   rows={6}
                   spellCheck={false}
-                  className="mt-1 w-full resize-y rounded border border-[var(--border)] bg-[var(--bg-primary)] p-2 font-mono text-[12px] leading-relaxed text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+                  className="mt-1 w-full resize-y rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] p-2 font-mono text-[12px] leading-relaxed text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
                 />
               </label>
               {!identityOk && (
@@ -203,7 +203,7 @@ export function NewSkillWizard({ onClose }: NewSkillWizardProps) {
 
           {step === 'trigger' && (
             <div className="space-y-4">
-              <fieldset className="rounded border border-[var(--border)] bg-[var(--bg-primary)] p-3">
+              <fieldset className="rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] p-3">
                 <legend className="px-1 text-[11px] uppercase tracking-wider text-[var(--text-muted)]">
                   Trigger style
                 </legend>
@@ -243,14 +243,14 @@ export function NewSkillWizard({ onClose }: NewSkillWizardProps) {
                   onChange={(e) => update({ allowedToolsText: e.target.value })}
                   rows={3}
                   placeholder="shell_command&#10;mcp:gmail-*"
-                  className="mt-1 w-full resize-y rounded border border-[var(--border)] bg-[var(--bg-primary)] p-2 font-mono text-[12px] leading-relaxed text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+                  className="mt-1 w-full resize-y rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] p-2 font-mono text-[12px] leading-relaxed text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
                 />
                 <div className="mt-1 flex flex-wrap gap-1">
                   {toolSuggestions.map((t) => (
                     <button
                       key={t}
                       onClick={() => addSuggestion(t)}
-                      className="rounded border border-[var(--border)] bg-[var(--bg-secondary)] px-2 py-0.5 font-mono text-[10px] hover:border-[var(--accent)]"
+                      className="rounded border border-[var(--panel-border)] bg-[var(--bg-secondary)] px-2 py-0.5 font-mono text-[10px] hover:border-[var(--accent)]"
                     >
                       + {t}
                     </button>
@@ -264,7 +264,7 @@ export function NewSkillWizard({ onClose }: NewSkillWizardProps) {
                   value={draft.model}
                   onChange={(e) => update({ model: e.target.value })}
                   placeholder="leave empty to use the conversation default"
-                  className="mt-1 w-full rounded border border-[var(--border)] bg-[var(--bg-primary)] px-2 py-1.5 font-mono text-[12px] text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+                  className="mt-1 w-full rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] px-2 py-1.5 font-mono text-[12px] text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
                 />
               </label>
             </div>
@@ -272,7 +272,7 @@ export function NewSkillWizard({ onClose }: NewSkillWizardProps) {
 
           {step === 'preview' && (
             <div className="space-y-4">
-              <fieldset className="rounded border border-[var(--border)] bg-[var(--bg-primary)] p-3">
+              <fieldset className="rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] p-3">
                 <legend className="px-1 text-[11px] uppercase tracking-wider text-[var(--text-muted)]">
                   Layout
                 </legend>
@@ -306,7 +306,7 @@ export function NewSkillWizard({ onClose }: NewSkillWizardProps) {
                 <div className="mb-1 text-[11px] uppercase tracking-wider text-[var(--text-muted)]">
                   Preview of skill.md
                 </div>
-                <pre className="max-h-[260px] overflow-auto rounded border border-[var(--border)] bg-[var(--bg-primary)] p-3 font-mono text-[11px] leading-relaxed text-[var(--text-primary)] whitespace-pre-wrap">
+                <pre className="max-h-[260px] overflow-auto rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] p-3 font-mono text-[11px] leading-relaxed text-[var(--text-primary)] whitespace-pre-wrap">
                   {preview}
                 </pre>
               </div>
@@ -315,10 +315,10 @@ export function NewSkillWizard({ onClose }: NewSkillWizardProps) {
         </div>
 
         {/* Footer */}
-        <footer className="flex shrink-0 items-center gap-2 border-t border-[var(--border)] px-4 py-3">
+        <footer className="flex shrink-0 items-center gap-2 border-t border-[var(--panel-border)] px-4 py-3">
           <button
             onClick={onClose}
-            className="rounded border border-[var(--border)] bg-[var(--bg-primary)] px-3 py-1.5 text-[12px] hover:border-[var(--accent)]"
+            className="rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] px-3 py-1.5 text-[12px] hover:border-[var(--accent)]"
           >
             Cancel
           </button>
@@ -326,7 +326,7 @@ export function NewSkillWizard({ onClose }: NewSkillWizardProps) {
           {step !== 'identity' && (
             <button
               onClick={() => setStep(step === 'preview' ? 'trigger' : 'identity')}
-              className="rounded border border-[var(--border)] bg-[var(--bg-primary)] px-3 py-1.5 text-[12px] hover:border-[var(--accent)]"
+              className="rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] px-3 py-1.5 text-[12px] hover:border-[var(--accent)]"
             >
               Back
             </button>

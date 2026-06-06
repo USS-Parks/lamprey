@@ -53,7 +53,7 @@ function SectionHeader({ label, count }: { label: string; count: number }) {
       <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--text-muted)]">
         {label}
       </span>
-      <span className="rounded border border-[var(--border)] px-1.5 py-0 font-mono text-[10px] text-[var(--text-muted)]">
+      <span className="rounded border border-[var(--panel-border)] px-1.5 py-0 font-mono text-[10px] text-[var(--text-muted)]">
         {count}
       </span>
     </div>
@@ -91,7 +91,7 @@ function ToolCallRow({ call }: { call: ToolCallState }) {
   return (
     <li
       className={`rounded-md border bg-[var(--bg-primary)] text-[12px] ${
-        isError ? 'border-[var(--error)]/40' : 'border-[var(--border)]'
+        isError ? 'border-[var(--error)]/40' : 'border-[var(--panel-border)]'
       }`}
     >
       <button
@@ -117,7 +117,7 @@ function ToolCallRow({ call }: { call: ToolCallState }) {
         </span>
       </button>
       {expanded && (
-        <div className="border-t border-[var(--border)] px-2 py-2">
+        <div className="border-t border-[var(--panel-border)] px-2 py-2">
           <div className="mb-1 font-mono text-[10px] uppercase tracking-wider text-[var(--text-muted)]">
             Arguments
           </div>
@@ -226,15 +226,15 @@ export function BackgroundTasksPanel(): React.ReactElement {
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       {/* Subheader: total live count + refresh */}
-      <div className="flex items-center gap-2 border-b border-[var(--border)] px-3 py-2 text-[12px]">
-        <span className="rounded border border-[var(--border)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--text-muted)]">
+      <div className="flex items-center gap-2 border-b border-[var(--panel-border)] px-3 py-2 text-[12px]">
+        <span className="rounded border border-[var(--panel-border)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--text-muted)]">
           {totalLive} live
         </span>
         <button
           type="button"
           onClick={onRefresh}
           disabled={refreshing}
-          className="ml-auto rounded border border-[var(--border)] bg-[var(--bg-primary)] px-2 py-0.5 text-[11px] text-[var(--text-secondary)] hover:border-[var(--accent)] hover:text-[var(--text-primary)] disabled:opacity-50"
+          className="ml-auto rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] px-2 py-0.5 text-[11px] text-[var(--text-secondary)] hover:border-[var(--accent)] hover:text-[var(--text-primary)] disabled:opacity-50"
           title="Refresh agent runs + wakeups + automations"
         >
           {refreshing ? 'Refreshing...' : 'Refresh'}
@@ -275,7 +275,7 @@ export function BackgroundTasksPanel(): React.ReactElement {
               {liveAgents.map((run) => (
                 <li
                   key={run.id}
-                  className="flex items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--bg-primary)] px-2 py-1.5 text-[12px]"
+                  className="flex items-center gap-2 rounded-md border border-[var(--panel-border)] bg-[var(--bg-primary)] px-2 py-1.5 text-[12px]"
                 >
                   <StatusDot status={run.status} />
                   <span className="min-w-0 flex-1 truncate text-[var(--text-primary)]">
@@ -305,7 +305,7 @@ export function BackgroundTasksPanel(): React.ReactElement {
               {pendingWakeups.map((wakeup) => (
                 <li
                   key={wakeup.id}
-                  className="flex items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--bg-primary)] px-2 py-1.5 text-[12px]"
+                  className="flex items-center gap-2 rounded-md border border-[var(--panel-border)] bg-[var(--bg-primary)] px-2 py-1.5 text-[12px]"
                 >
                   <StatusDot status={wakeup.status} />
                   <span className="min-w-0 flex-1 truncate text-[var(--text-primary)]">
@@ -318,7 +318,7 @@ export function BackgroundTasksPanel(): React.ReactElement {
                     type="button"
                     onClick={() => void onCancelWakeup(wakeup.id)}
                     disabled={busyId === wakeup.id}
-                    className="rounded border border-[var(--border)] px-1.5 py-0.5 text-[10px] text-[var(--text-secondary)] hover:border-[var(--error)] hover:text-[var(--error)] disabled:opacity-50"
+                    className="rounded border border-[var(--panel-border)] px-1.5 py-0.5 text-[10px] text-[var(--text-secondary)] hover:border-[var(--error)] hover:text-[var(--error)] disabled:opacity-50"
                   >
                     {busyId === wakeup.id ? '...' : 'Cancel'}
                   </button>
@@ -335,7 +335,7 @@ export function BackgroundTasksPanel(): React.ReactElement {
               {automations.map((auto) => (
                 <li
                   key={auto.id}
-                  className={`flex items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--bg-primary)] px-2 py-1.5 text-[12px] ${
+                  className={`flex items-center gap-2 rounded-md border border-[var(--panel-border)] bg-[var(--bg-primary)] px-2 py-1.5 text-[12px] ${
                     auto.enabled ? '' : 'opacity-50'
                   }`}
                 >

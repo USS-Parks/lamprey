@@ -47,14 +47,14 @@ export function CronEditor({ value, onChange, onValidityChange }: Props) {
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder="*/5 * * * *"
-          className="flex-1 rounded border border-[var(--border)] bg-[var(--bg-primary)] px-2 py-1 font-mono text-[12px] text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+          className="flex-1 rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] px-2 py-1 font-mono text-[12px] text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
         />
         <select
           value=""
           onChange={(e) => {
             if (e.target.value) onChange(e.target.value)
           }}
-          className="rounded border border-[var(--border)] bg-[var(--bg-primary)] px-1.5 py-1 text-[11px] text-[var(--text-secondary)]"
+          className="rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] px-1.5 py-1 text-[11px] text-[var(--text-secondary)]"
         >
           <option value="">Presets…</option>
           {PRESETS.map((p) => (

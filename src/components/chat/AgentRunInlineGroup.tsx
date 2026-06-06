@@ -62,7 +62,7 @@ function AgentRow({ row }: { row: InlineAgentRow }) {
     <div
       className={
         'ml-5 rounded border ' +
-        (erred ? 'border-[var(--error)]/40' : 'border-[var(--border)]')
+        (erred ? 'border-[var(--error)]/40' : 'border-[var(--panel-border)]')
       }
     >
       <button
@@ -96,14 +96,14 @@ function AgentRow({ row }: { row: InlineAgentRow }) {
         <pre
           className={
             'max-h-40 overflow-auto whitespace-pre-wrap break-words border-t px-3 py-2 text-[12px] font-mono ' +
-            (erred ? 'border-[var(--error)]/30 text-[var(--error)]' : 'border-[var(--border)] text-[var(--text-secondary)]')
+            (erred ? 'border-[var(--error)]/30 text-[var(--error)]' : 'border-[var(--panel-border)] text-[var(--text-secondary)]')
           }
         >
           {row.error ? row.error : row.output}
         </pre>
       )}
       {open && !row.output && !row.error && (
-        <div className="border-t border-[var(--border)] px-3 py-1 text-[11px] italic text-[var(--text-muted)]">
+        <div className="border-t border-[var(--panel-border)] px-3 py-1 text-[11px] italic text-[var(--text-muted)]">
           (no output)
         </div>
       )}
@@ -136,7 +136,7 @@ export function AgentRunInlineGroup({
         type="button"
         onClick={() => setHeaderOpen((v) => !v)}
         aria-expanded={headerOpen}
-        className="flex w-full items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--bg-tertiary)] px-3 py-2 text-left transition-colors hover:bg-[var(--bg-secondary)]"
+        className="flex w-full items-center gap-2 rounded-lg bg-[var(--bg-tertiary)] px-3 py-2 text-left transition-colors hover:bg-[var(--bg-secondary)]"
       >
         <Chevron open={headerOpen} />
         <StatusDot status={headerDot} />

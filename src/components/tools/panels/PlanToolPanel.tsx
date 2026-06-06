@@ -20,7 +20,7 @@ const STATUS_LABELS: Record<PlanStepStatus, string> = {
 function statusTone(status: PlanStepStatus): string {
   if (status === 'done') return 'border-[var(--success)] text-[var(--success)]'
   if (status === 'in_progress') return 'border-[var(--accent)] text-[var(--accent)]'
-  return 'border-[var(--border)] text-[var(--text-muted)]'
+  return 'border-[var(--panel-border)] text-[var(--text-muted)]'
 }
 
 export function PlanToolPanel(): React.ReactElement {
@@ -84,8 +84,8 @@ export function PlanToolPanel(): React.ReactElement {
           render while the plan-mode gate is engaged — once approved or
           rejected the buttons are no-ops, so removing them keeps the
           panel honest about what's actionable. */}
-      <div className="flex flex-wrap items-center gap-2 border-b border-[var(--border)] px-3 py-2 text-[12px]">
-        <span className="rounded border border-[var(--border)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--text-muted)]">
+      <div className="flex flex-wrap items-center gap-2 border-b border-[var(--panel-border)] px-3 py-2 text-[12px]">
+        <span className="rounded border border-[var(--panel-border)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--text-muted)]">
           {snapshot.totals.done}/{snapshot.totals.total}
         </span>
         {planModeActive && (
@@ -146,7 +146,7 @@ export function PlanToolPanel(): React.ReactElement {
                   event.currentTarget.blur()
                 }
               }}
-              className="min-h-7 resize-none rounded border border-[var(--border)] bg-[var(--bg-primary)] px-2 py-1 text-[12px] leading-relaxed text-[var(--text-secondary)] outline-none focus:border-[var(--accent)]"
+              className="min-h-7 resize-none rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] px-2 py-1 text-[12px] leading-relaxed text-[var(--text-secondary)] outline-none focus:border-[var(--accent)]"
             />
           </li>
         ))}

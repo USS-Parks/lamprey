@@ -69,7 +69,7 @@ export function AgenticCodingSettings() {
       </h3>
 
       <section className="space-y-3">
-        <label className="flex cursor-pointer items-start gap-3 rounded border border-[var(--border)] bg-[var(--bg-primary)] p-3 text-xs text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-tertiary)]">
+        <label className="flex cursor-pointer items-start gap-3 rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] p-3 text-xs text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-tertiary)]">
           <input
             type="checkbox"
             checked={settings.agenticCodingMode}
@@ -98,7 +98,7 @@ export function AgenticCodingSettings() {
           (your manually-toggled skills are kept as-is, no duplicates).
         </p>
         {workflowSkills.length === 0 ? (
-          <div className="rounded border border-dashed border-[var(--border)] p-3 text-[13px] text-[var(--text-muted)]">
+          <div className="rounded border border-dashed border-[var(--panel-border)] p-3 text-[13px] text-[var(--text-muted)]">
             No bundled workflow skills are installed yet. Drop the bundled{' '}
             <code className="font-mono">plan</code>, <code className="font-mono">context</code>, and{' '}
             <code className="font-mono">verify</code> SKILL.md files into your skills directory.
@@ -108,7 +108,7 @@ export function AgenticCodingSettings() {
             {workflowSkills.map((skill) => (
               <label
                 key={skill.id}
-                className="flex cursor-pointer items-start gap-3 rounded border border-[var(--border)] bg-[var(--bg-primary)] px-3 py-2 text-xs text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-tertiary)]"
+                className="flex cursor-pointer items-start gap-3 rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] px-3 py-2 text-xs text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-tertiary)]"
               >
                 <input
                   type="checkbox"
@@ -143,7 +143,7 @@ export function AgenticCodingSettings() {
           {COMPOSER_OPTIONS.map((opt) => (
             <label
               key={opt.id}
-              className="flex cursor-pointer items-start gap-3 rounded border border-[var(--border)] bg-[var(--bg-primary)] px-3 py-2 text-xs text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-tertiary)]"
+              className="flex cursor-pointer items-start gap-3 rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] px-3 py-2 text-xs text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-tertiary)]"
             >
               <input
                 type="radio"

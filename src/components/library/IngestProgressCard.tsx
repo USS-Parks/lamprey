@@ -15,7 +15,7 @@ export function IngestProgressCard({ progress }: { progress: IngestProgressEvent
   const pct = Math.round(progress.progress * 100)
   const isTerminal = progress.phase === 'ready' || progress.phase === 'error'
   return (
-    <div className="flex flex-col gap-1 rounded border border-[var(--border)] bg-[var(--bg-secondary)] px-2 py-1.5">
+    <div className="flex flex-col gap-1 rounded border border-[var(--panel-border)] bg-[var(--bg-secondary)] px-2 py-1.5">
       <div className="flex items-center justify-between gap-2 font-mono text-[11px]">
         <span className="truncate text-[var(--text-primary)]" title={progress.displayName}>
           {progress.displayName}

@@ -76,8 +76,8 @@ export function DeepResearchBanner({ conversationId }: DeepResearchBannerProps) 
   return (
     <div
       data-testid="deep-research-banner"
-      className={`sticky top-0 z-10 flex items-center gap-3 border-b border-[var(--border)] px-4 py-2 text-[13px] ${
-        isError ? 'bg-[var(--error)]/10' : 'bg-[var(--bg-secondary)]'
+      className={`sticky top-0 z-10 flex items-center gap-3 rounded-md px-4 py-2 text-[13px] ${
+        isError ? 'bg-[var(--error)]/10' : 'bg-[var(--bg-tertiary)]'
       }`}
     >
       <span
@@ -117,7 +117,7 @@ export function DeepResearchBanner({ conversationId }: DeepResearchBannerProps) 
         <button
           onClick={handleCancel}
           disabled={busy}
-          className="rounded border border-[var(--border)] bg-transparent px-2.5 py-1 text-xs text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)] disabled:opacity-40"
+          className="rounded border border-[var(--panel-border)] bg-transparent px-2.5 py-1 text-xs text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)] disabled:opacity-40"
         >
           {busy ? 'Cancelling…' : 'Cancel'}
         </button>

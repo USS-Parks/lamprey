@@ -32,7 +32,7 @@ export function WorkflowRunCard({ run }: Props): ReactElement {
       data-testid="workflow-run-card"
       data-run-id={run.runId}
       data-status={run.status}
-      className="rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] p-3"
+      className="rounded-md border border-[var(--panel-border)] bg-[var(--bg-secondary)] p-3"
     >
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
@@ -65,7 +65,7 @@ export function WorkflowRunCard({ run }: Props): ReactElement {
         )}
       </div>
       {run.log.length > 0 && (
-        <div className="mt-3 border-t border-[var(--border)] pt-2">
+        <div className="mt-3 border-t border-[var(--panel-border)] pt-2">
           {run.log.map((line) => (
             <div
               key={line.id}

@@ -127,7 +127,7 @@ export function ImageGenSettings() {
         <h3 className="font-mono text-sm font-semibold text-[var(--text-primary)]">
           Image Generation
         </h3>
-        <p className="rounded border border-[var(--border)] bg-[var(--bg-primary)] p-3 text-[13px] text-[var(--text-muted)]">
+        <p className="rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] p-3 text-[13px] text-[var(--text-muted)]">
           Image generation settings are unavailable in this build. Update the
           preload bridge (`window.api.imageGen.*`) to expose this surface.
         </p>
@@ -259,7 +259,7 @@ export function ImageGenSettings() {
         </p>
       </div>
 
-      <section className="space-y-3 rounded border border-[var(--border)] bg-[var(--bg-primary)] p-3">
+      <section className="space-y-3 rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] p-3">
         <label className="block">
           <span className="block font-mono text-[12px] uppercase tracking-wider text-[var(--text-muted)]">
             Provider
@@ -268,7 +268,7 @@ export function ImageGenSettings() {
             value={currentProvider}
             onChange={(e) => handleProviderChange(e.target.value as ImageGenProviderId)}
             disabled={busy}
-            className="mt-1 w-full rounded border border-[var(--border)] bg-[var(--bg-secondary)] px-2 py-1.5 font-mono text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+            className="mt-1 w-full rounded border border-[var(--panel-border)] bg-[var(--bg-secondary)] px-2 py-1.5 font-mono text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
           >
             {PROVIDER_OPTIONS.map((p) => (
               <option key={p.id} value={p.id}>
@@ -311,12 +311,12 @@ export function ImageGenSettings() {
             onChange={(e) => setKeyDraft(e.target.value)}
             placeholder={snapshot?.hasKey ? 'Replace key...' : 'Paste API key'}
             disabled={busy}
-            className="flex-1 rounded border border-[var(--border)] bg-[var(--bg-secondary)] px-2 py-1.5 font-mono text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+            className="flex-1 rounded border border-[var(--panel-border)] bg-[var(--bg-secondary)] px-2 py-1.5 font-mono text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
           />
           <button
             type="button"
             onClick={() => setShowKey((v) => !v)}
-            className="rounded border border-[var(--border)] bg-transparent px-3 py-1.5 text-xs text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]"
+            className="rounded border border-[var(--panel-border)] bg-transparent px-3 py-1.5 text-xs text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]"
           >
             {showKey ? 'Hide' : 'Show'}
           </button>
@@ -333,14 +333,14 @@ export function ImageGenSettings() {
           <button
             onClick={handleDeleteKey}
             disabled={busy || !snapshot?.hasKey}
-            className="rounded border border-[var(--border)] bg-transparent px-3 py-1.5 text-xs text-[var(--error)] transition-colors hover:bg-[var(--error)]/10 disabled:opacity-40"
+            className="rounded border border-[var(--panel-border)] bg-transparent px-3 py-1.5 text-xs text-[var(--error)] transition-colors hover:bg-[var(--error)]/10 disabled:opacity-40"
           >
             Delete
           </button>
         </div>
       </section>
 
-      <section className="space-y-3 rounded border border-[var(--border)] bg-[var(--bg-primary)] p-3">
+      <section className="space-y-3 rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] p-3">
         <h4 className="font-mono text-[13px] uppercase tracking-wider text-[var(--text-muted)]">
           Defaults
         </h4>
@@ -353,7 +353,7 @@ export function ImageGenSettings() {
             value={model}
             onChange={(e) => setModel(e.target.value)}
             disabled={busy}
-            className="mt-1 w-full rounded border border-[var(--border)] bg-[var(--bg-secondary)] px-2 py-1.5 font-mono text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+            className="mt-1 w-full rounded border border-[var(--panel-border)] bg-[var(--bg-secondary)] px-2 py-1.5 font-mono text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
           >
             {option.models.map((m) => (
               <option key={m.value} value={m.value}>
@@ -371,7 +371,7 @@ export function ImageGenSettings() {
             value={size}
             onChange={(e) => setSize(e.target.value)}
             disabled={busy}
-            className="mt-1 w-full rounded border border-[var(--border)] bg-[var(--bg-secondary)] px-2 py-1.5 font-mono text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+            className="mt-1 w-full rounded border border-[var(--panel-border)] bg-[var(--bg-secondary)] px-2 py-1.5 font-mono text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
           >
             {SIZE_OPTIONS.map((s) => (
               <option key={s.value} value={s.value}>
@@ -392,7 +392,7 @@ export function ImageGenSettings() {
           <button
             onClick={handleTest}
             disabled={busy || !snapshot?.hasKey}
-            className="rounded border border-[var(--border)] bg-transparent px-3 py-1.5 text-xs text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)] disabled:opacity-40"
+            className="rounded border border-[var(--panel-border)] bg-transparent px-3 py-1.5 text-xs text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)] disabled:opacity-40"
           >
             Test
           </button>

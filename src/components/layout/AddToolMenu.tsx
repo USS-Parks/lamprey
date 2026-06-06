@@ -90,8 +90,8 @@ export function AddToolMenu({ variant = 'expanded' }: AddToolMenuProps) {
     variant === 'collapsed'
       ? 'rounded-md p-1.5 text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]'
       : variant === 'panel'
-      ? 'flex h-14 w-14 items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--bg-primary)] text-[var(--text-secondary)] transition-all hover:-translate-y-0.5 hover:border-[var(--accent)] hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]'
-      : 'flex h-7 w-7 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--bg-primary)] text-[var(--text-secondary)] transition-colors hover:border-[var(--accent)] hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]'
+      ? 'flex h-14 w-14 items-center justify-center rounded-xl border border-[var(--panel-border)] bg-[var(--bg-primary)] text-[var(--text-secondary)] transition-all hover:-translate-y-0.5 hover:border-[var(--accent)] hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]'
+      : 'flex h-7 w-7 items-center justify-center rounded-md border border-[var(--panel-border)] bg-[var(--bg-primary)] text-[var(--text-secondary)] transition-colors hover:border-[var(--accent)] hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]'
 
   return (
     <div ref={wrapperRef} className="relative">
@@ -111,7 +111,7 @@ export function AddToolMenu({ variant = 'expanded' }: AddToolMenuProps) {
         <div
           role="menu"
           aria-orientation="vertical"
-          className="absolute left-0 top-[calc(100%+4px)] z-50 min-w-[220px] overflow-hidden rounded-md border border-[var(--border)] bg-[var(--bg-primary)] py-1 shadow-lg"
+          className="absolute left-0 top-[calc(100%+4px)] z-50 min-w-[220px] overflow-hidden rounded-md border border-[var(--panel-border)] bg-[var(--bg-primary)] py-1 shadow-lg"
         >
           {items.map((item) => (
             <button

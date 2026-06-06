@@ -39,8 +39,8 @@ export function SourcePreviewPane({ source, onClose }: SourcePreviewPaneProps) {
   if (!source) return null
 
   return (
-    <div className="flex h-full w-[360px] flex-col border-l border-[var(--border)] bg-[var(--bg-secondary)]">
-      <div className="flex items-center justify-between border-b border-[var(--border)] px-3 py-2">
+    <div className="flex h-full w-[360px] flex-col border-l border-[var(--panel-border)] bg-[var(--bg-secondary)]">
+      <div className="flex items-center justify-between border-b border-[var(--panel-border)] px-3 py-2">
         <div className="flex flex-col">
           <span className="truncate font-mono text-[12px] text-[var(--text-primary)]" title={source.displayName}>
             {source.displayName}

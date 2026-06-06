@@ -2,9 +2,48 @@ import { app, BrowserWindow } from 'electron'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
+import { McpError, ErrorCode } from '@modelcontextprotocol/sdk/types.js'
 import { readFileSync, writeFileSync, existsSync } from 'fs'
 import { join } from 'path'
 import * as keychain from './keychain'
+
+// T2 — Per-call MCP timeout. The SDK has built-in `RequestOptions.timeout`
+// support (it throws McpError with code RequestTimeout on expiry). We pass
+// it on every callTool so a hung remote server (Ahrefs slow query, browser
+// MCP waiting on a dead tab, stalled stdio child) can never block the chat
+// turn indefinitely. The threshold is read from settings.json each call so
+// the user can tune it without a restart.
+export class MCPTimeoutError extends Error {
+  constructor(public readonly serverId: string, public readonly toolName: string, public readonly timeoutMs: number) {
+    super(
+      `MCP tool '${serverId}__${toolName}' did not respond within ${Math.round(timeoutMs / 1000)}s — the server is likely stalled or the operation is too slow.`
+    )
+    this.name = 'MCPTimeoutError'
+  }
+}
+
+const DEFAULT_MCP_CALL_TIMEOUT_MS = 120_000
+const MIN_MCP_CALL_TIMEOUT_MS = 5_000
+
+let mcpCallTimeoutOverrideMs: number | null = null
+export function __setMcpCallTimeoutForTesting(ms: number | null): void {
+  mcpCallTimeoutOverrideMs = ms
+}
+
+function readMcpCallTimeoutMs(): number {
+  if (mcpCallTimeoutOverrideMs !== null) return mcpCallTimeoutOverrideMs
+  try {
+    const path = join(app.getPath('userData'), 'settings.json')
+    if (!existsSync(path)) return DEFAULT_MCP_CALL_TIMEOUT_MS
+    const raw = JSON.parse(readFileSync(path, 'utf-8')) as { mcpCallTimeoutMs?: unknown }
+    const ms = raw.mcpCallTimeoutMs
+    if (typeof ms !== 'number' || !Number.isFinite(ms)) return DEFAULT_MCP_CALL_TIMEOUT_MS
+    if (ms <= 0) return 0 // 0 disables the per-call cap (SDK default still applies)
+    return Math.max(MIN_MCP_CALL_TIMEOUT_MS, ms)
+  } catch {
+    return DEFAULT_MCP_CALL_TIMEOUT_MS
+  }
+}
 
 export interface McpTool {
   name: string
@@ -101,7 +140,7 @@ function saveConfigs(configs: McpServerConfig[]): void {
   writeFileSync(getConfigPath(), JSON.stringify(configs, null, 2), 'utf-8')
 }
 
-class McpManager {
+export class McpManager {
   private servers = new Map<string, ServerState>()
   private statusCallbacks: ((serverId: string, status: ServerStatus, error?: string) => void)[] = []
   private initialized = false
@@ -410,7 +449,26 @@ class McpManager {
       throw new Error(`MCP server '${serverId}' is not connected`)
     }
 
-    const result = await state.client.callTool({ name: toolName, arguments: args })
+    const timeoutMs = readMcpCallTimeoutMs()
+    let result
+    try {
+      // 3rd arg `options.timeout`: SDK throws McpError(RequestTimeout) on
+      // expiry. 0 disables our per-call cap and falls back to the SDK's
+      // built-in default. resetTimeoutOnProgress=true lets a long-running
+      // tool keep the connection alive as long as it sends progress notes.
+      result = await state.client.callTool(
+        { name: toolName, arguments: args },
+        undefined,
+        timeoutMs > 0
+          ? { timeout: timeoutMs, resetTimeoutOnProgress: true }
+          : undefined
+      )
+    } catch (err) {
+      if (err instanceof McpError && err.code === ErrorCode.RequestTimeout) {
+        throw new MCPTimeoutError(serverId, toolName, timeoutMs > 0 ? timeoutMs : 60_000)
+      }
+      throw err
+    }
 
     if (result.isError) {
       const errorText = Array.isArray(result.content)

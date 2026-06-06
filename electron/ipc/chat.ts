@@ -663,6 +663,16 @@ export async function runChatRound(
         onReasoning: (chunk) => {
           emitChatEvent('chat:reasoning', { conversationId, content: chunk })
         },
+        onVitals: (v) => {
+          emitChatEvent('chat:streaming-vitals', {
+            conversationId,
+            lastChunkAt: v.lastChunkAt,
+            msSinceLastChunk: v.msSinceLastChunk,
+            chunkCount: v.chunkCount,
+            tokenEstimate: v.tokenEstimate,
+            attemptElapsedMs: v.attemptElapsedMs
+          })
+        },
         onDone: async (fullContent, toolCalls, fullReasoning) => {
           if (!toolCalls || toolCalls.length === 0) {
             let finalContent = fullContent

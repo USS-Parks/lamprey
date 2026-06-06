@@ -56,7 +56,7 @@ export function ResearchArtifact({ content, filename, sourceCount }: ResearchArt
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center gap-2 border-b border-[var(--border)] bg-[var(--bg-secondary)] px-4 py-2">
+      <div className="flex items-center gap-2 border-b border-[var(--panel-border)] bg-[var(--bg-secondary)] px-4 py-2">
         <span className="font-mono text-[11px] uppercase tracking-wider text-[var(--text-muted)]">
           Research report
         </span>
@@ -70,7 +70,7 @@ export function ResearchArtifact({ content, filename, sourceCount }: ResearchArt
           <button
             onClick={handleDownload}
             disabled={busy}
-            className="rounded border border-[var(--border)] bg-transparent px-3 py-1 text-xs text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)] disabled:opacity-40"
+            className="rounded border border-[var(--panel-border)] bg-transparent px-3 py-1 text-xs text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)] disabled:opacity-40"
           >
             {busy ? 'Saving…' : 'Download .md'}
           </button>

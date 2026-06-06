@@ -26,7 +26,7 @@ function KindBadge({ kind }: { kind: string }): React.ReactElement {
   const label =
     kind === 'file' ? 'FILE' : kind === 'skill' ? 'SKILL' : kind === 'memory' ? 'MEM' : 'MCP'
   return (
-    <span className="shrink-0 rounded border border-[var(--border)] bg-[var(--bg-tertiary)] px-1 font-mono text-[9px] text-[var(--text-muted)]">
+    <span className="shrink-0 rounded border border-[var(--panel-border)] bg-[var(--bg-tertiary)] px-1 font-mono text-[9px] text-[var(--text-muted)]">
       {label}
     </span>
   )
@@ -45,7 +45,7 @@ export function SourcesPanel(): React.ReactElement {
           <button
             type="button"
             onClick={() => void pickAndAttachFiles()}
-            className="rounded-md border border-[var(--border)] bg-[var(--bg-tertiary)] px-3 py-1 text-[12px] text-[var(--text-secondary)] transition-colors hover:border-[var(--accent)] hover:text-[var(--text-primary)]"
+            className="rounded-md border border-[var(--panel-border)] bg-[var(--bg-tertiary)] px-3 py-1 text-[12px] text-[var(--text-secondary)] transition-colors hover:border-[var(--accent)] hover:text-[var(--text-primary)]"
           >
             Attach file…
           </button>
@@ -76,7 +76,7 @@ export function SourcesPanel(): React.ReactElement {
               {group.map((item) => (
                 <div
                   key={item.id}
-                  className="group flex items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--bg-primary)] px-2 py-1.5 text-[12px] transition-colors hover:border-[var(--accent)]"
+                  className="group flex items-center gap-2 rounded-md border border-[var(--panel-border)] bg-[var(--bg-primary)] px-2 py-1.5 text-[12px] transition-colors hover:border-[var(--accent)]"
                 >
                   <KindBadge kind={item.kind} />
                   <div className="flex min-w-0 flex-1 flex-col">

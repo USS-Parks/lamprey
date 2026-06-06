@@ -34,7 +34,7 @@ export function SkillPanel() {
 
   return (
     <>
-      <div className="border-t border-[var(--border)] px-2 py-2">
+      <div className="border-t border-[var(--panel-border)] px-2 py-2">
         <div className="flex items-center justify-between px-2 py-1">
           <span className="text-[12px] font-medium uppercase tracking-wider text-[var(--text-muted)]">
             Skills

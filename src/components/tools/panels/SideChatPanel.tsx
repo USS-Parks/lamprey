@@ -120,7 +120,7 @@ export function SideChatPanel() {
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
-      <div className="flex items-center justify-between border-b border-[var(--border)] px-3 py-1.5 text-[11px] text-[var(--text-muted)]">
+      <div className="flex items-center justify-between border-b border-[var(--panel-border)] px-3 py-1.5 text-[11px] text-[var(--text-muted)]">
         <span>Side thread · {activeModel || '(no model)'}</span>
         <button
           type="button"
@@ -160,7 +160,7 @@ export function SideChatPanel() {
         )}
         {error && <p className="text-[12px] text-[var(--error)]">{error}</p>}
       </div>
-      <div className="border-t border-[var(--border)] p-2">
+      <div className="border-t border-[var(--panel-border)] p-2">
         <textarea
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
@@ -173,7 +173,7 @@ export function SideChatPanel() {
           placeholder={convId ? 'Side message (Enter to send, Shift+Enter for newline)' : 'Connecting…'}
           rows={2}
           disabled={!convId || streaming}
-          className="w-full resize-none rounded border border-[var(--border)] bg-[var(--bg-primary)] px-2 py-1.5 text-[13px] text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)] focus:border-[var(--accent)] disabled:opacity-60"
+          className="w-full resize-none rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] px-2 py-1.5 text-[13px] text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)] focus:border-[var(--accent)] disabled:opacity-60"
         />
       </div>
     </div>

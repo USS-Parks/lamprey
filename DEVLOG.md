@@ -1,5 +1,413 @@
 # Lamprey Harness Dev Log
 
+## [Skill Import Phase Complete] — 2026-06-05 — v0.7.0
+
+All eight prompts of the Skill Import Phase landed on `claude/kind-noyce-f4eeca`. The phase gave Lamprey a first-class **"Import from Claude Code"** path inside the Customize → Browse Plugins surface so users can adopt their on-disk Claude Code skill bundles without hand-copying files. See `PLANNING/LAMPREY_SKILL_IMPORT_PLAN.md` for the full plan.
+
+| Prompt | Title | Commit |
+|---|---|---|
+| I1 | CC skill-bundle disk discovery service | `831c7c6` |
+| I2 | CC bundle → Lamprey plugin importer (idempotent, autoInvoke-rewriting) | `38d6c8a` |
+| I3 | `ccImport:*` IPC handlers + preload surface | `2f863a7` |
+| I4 | Renderer types + cc-import Zustand store | `817a87e` |
+| I5 | "From Claude Code" tab in InstallPluginFlow | `70d3484` |
+| I6 | "↓ Import" button on SkillsColumn opens cc-import tab | `00a8d76` |
+| I7 | Eject affordance + supporting-files drawer summary | `b40474e` |
+| I8 | merge main, v0.7.0 bump, governance + build + push | _this commit_ |
+
+**Architecture summary**
+- **Discovery** (`electron/services/cc-skill-discovery.ts`): pure read-only scan of `%APPDATA%\Claude\local-agent-mode-sessions\skills-plugin\` (+ macOS / Linux equivalents + user-pickable extra roots). Walks up to two levels deep looking for `.claude-plugin/plugin.json`. Returns shape `{sourcePath, pluginName, version, description, skills: [{slug, name, description, enabled, supportingFileCount}]}`. The `enabled` flag is read from the sibling `manifest.json` (defaults to true when missing).
+- **Importer** (`electron/services/cc-skill-importer.ts`): copies a discovered bundle into `<userData>/plugins/<slugified-name>/`. Synthesises a Lamprey-compatible root `plugin.json` (`{id, name, version, description, category: "Imported from Claude Code"}`), copies the `skills/` tree verbatim, then for each `SKILL.md` writes a lowercase `skill.md` companion — and if CC's manifest flags the skill as disabled, rewrites the frontmatter to add `autoInvoke: false`. Idempotent on re-import with `overwrite: true`. Stamps `.cc-import.json` metadata so the UI can show "imported on <date> from <path>".
+- **Eject** (same service): copy a plugin-sourced skill back into `<userData>/skills/<slug>/` with the full supporting tree. The plugin copy stays in place — the user copy becomes editable through the existing wizard / drawer. Auto-renames with `-ejected` suffix when the target slug already exists, so we never silently clobber a user skill.
+- **IPC** (`electron/ipc/cc-skill-import.ts`): four handlers — `ccImport:discover`, `ccImport:install`, `ccImport:eject`, `ccImport:pickExtraRoot`. Wired into `electron/preload.ts` typed `window.api.ccImport` surface.
+- **Renderer** (`src/stores/cc-import-store.ts`): Zustand store with on-demand discovery (`refresh()`), per-bundle install pending state, and last-result memo. Discovery doesn't auto-tick on a timer; the user-triggered refresh + the chokidar event from plugin-loader keep state fresh.
+- **UI**:
+  - `InstallPluginFlow.tsx` grows a fourth tab — **"From Claude Code"**. Each discovered bundle renders as a card showing plugin name, version, source path, total skill count, "installed" badge (when already imported), per-skill chips with enabled dot + supporting-file count + an "ext" warning chip for skills that shell out (docx, pdf, pptx, xlsx, web-artifacts-builder). The Install button label flips to **Re-sync** for bundles already imported (calls install with `overwrite: true`).
+  - `SkillsColumn.tsx` gains a **"↓ Import"** button next to "+ New" that opens the same dialog focused on the CC tab (via a new `initialTab` prop wired through `CustomizeView`).
+  - Plugin-sourced skill rows gain a hover **Eject** action (upward arrow icon, confirm dialog, toast on success).
+  - The EditDrawer shows a collapsible **Supporting files** summary when the skill carries siblings — with a note that the listing is shallow and the body may reference nested paths.
+
+**Merge note (I8).** The phase branched off `v0.5.3` (main commit `39f898b`) but main advanced to `v0.6.1` during the phase with Panels (P1–P10) + Stall & Timeout (T1–T7) shipping back-to-back. I8 merged main forward (no source conflicts — both shipped phases touched disjoint surfaces) and bumped to `v0.7.0` since `v0.6.x` is the Panels + Stall lineage and Skill Import is a feature add, not a patch.
+
+**Verified the live bundle.** The on-disk Anthropic skills bundle (12 skills: consolidate-memory, docx, im-blog-post, im-investor-update, pdf, pptx, schedule, setup-cowork, skill-creator, theme-factory, web-artifacts-builder, xlsx) lands cleanly via the importer fixture tests (11 discovery + 11 importer cases, all green).
+
+**Known limitations** (also documented in the plan §3):
+- Skills bundled inside `claude.exe` itself (verify, code-review, simplify, run, init, review, security-review, deep-research, claude-api, loop, schedule, update-config, keybindings-help, fewer-permission-prompts) live inside the binary and aren't importable as files. Several have Lamprey-shipped equivalents under `resources/skills/`. The CC-tab disclosure block points users at them.
+- Imported skills that shell out (docx, pdf, pptx, xlsx) depend on external tools (`pandoc`, `python`, `extract-text`). The importer surfaces the dependency in the bundle's "What you're getting" card; Lamprey does not bundle the tooling.
+- `supportingFileCount` and the EditDrawer summary list only files at the canonical sibling depth, not deeper subtrees. The agent still reads referenced paths by explicit path.
+
+**Files touched**
+- New: `electron/services/cc-skill-discovery.ts` + `.test.ts`; `electron/services/cc-skill-importer.ts` + `.test.ts`; `electron/ipc/cc-skill-import.ts`; `src/stores/cc-import-store.ts`; `PLANNING/LAMPREY_SKILL_IMPORT_PLAN.md`.
+- Edited: `electron/ipc/index.ts`, `electron/preload.ts`, `src/lib/types.ts`, `src/components/customize/InstallPluginFlow.tsx`, `src/components/customize/CustomizeView.tsx`, `src/components/customize/SkillsColumn.tsx`, `package.json` (0.6.1 → 0.7.0), `DEVLOG.md`, `CLAUDE.md`.
+
+**Verify gate** — both `tsc -p tsconfig.node.json` and `tsc -p tsconfig.web.json` clean across every prompt; `electron-vite build` succeeds; 22 fresh vitest cases pass (11 discovery + 11 importer); Windows installer + zip + blockmap + latest.yml produced into the primary repo `dist/`.
+
+---
+
+## [Stall & Timeout Phase Complete] — 2026-06-05 (v0.6.1)
+
+Seven prompts (T1–T7) on `claude/interesting-curran-beace7`. The phase addressed the recurring "Lamprey stalls mid research" symptom — agent stuck on "streaming" for tens of minutes with no escape hatch — by stacking four independent caps + a visibility surface + a settings panel.
+
+| Prompt | Title | Commit |
+|---|---|---|
+| T1 | SSE inactivity watchdog in chatStream | `eee5b1d` |
+| T2 | Per-call MCP timeout | `043fb77` |
+| T3 | Per-stage wall-clock budgets in pipeline | `52c152e` |
+| T4 | Streaming-vitals heartbeat in chat pill | `e92a2e0` |
+| T5 | Settings → Streaming & Timeouts panel | `a506fcb` |
+| T6 | DEVLOG + memory pointers | `f9ff8b8` |
+| T7 | Ship 0.6.1 | _T7 commit_ |
+
+**Root cause (from the user's 20-min + 42-min stall screenshots)**
+- Four converging failure modes, none of them lethal alone, but stacking into "the chat goes silent and never returns":
+  1. `chatStream`'s `for await (chunk of stream)` had no inactivity timeout. Provider half-open sockets sat forever.
+  2. `mcpManager.callTool` had no per-call timeout. Slow Ahrefs / browser MCPs blocked the tool round.
+  3. `MAX_TOOL_ROUNDS=50` capped iterations, but not wall-clock. V4-Flash thinking-mode legitimately runs ~60s per round → 50min × 60s ceilings still felt like infinity.
+  4. The renderer's streaming pill showed `~410 tokens · 42m` but no "last chunk Ns ago" — user couldn't tell stuck from thinking.
+
+**Fix stack (each cap is independently configurable; 0 disables)**
+- T1 — `streamInactivityMs` (default 60_000, min 5_000): per-attempt AbortController + setTimeout in `chatStream`. On expiry the SDK abort fires, the catch block reuses the existing retry path (3 retries with exponential backoff), then surfaces `StreamInactivityError` with the partial-persist payload so the user's on-screen content survives.
+- T2 — `mcpCallTimeoutMs` (default 120_000, min 5_000): passed as `{ timeout, resetTimeoutOnProgress: true }` to `Client.callTool`. SDK throws `McpError(RequestTimeout)` on expiry; we translate to `MCPTimeoutError` so `chat.ts:1191-1196` surfaces a clean message the model can recover from.
+- T3 — `stageBudgetMs.{planner,coder,reviewer}` (defaults 120/600/120s, min 10s each): per-stage child `AbortSignal` aborts on parent OR on budget timer. `budgetFired` flag disambiguates user-cancel from budget-expired so a planner budget falls through to coder with a stub plan, while coder/reviewer budget exhaustion surfaces "Coder exceeded budget. Partial work is saved" pointing at Settings → Streaming & Timeouts.
+- T4 — `chat:streaming-vitals` (heartbeat every 2_000ms during a streaming attempt): `lastChunkAt`, `msSinceLastChunk`, `chunkCount`, `tokenEstimate`, `attemptElapsedMs`. Wired through provider → chat.ts → preload → useChat → chat-store → `StreamStatusLine` ("Ns since last chunk" with fresh/warm/stale color thresholds at 10s/30s).
+- T5 — Settings → **Timeouts** tab. One number-input row per cap, all in seconds, with 0=disable affordance, floor-clamped commit-on-blur, inline "reset · Ns" link to defaults, paragraph hints explaining when each cap fires.
+
+**Architecture notes**
+- All four back-end caps read `userData/settings.json` fresh on every invocation — no IPC reload required. The renderer's settings store also writes to that file via the existing `window.api.settings.set` plumbing, so changes take effect on the next chat round.
+- `setUserDataPathProvider` / `setPipelineUserDataPathProvider` injected from `main.ts` so the provider-layer + pipeline-layer modules stay test-friendly (vitest under `environment: 'node'` mocks the injection point instead of `electron`).
+- All four caps have test overrides (`__setStreamInactivityForTesting`, `__setMcpCallTimeoutForTesting`, `__setStageBudgetsForTesting`) so unit tests can pin specific values without disk I/O.
+
+**Test verification**
+- Both tsc configs (`tsconfig.node.json`, `tsconfig.web.json`) clean after every prompt.
+- 6-case vitest on `registry.test.ts` covers stall fires / normal completes / 0 disables / user-cancel wins / error class shape / vitals heartbeat.
+- 5-case vitest on new `mcp-manager.test.ts` covers timeout pass-through / 0 disables / RequestTimeout translation / generic errors stay generic / error shape.
+- 3-case extension to `agent-pipeline.test.ts` covers coder budget aborts signal / fast coder doesn't trip / 0 disables.
+
+**Out of scope (deliberately deferred)**
+- Rewriting V4-Flash thinking-mode for speed.
+- Auto-routing research-style prompts to the `runDeepResearch` orchestrator (would dodge the multi-agent pipeline entirely for citation-heavy turns).
+- Per-server MCP timeout overrides (one global suffices for now).
+
+**Version + release**
+- `package.json` bumped 0.6.0 → 0.6.1 in T7 (Panels Phase took 0.6.0).
+- User is the reviewer + pusher; commits go to `main` per the explicit "STS" directive.
+
+---
+
+## [Panels Phase Complete] — 2026-06-05 (v0.6.0)
+
+Ten-prompt visual chrome overhaul. Lamprey now matches Claude Code on layout restraint — two rounded sidebar panels float on a warm two-tone substrate, the chat column between them is transparent so content flows directly on the substrate, and the bottom dock pill cluster (prompt input pill + adjacent chips + `FloatingEnvironmentCard`) is the only in-chat chrome. Right-panel interior cards (Recents, tool shortcuts, docked env card) preserved as-is per user constraint; `FloatingEnvironmentCard` untouched entirely.
+
+| Prompt | Title | Commit |
+|---|---|---|
+| P1 | Surface tokens + theme-preset feed-through | `8b5c516` |
+| P2 | Two rounded sidebar panels on transparent chat substrate | `5c4e9e4` |
+| P3 | Left sidebar interior cleanup | `dd97c8f` |
+| P4 | Right panel interior trim (cards preserved) | `e937210` |
+| P5 | Chat column transparent + ChatInput pill softened (FloatingEnvironmentCard untouched) | `bfe15f8` |
+| P6 | Modal interior surface cleanup | `685513c` |
+| P7 | In-chat surfaces: zero card chrome | `ffe3778` |
+| P8 | Auxiliary panel sweep — `--border` → `--panel-border` everywhere structural | `64bf3ae` |
+| P9 | Light + dark QA + light-mode bg-primary tune for input contrast | `a5da2be` |
+| P10 | Phase wrap (v0.6.0) | _this commit_ |
+
+**Architecture summary**
+
+- **Two-tone substrate**: `--app-bg` (warm cream in light, deeper shade in dark) is the outer shell tone; `--panel-bg` (white in light, `--bg-secondary` alias in dark) is the sidebar panel surface tone. The chat column does NOT have its own panel — it sits transparent on `--app-bg`.
+- **Five new CSS variables**: `--app-bg`, `--panel-bg`, `--panel-border` (6%-alpha edge), `--panel-radius` (12px), `--panel-gap` (8px). `appBg` + `panelBg` threaded through `ThemePresetTokens` so theme switching keeps them in sync across all 8 presets.
+- **Allow-list explicitly preserved**: floating UI (popovers/modal frames/toasts), form controls (input/textarea/select), semantic stripes (`--accent`, `--error`, color-tier indicators), resize handles, sandbox boundaries. All structural chrome `--border` softened to `--panel-border`; nothing in the allow-list was deleted.
+- **Two preservation guarantees enforced**: right-panel interior cards (RightPanelHome recents, tool shortcuts, docked env card) preserved as-is — P4 only trimmed outermost-edge hairlines that doubled the panel boundary; `FloatingEnvironmentCard.tsx` untouched entirely (zero className/prop/position-math/fade/width-tracking change).
+- **Final tally**: 0 `border-[var(--border)]` usages remaining; 463 `border-[var(--panel-border)]` usages. Light-mode `--bg-primary` tuned from `#ffffff` to `#f8f9fa` so form-control inputs read as distinct surfaces against the new white `--panel-bg`.
+
+**Trade-offs documented**
+- Form-control input borders softened to 6%-alpha. Focus state still uses `--accent`; resting state edges blend more into the panel surface. Consistent with the modern "low-chrome" vocabulary the phase chases.
+- Modal outer frames also softened — `shadow-2xl` carries the floating definition.
+- Banner perimeter borders dropped entirely (PlanChecklist, TranscriptNotice, AgentRunBanner, DeepResearchBanner, etc.); tonal lift via `--bg-tertiary` carries the distinction.
+
+**Phase verify**
+- tsc node ✓
+- tsc web ✓
+- electron-vite build ✓
+- final `grep -rn 'border-[var(--border)]' src/components/` → 0 matches
+- user-verification-needed: launch Electron, walk every theme preset in dark + light; confirm two sidebar panels read as floating, chat is transparent, right-panel cards unchanged, `FloatingEnvironmentCard` fade timing identical, modals float cleanly, no perimeter borders on banners or in-chat content.
+
+**Plan**: `PLANNING/LAMPREY_PANELS_PLAN.md` (P1 → P10). Now reference-only.
+
+**Commit range**: `b214a84` (plan landing) → `8b5c516`..`<P10 SHA>` (per-prompt + phase wrap).
+
+---
+
+## [Panels — Prompt P10] Phase wrap (v0.6.0)  —  2026-06-05
+
+**Files changed:** `package.json`, `package-lock.json`, `CLAUDE.md`, `README.md`, `DEVLOG.md`, `memory/MEMORY.md`, `memory/project_build_status.md`, `PLANNING/LAMPREY_PANELS_PLAN.md`
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- electron-vite build ✓
+- `git status` clean post-commit
+- Plan officially reference-only
+
+**Notes:**
+- Bumped `package.json` + `package-lock.json` `0.5.2 → 0.6.0` (minor bump — user-visible chrome change without breaking API).
+- DEVLOG appended with full Panels Phase Complete summary (above) listing all 10 commits + architecture + trade-offs.
+- `memory/project_build_status.md` got a "Panels Phase — complete 2026-06-05 (v0.6.0)" section.
+- `memory/MEMORY.md` Build status line updated to mention Panels Phase + seven plans reference-only.
+- `CLAUDE.md` "Current State" gained a Panels bullet; execution rule §1 wording added "LAMPREY_PANELS_PLAN.md" to the reference-only list (along with the also-shipped Snip + Customize plans which weren't previously listed).
+- `README.md` "New in v0.6.0" section replaces the v0.3.6 sandbox-parity blurb; download links point at the v0.6.0 release artifacts.
+
+**Commit:** _this commit_
+
+---
+
+## [Panels — Prompt P9] Light + dark QA tuning + screenshot grid  —  2026-06-05
+
+**Files changed:** `src/styles/theme-presets.ts`, `src/styles/index.css`
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- electron-vite build ✓
+- user-verification-needed: launch Electron and walk **every theme preset** (Lamprey Default, Lamprey Blue, Lamprey Ember, Lamprey Mint, Lamprey Earth, Lamprey Magma, Lamprey Viridis, Lamprey Drab) in both dark and light modes. Per-preset checklist:
+  - Two sidebar panels read as floating rounded panels on substrate
+  - Chat column reads as transparent content on substrate (not a third bounded card)
+  - Chat-column text legible on `--app-bg` (WCAG AA spot-check)
+  - Bottom dock pill cluster (input pill + adjacent pills + FloatingEnvironmentCard) is the only chrome in chat
+  - **Right-panel interior cards (Recents, tool shortcuts, docked env card) look unchanged** vs. v0.5.2
+  - **FloatingEnvironmentCard fade-in/out + width math identical** vs. v0.5.2 — toggle right panel expand/collapse and verify
+  - Banners (Plan, Deep Research, Agent run) read as substrate-floating tonal blocks (no perimeter)
+  - Modals (Settings, Customize, Memory, AskUser, ToolApproval) float cleanly
+  - Form inputs (API key field, prompt input, settings fields) read as defined surfaces (light-mode bg-primary tuned to `#f8f9fa` so they contrast against the white panel)
+  - Popovers (slash, @file, model picker, etc.) still feel "lifted" — shadow carries the floating definition
+  - Keyboard shortcut sweep (ESC, Cmd+K, Cmd+/) — no overlay regression
+- Screenshot grid (user-captured) → save under `ASSETS/panels-phase/<preset>-<surface>.png` and embed in this entry post-hoc.
+
+**Notes:**
+- **Light-mode bg-primary tuned** from `#ffffff` → `#f8f9fa`. Reason: P8 softened all `--border` to `--panel-border` (6% alpha) which made form-input borders nearly invisible. In light mode where both bg-primary (input bg) AND panel-bg (sidebar bg) were `#ffffff`, inputs had no edge at all. Tuning bg-primary to a faint off-white restores tonal contrast — input surfaces now sit visibly within the white panels, and the panel boundary stays defined against the cream app-bg.
+- Dark-mode bg-primary (`#0d0d0d`) already contrasts well against panel-bg (`#161616`), so no tuning needed.
+- Per-preset light-mode `--app-bg` (warm tinted cream via `tintToward(accent, 0.92)`) and `--panel-bg = #ffffff` carry consistent across all 8 presets.
+- Per-preset dark-mode `--app-bg` (shaded `bgPrimary` toward black at ~30%) and `--panel-bg` (alias `bgSecondary`) similarly consistent.
+- `--bg-tertiary` cards (used by right-panel interior cards + bottom-dock chips) verified to still tonally contrast against the new `--panel-bg` in both modes.
+- The screenshot grid step is deferred to user — this session can't take Electron-native screenshots. Capture before P10's commit so the artifacts land in the same release.
+
+**Commit:** _this commit_
+
+---
+
+## [Panels — Prompt P8] Auxiliary panel sweep — `--border` → `--panel-border` everywhere structural  —  2026-06-05
+
+**Files changed:** ~70 files across `src/components/` (activity, automations, library, memory, github, mcp, model, settings, customize, layout, ui, snip, plan, tools, workspace, etc.)
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- electron-vite build ✓
+- Final tally: `grep -rln 'border-[var(--border)]' src/components/` → **zero matches**. `grep -rcn 'border-[var(--panel-border)]' src/components/` → **463 occurrences**. Every legacy structural-chrome `--border` softened to `--panel-border`. Allow-list categories (popovers, modal frames, form controls, semantic stripes) survive as edges — just softened to the new 6%-alpha vocabulary.
+- user-verification-needed: launch Electron and walk Activity, Automations, Library, Memory, Settings (every tab), Customize, Snip, model picker, MCP status, GitHub panels. Confirm each reads as part of the panel system, not a different visual language. Tune any preset whose contrast doesn't pop in P9.
+
+**Notes:**
+- Global sweep via `find src/components -name '*.tsx' -exec sed -i 's|border-\[var(--border)\]|border-[var(--panel-border)]|g' {} +`. Surgical edits for special cases were handled in P3–P7; P8 catches everything that survived.
+- **Known trade-off:** form-control borders (input, textarea, select) are also softened from `--border` to `--panel-border` (6% alpha). Focus state still uses `--accent` so active inputs are clear, but resting-state edges blend more into the panel surface. This is consistent with the modern "low-chrome" vocabulary the phase chases (Linear, Notion do the same). If inputs read too washed out in P9 eyeball, the fix is to add a stronger `--input-border` token rather than reverting — kept as a P9 candidate.
+- Modal frames (SettingsDialog, AskUserModal, ToolApprovalModal, etc.) also softened. `shadow-2xl` carries the floating definition; the modal frame edge is now a whisper rather than a shout.
+- All semantic stripes (`--accent`, `--error`, `--success`, `--warning`, color-tier indicators like `border-amber-500/30`) survived untouched. Spot-checked via `grep -c 'border-[var(--accent)]\|border-[var(--error)]'` on the key files.
+- No new types, no new IPC, no new schemas. Pure className-string sweep.
+
+**Commit:** _this commit_
+
+---
+
+## [Panels — Prompt P7] In-chat surfaces: zero card chrome  —  2026-06-05
+
+**Files changed:** `src/components/chat/AgentRunBanner.tsx`, `DeepResearchBanner.tsx`, `AgentRunInlineGroup.tsx`, `ToolUseCard.tsx`, `InlineApprovalChip.tsx`, `AttachmentPreview.tsx`, `PlanChecklist.tsx`, `PlanGoalsPanel.tsx`, `ReasoningBlock.tsx`, `CompressedRegionPill.tsx`, `ContextAttachBar.tsx`, `TranscriptNotice.tsx`, `WakeupPill.tsx`, `ToolUseGroup.tsx`, `SpawnTaskChip.tsx`, `SpawnTaskTray.tsx`, `ToolActivityChip.tsx`, `SourcePreviewPane.tsx`, `AtFileMention.tsx`, `ChapterQuickJumper.tsx`, `ChapterSidebar.tsx`, `ChatInput.tsx`, `DocumentCardRow.tsx`, `SlashCommandPalette.tsx`
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- electron-vite build ✓
+- final grep tally: only 3 `--border` hits remain in `src/components/chat/` — all in `AskUserModal.tsx` (modal frame + 2 form inputs), all allow-list keepers. Allow-list compliant.
+- user-verification-needed: launch Electron and confirm:
+  - In-chat banners (Plan, Deep Research, Agent run, multi-agent run header) read as substrate-floating notes with tonal lift only — **no perimeter borders**
+  - Tool use cards: default tone has no perimeter (just bg-tertiary lift); error/denied keep their semantic stripe
+  - Message stream reads as one continuous column on substrate; no card outlines around inline content
+  - Popovers (slash command palette, @ file mention, agent/model dropdowns, document-row menu) still feel "lifted" — their borders are now `--panel-border` (6% alpha) but `shadow-xl` carries the floating definition
+  - InlineApprovalChip keeps its `--accent` semantic frame; Deny/Always buttons softened
+  - `FloatingEnvironmentCard` untouched per plan §2 #4
+
+**Notes:**
+- **AgentRunBanner**: both the inline-flex status pill (34) and the multi-agent pipeline banner (70) dropped perimeter borders, swapped `--bg-secondary` → `--bg-tertiary` for tonal lift.
+- **DeepResearchBanner**: dropped sticky `border-b` (79), added `rounded-md` + bg-tertiary tint; cancel button softened (120).
+- **AgentRunInlineGroup**: row borders (65, 99, 106) softened to `--panel-border` (semantic error variant `--error/40` preserved). Header group (139) dropped perimeter border, keeps bg-tertiary lift.
+- **ToolUseCard**: default `border-[var(--border)]` → `border-transparent` (tonal lift carries; semantic error/denied stripes preserved). RISK_TONE fallback softened.
+- **InlineApprovalChip**: RISK_COLOR read tier + Deny/Always button borders softened. Outer chip frame uses `--accent` semantic (preserved).
+- **AttachmentPreview**: outer chip frame + conditional borders softened.
+- **PlanChecklist + TranscriptNotice**: dropped perimeter border entirely, replaced with `bg-tertiary` (or `/60` for notice) tonal lift — these are unobtrusive in-chat indicators that shouldn't read as cards.
+- **PlanGoalsPanel, ReasoningBlock, CompressedRegionPill, ContextAttachBar, WakeupPill, ToolUseGroup, SpawnTaskChip, ToolActivityChip**: all `--border` → `--panel-border` via bulk sed. Chip definition preserved; harshness reduced.
+- **DocumentCardRow, ChatInput popovers (4), AtFileMention, ChapterQuickJumper, ChapterSidebar, SlashCommandPalette, SpawnTaskTray, SourcePreviewPane**: popovers and floating side-panels softened to `--panel-border`. Their `shadow-xl`/`shadow-md` continues to carry floating-edge definition; the hairline now whispers rather than shouts.
+- **AskUserModal lines 216, 266, 290**: modal frame + 2 form inputs — kept per allow-list #6 + #7.
+- `FloatingEnvironmentCard.tsx` not touched (preserved per plan §2 #4).
+
+**Commit:** _this commit_
+
+---
+
+## [Panels — Prompt P6] Modal interior surface cleanup  —  2026-06-05
+
+**Files changed:** `src/components/settings/SettingsDialog.tsx`, `src/components/customize/CustomizeView.tsx`, `src/components/memory/MemoryModal.tsx`, `src/components/chat/AskUserModal.tsx`, `src/components/tools/ToolApprovalModal.tsx`
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- electron-vite build ✓
+- user-verification-needed: open each modal and confirm:
+  - SettingsDialog: tab sidebar reads as a tonal block (bg-primary) on the modal frame, no border between tabs and content; header strip flows into content with spacing only
+  - CustomizeView: three Skills/Connectors/Plugins columns read as soft-edged panels on the modal surface (focused column still gets accent border); CTA strip at the bottom is a bg-secondary ribbon, no hairline above it
+  - MemoryModal: header flows into content; DB paths sub-section is a tonal ribbon, no border
+  - AskUserModal: header/footer/column-split hairlines gone; option buttons read as soft-edged selection cards
+  - ToolApprovalModal: args JSON block has a soft `--panel-border` edge; risk-tier color stripe still visible
+- ApiKeyModal: no interior dividers were present to strip; outer frame + form-control borders kept per allow-list
+
+**Notes:**
+- **SettingsDialog**: stripped tab-sidebar `border-r` (line 57) and header `border-b` (line 75). Tab sidebar bg-primary against modal bg-secondary provides the tonal split without a hairline.
+- **CustomizeView**: stripped breadcrumb `border-b` (88), column-header `border-b` (141), CTA-strip `border-t` (157). CTA card resting border (42) and non-focused column border (138) softened to `--panel-border`; focused column keeps `--accent` (semantic).
+- **MemoryModal**: stripped header `border-b` (72) and DB-paths sub-strip `border-b` (104).
+- **AskUserModal**: stripped header `border-b` (219), column-split `border-r` (239), footer `border-t` (284). Option-card borders (177, 251), checkbox border (187), and cancel-button border (295) softened to `--panel-border`. Form-input borders (266, 290) kept (allow-list #7).
+- **ToolApprovalModal**: args JSON wrapper (100) and Deny button (129) softened to `--panel-border`. Risk-tier color object literal (28) untouched — these are semantic stripes (allow-list #8). Allow button has no border (accent bg primary action). Select form-control border (112) kept.
+- **ApiKeyModal**: only the outer modal frame border + two form-input borders. All allow-list. No edits this prompt.
+
+**Commit:** _this commit_
+
+---
+
+## [Panels — Prompt P5] Chat column transparent + ChatInput pill softened  —  2026-06-05
+
+**Files changed:** `src/components/chat/ChatView.tsx`, `src/components/chat/ChatInput.tsx`
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- electron-vite build ✓
+- user-verification-needed: launch Electron and confirm:
+  - **Chat column reads as content flowing on the substrate** — no card border around the message stream, no bg lift
+  - Prompt input pill sits as a tactile, slightly-elevated control on the substrate with `--panel-border` soft edge + `--panel-bg` background (white card on cream in light, panel-bg in dark)
+  - Adjacent dock pills (model picker chip, mode toggle, etc.) read as individual pills, softened to `--panel-border`
+  - `FloatingEnvironmentCard` looks and behaves **exactly** as pre-phase — no class or behavior changes
+  - Popovers (slash command, agent mode picker, model picker) still have their borders and read as "lifted" off the surface
+
+**Notes:**
+- `ChatView.tsx` line 55 root container: stripped `rounded-xl border border-[var(--border)] bg-[var(--bg-primary)]` → `bg-transparent`. The chat column was literally a bordered card; that card chrome was the source of the "third panel" feeling. Now messages flow directly on `--app-bg` exposed by P2.
+- `ChatInput.tsx` line 1137 main prompt pill: `border-[var(--border)] bg-[var(--bg-secondary)]` → `border-[var(--panel-border)] bg-[var(--panel-bg)]`. The pill keeps its rounded-3xl shape + shadow-lg + backdrop-blur so it still reads as a defined elevated control.
+- `ChatInput.tsx` line 360 chip-button: `border-[var(--border)] bg-[var(--bg-secondary)]` → `border-[var(--panel-border)] bg-[var(--bg-tertiary)]`. The bg swap (secondary → tertiary) keeps the chip readable on the new pill surface; secondary would have blended since the pill is now `--panel-bg = --bg-secondary` in dark mode.
+- `ChatInput.tsx` line 1120 "Paste inline" button: `--border` → `--panel-border` softening.
+- Line 151 chip is already conditional `border-[var(--accent)]` / `border-transparent` (semantic), no `--border` token usage — left as-is.
+- `FloatingEnvironmentCard.tsx` **untouched** per plan §2 #4. Zero edits.
+- Popovers at lines 184, 271, 395, 603 — all `border border-[var(--border)]`, kept per allow-list #5 (floating UI).
+
+**Commit:** _this commit_
+
+---
+
+## [Panels — Prompt P4] Right panel interior trim (cards preserved)  —  2026-06-05
+
+**Files changed:** `src/components/artifacts/RightPanelHome.tsx`, `src/components/tools/ToolsPanel.tsx`, `src/components/artifacts/ArtifactPanel.tsx`, `src/components/layout/Titlebar.tsx`
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- electron-vite build ✓
+- user-verification-needed: launch Electron and confirm:
+  - Right-panel interior cards (Recents, Tool shortcuts, docked env card) **look identical** to before — same backgrounds, same shape, same spacing
+  - No double-bounded effect at the panel's top edge or its outer left edge
+  - SecondaryToolbar at the top of the right panel reads as a subtle `--bg-tertiary` ribbon (no longer outlined)
+  - ArtifactPanel (when an artifact opens) is its own rounded `--panel-bg` panel; its inner header reads as a `--bg-tertiary` ribbon
+  - All right-panel interactions still work (open artifact, swap to tools, expand docked env card)
+
+**Notes:** Conservative trim only. No card backgrounds, borders, spacing, or layouts touched.
+- `RightPanelHome.tsx` line 84: top-strip `border-b border-[var(--border)]` removed (doubled the panel's own top edge). Cards on line 114+ untouched.
+- `ToolsPanel.tsx` line 148: same — top-strip `border-b` removed.
+- `ArtifactPanel.tsx` line 82: outer `border-l + bg-[var(--bg-secondary)]` swapped to `bg-[var(--panel-bg)] rounded-[var(--panel-radius)] overflow-hidden` — ArtifactPanel is now its own rounded panel container (it replaces the right-panel home view when artifact is active).
+- `ArtifactPanel.tsx` line 94: inner header `border-b` removed, swapped to `bg-[var(--bg-tertiary)]` tint so the header still reads as a distinct strip without a hairline.
+- `Titlebar.tsx` SecondaryToolbar (line 462): `border-b border-[var(--border)]` removed, `bg-[var(--bg-secondary)]` → `bg-[var(--bg-tertiary)]` tint so the toolbar lifts off the panel surface (panel bg is `--bg-secondary` in dark mode, so identical bg without the tint swap would blend).
+- WebContentsView sandbox boundary: no explicit boundary set in ArtifactPanel.tsx — the OS-level overlay handles isolation. Nothing to preserve.
+
+**Commit:** _this commit_
+
+---
+
+## [Panels — Prompt P3] Left sidebar interior cleanup  —  2026-06-05
+
+**Files changed:** `src/components/layout/Sidebar.tsx`
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- electron-vite build ✓
+- user-verification-needed: launch Electron and confirm the sidebar reads as one continuous panel — no internal hairline separating the project list from the settings/Memory/footer strip; the strip is gently spaced (mt-1) instead of bordered. Hover states + project list scrolling still legible.
+
+**Notes:**
+- Audit found only **two** `border` usages in `Sidebar.tsx` after P2:
+  - Line 1028: search input `border border-[var(--border)]` — kept (form-control border, allow-list #7).
+  - Line 1143: footer-strip `border-t border-[var(--border)]` — replaced with `mt-1`.
+- Section headers (Projects, Recents, etc. inside `SidebarBody`) were already spacing-driven; no further hairlines to strip.
+- Final grep `grep -n border src/components/layout/Sidebar.tsx` returns one line — the search input. Allow-list compliant.
+
+**Commit:** _this commit_
+
+---
+
+## [Panels — Prompt P2] Two rounded sidebar panels on transparent chat substrate  —  2026-06-05
+
+**Files changed:** `src/App.tsx`, `src/components/layout/Sidebar.tsx`
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- electron-vite build ✓
+- user-verification-needed: launch Electron and confirm the visible flip lands cleanly:
+  - Outer workspace shell shows `--app-bg` (darker than `--bg-primary` in dark mode; warm cream in light mode)
+  - Left sidebar reads as a rounded `--panel-bg` panel floating on the substrate (both collapsed rail and expanded states)
+  - Right panel reads as a rounded `--panel-bg` panel (both collapsed rail and expanded states; both tool-mode and home-mode)
+  - **Chat column between them is transparent** — messages sit visibly on the warm/dark substrate, not inside a card
+  - Substrate gap visible around all three panels (~8px)
+  - Resize right panel still works; double-click resets
+  - Narrow-viewport drawer (resize window narrow) opens with rounded left edge
+
+**Notes:**
+- App.tsx outer flex: `bg-[var(--bg-primary)]` → `bg-[var(--app-bg)]`.
+- Three-column row (line 414) gained `gap-[var(--panel-gap)] p-[var(--panel-gap)]` — gives 8px substrate inset all around + 8px between panels.
+- Chat surround (line 420) `bg-[var(--bg-secondary)]` → `bg-transparent`. Kept `p-2` for content breathing room.
+- All four right-panel containers (collapsed rail at 429, tool-mode at 445, home-mode at 469, narrow drawer at 500) lose `border-l border-[var(--border)]`, swap `bg-[var(--bg-secondary)]` → `bg-[var(--panel-bg)]`, gain `rounded-[var(--panel-radius)]` (or `rounded-l-` for the drawer). Added `overflow-hidden` so the rounding actually clips child content.
+- Sidebar narrow drawer (666), rail (729), main (787) get the same treatment.
+- SecurityBanner + UpdateBanner stay in their existing slot inside the chat workspace column — they render as substrate-floating ribbons now that the chat surround is transparent. Their own internal styling reads OK on substrate.
+- `FloatingEnvironmentCard` not touched — preserved per plan §2 #4.
+- Right-panel interior cards not touched — preserved per plan §2 #2. Their outer container's rounded corners come from this prompt; interior chrome remains as-is.
+
+**Commit:** _this commit_
+
+---
+
+## [Panels — Prompt P1] Surface tokens + theme-preset feed-through  —  2026-06-05
+
+**Files changed:** `src/lib/types.ts`, `src/styles/index.css`, `src/styles/theme-presets.ts`, `src/styles/apply-theme.ts`
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- electron-vite build ✓
+- light + dark mode eyeball: **no visual change expected this prompt** (tokens land but no consumers yet — P2 is the first consumer). User-verification-needed: open DevTools on the running app and confirm `:root` resolves `--app-bg`, `--panel-bg`, `--panel-border`, `--panel-radius`, `--panel-gap` to non-empty values in both modes; flipping theme preset updates `--app-bg` + `--panel-bg`.
+
+**Notes:**
+- Added `appBg` + `panelBg` to `ThemePresetTokens` (the two values that vary per preset).
+- `--panel-border` (low-alpha edge), `--panel-radius` (12px), `--panel-gap` (8px) are constants — kept in `index.css` directly, not threaded through the preset system.
+- Dark `appBg` per preset is computed as roughly `shadeToward(bgPrimary, 0.30)` — pushes ~30% toward black so panels lift visibly off the substrate. Values hand-picked once and inlined (no module-init computation).
+- Dark `panelBg` aliases `bgSecondary` per preset, so the existing sidebar surface tone stays — only the role changes from "sidebar bg via hairline border" to "sidebar bg via rounded panel + tonal lift."
+- Light `appBg` uses `tintToward(dark.accent, 0.92)` — gives each preset a warm cream substrate that hints at its accent without overpowering. Light `panelBg` is `#ffffff` so the sidebars read as white cards floating on the cream.
+- Constraint enforced: `--bg-tertiary` cards inside the right panel still read as a tonal step against the new `--panel-bg` — dark `bg-tertiary > bg-secondary = panel-bg`, light `bg-tertiary < panel-bg = #ffffff`.
+- Block of comments inserted in `index.css` documenting the panel convention for future contributors.
+
+**Commit:** _this commit_
+
+---
+
 ## [Customize Phase Complete] — 2026-06-05
 
 All twelve prompts of the Customize Phase landed on `claude/determined-pasteur-033123`. The phase gave Lamprey a first-class **Customize** surface in the left sidebar — mirroring Claude Code's Customize panel — with three columns (Skills / Connectors / Plugins) and three bottom CTAs (Connect your apps / Create new skills / Browse plugins). Promoted the previously buried `SkillsManager` and `McpSettings` out of the Settings dialog and retired both tabs, then built the plugin system end-to-end from scratch.

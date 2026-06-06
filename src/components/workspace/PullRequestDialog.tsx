@@ -147,9 +147,9 @@ export function PullRequestDialog({
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="flex h-[600px] w-[640px] flex-col overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)] shadow-2xl"
+        className="flex h-[600px] w-[640px] flex-col overflow-hidden rounded-lg border border-[var(--panel-border)] bg-[var(--bg-secondary)] shadow-2xl"
       >
-        <div className="flex h-10 items-center justify-between border-b border-[var(--border)] px-4">
+        <div className="flex h-10 items-center justify-between border-b border-[var(--panel-border)] px-4">
           <span className="font-mono text-xs font-semibold text-[var(--text-primary)]">
             New pull request — {repoLink.fullName}
           </span>
@@ -175,7 +175,7 @@ export function PullRequestDialog({
                 value={base}
                 onChange={(e) => setBase(e.target.value)}
                 onBlur={() => void runCompare(base)}
-                className="mt-1 w-full rounded border border-[var(--border)] bg-[var(--bg-primary)] px-2 py-1.5 font-mono text-[12px] text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+                className="mt-1 w-full rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] px-2 py-1.5 font-mono text-[12px] text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
               />
             </div>
             <div>
@@ -186,7 +186,7 @@ export function PullRequestDialog({
                 type="text"
                 value={headBranch}
                 readOnly
-                className="mt-1 w-full rounded border border-[var(--border)] bg-[var(--bg-primary)] px-2 py-1.5 font-mono text-[12px] text-[var(--text-muted)]"
+                className="mt-1 w-full rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] px-2 py-1.5 font-mono text-[12px] text-[var(--text-muted)]"
               />
             </div>
           </div>
@@ -201,7 +201,7 @@ export function PullRequestDialog({
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              className="mt-1 w-full rounded border border-[var(--border)] bg-[var(--bg-primary)] px-2 py-1.5 text-[13px] text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+              className="mt-1 w-full rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] px-2 py-1.5 text-[13px] text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
             />
           </div>
 
@@ -213,7 +213,7 @@ export function PullRequestDialog({
               value={body}
               onChange={(e) => setBody(e.target.value)}
               rows={8}
-              className="mt-1 w-full rounded border border-[var(--border)] bg-[var(--bg-primary)] px-2 py-1.5 font-mono text-[12px] text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+              className="mt-1 w-full rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] px-2 py-1.5 font-mono text-[12px] text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
             />
           </div>
 
@@ -247,7 +247,7 @@ export function PullRequestDialog({
           </div>
         )}
 
-        <div className="flex items-center justify-between border-t border-[var(--border)] px-4 py-2">
+        <div className="flex items-center justify-between border-t border-[var(--panel-border)] px-4 py-2">
           <button
             type="button"
             onClick={() => handleOpenInBrowser(repoLink.htmlUrl)}
@@ -259,7 +259,7 @@ export function PullRequestDialog({
             <button
               type="button"
               onClick={onClose}
-              className="rounded border border-[var(--border)] bg-transparent px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]"
+              className="rounded border border-[var(--panel-border)] bg-transparent px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]"
             >
               Cancel
             </button>
@@ -287,7 +287,7 @@ interface CompareSummaryProps {
 function CompareSummary({ compare, loading, error }: CompareSummaryProps): React.ReactElement {
   if (loading) {
     return (
-      <div className="rounded border border-[var(--border)] bg-[var(--bg-primary)] p-2 text-[12px] text-[var(--text-muted)]">
+      <div className="rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] p-2 text-[12px] text-[var(--text-muted)]">
         Comparing…
       </div>
     )
@@ -305,7 +305,7 @@ function CompareSummary({ compare, loading, error }: CompareSummaryProps): React
     { a: 0, d: 0 }
   )
   return (
-    <div className="rounded border border-[var(--border)] bg-[var(--bg-primary)] p-2 text-[12px]">
+    <div className="rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] p-2 text-[12px]">
       <div className="flex items-center gap-3 font-mono">
         <span className="text-[var(--text-secondary)]">{compare.status}</span>
         <span className="text-[var(--text-muted)]">

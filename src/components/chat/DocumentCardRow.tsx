@@ -82,7 +82,7 @@ function DocumentCard({ doc }: { doc: DocumentAttachment }) {
 
   return (
     <div
-      className="flex items-center gap-3 rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)] px-3 py-2.5 transition-colors hover:border-[var(--accent)]"
+      className="flex items-center gap-3 rounded-lg border border-[var(--panel-border)] bg-[var(--bg-secondary)] px-3 py-2.5 transition-colors hover:border-[var(--accent)]"
       data-document-id={doc.id}
     >
       <DocumentGlyph mimeType={doc.mimeType} />
@@ -95,7 +95,7 @@ function DocumentCard({ doc }: { doc: DocumentAttachment }) {
       <div ref={menuRef} className="relative">
         <button
           onClick={() => setMenuOpen((v) => !v)}
-          className="flex items-center gap-1 rounded-md border border-[var(--border)] bg-[var(--bg-primary)] px-2.5 py-1 text-[12px] text-[var(--text-secondary)] transition-colors hover:border-[var(--accent)] hover:text-[var(--text-primary)]"
+          className="flex items-center gap-1 rounded-md border border-[var(--panel-border)] bg-[var(--bg-primary)] px-2.5 py-1 text-[12px] text-[var(--text-secondary)] transition-colors hover:border-[var(--accent)] hover:text-[var(--text-primary)]"
           aria-haspopup="menu"
           aria-expanded={menuOpen}
         >
@@ -105,7 +105,7 @@ function DocumentCard({ doc }: { doc: DocumentAttachment }) {
         {menuOpen && (
           <div
             role="menu"
-            className="absolute right-0 top-full z-20 mt-1 w-48 overflow-hidden rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] shadow-lg"
+            className="absolute right-0 top-full z-20 mt-1 w-48 overflow-hidden rounded-md border border-[var(--panel-border)] bg-[var(--bg-secondary)] shadow-lg"
           >
             <MenuItem
               label="Artifact panel"

@@ -71,7 +71,7 @@ export function IssuesPanel() {
             const found = repos.find((r) => r.owner === owner && r.name === repo)
             setSelectedRepo(found ? { owner: found.owner, repo: found.name } : null)
           }}
-          className="rounded border border-[var(--border)] bg-[var(--bg-primary)] px-2 py-1 text-[11px] text-[var(--text-primary)]"
+          className="rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] px-2 py-1 text-[11px] text-[var(--text-primary)]"
         >
           {repos.map((r) => (
             <option key={r.fullName} value={`${r.owner}/${r.name}`}>
@@ -106,13 +106,13 @@ export function IssuesPanel() {
         {issues.map((issue) => (
           <div
             key={issue.number}
-            className="flex items-center gap-2 rounded border border-[var(--border)] bg-[var(--bg-secondary)] px-2 py-1.5 hover:bg-[var(--bg-tertiary)]"
+            className="flex items-center gap-2 rounded border border-[var(--panel-border)] bg-[var(--bg-secondary)] px-2 py-1.5 hover:bg-[var(--bg-tertiary)]"
           >
             <span className="text-[11px] text-[var(--text-muted)]">#{issue.number}</span>
             <span className={`rounded border px-1 text-[10px] uppercase tracking-wider ${
               issue.state === 'open'
                 ? 'border-emerald-900/50 text-emerald-300'
-                : 'border-[var(--border)] text-[var(--text-muted)]'
+                : 'border-[var(--panel-border)] text-[var(--text-muted)]'
             }`}>
               {issue.state}
             </span>
@@ -129,7 +129,7 @@ export function IssuesPanel() {
                 {issue.labels.slice(0, 3).map((l) => (
                   <span
                     key={l.name}
-                    className="rounded border border-[var(--border)] px-1 text-[10px] text-[var(--text-secondary)]"
+                    className="rounded border border-[var(--panel-border)] px-1 text-[10px] text-[var(--text-secondary)]"
                     style={{ borderColor: `#${l.color}50` }}
                     title={l.name}
                   >

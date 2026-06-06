@@ -427,7 +427,7 @@ export function FloatingEnvironmentCard({
     <>
       <div
         ref={containerRef}
-        className="pointer-events-auto fixed z-40 rounded-xl border border-[var(--border)] bg-[var(--bg-secondary)] p-2 shadow-xl"
+        className="pointer-events-auto fixed z-40 rounded-xl border border-[var(--panel-border)] bg-[var(--bg-secondary)] p-2 shadow-xl"
         style={{
           top: ENV_CARD_TOP_OFFSET,
           right: ENV_CARD_RIGHT_OFFSET,
@@ -549,7 +549,7 @@ export function FloatingEnvironmentCard({
                     : `max-height ${PROGRESS_RETRACT_DURATION_MS}ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity ${PROGRESS_RETRACT_DURATION_MS}ms cubic-bezier(0.2, 0.8, 0.2, 1)`
                 }}
               >
-                <div className="my-2 border-t border-[var(--border)]" aria-hidden />
+                <div className="my-2 border-t border-[var(--panel-border)]" aria-hidden />
 
                 <div className="flex items-center justify-between px-2.5 pb-1 pt-1 text-[12px] font-medium text-[var(--text-secondary)]">
                   <span>Progress</span>
@@ -594,7 +594,7 @@ export function FloatingEnvironmentCard({
               </div>
             )}
 
-            <div className="my-2 border-t border-[var(--border)]" aria-hidden />
+            <div className="my-2 border-t border-[var(--panel-border)]" aria-hidden />
 
             <div className="px-2.5 pb-1 pt-1 text-[12px] font-medium text-[var(--text-secondary)]">
               Sources

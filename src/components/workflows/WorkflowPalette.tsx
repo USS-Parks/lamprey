@@ -81,20 +81,20 @@ export function WorkflowPalette(): ReactElement | null {
       }}
       data-testid="workflow-palette"
     >
-      <div className="flex h-[72vh] w-[min(980px,calc(100vw-32px))] overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--bg-primary)] shadow-2xl">
-        <div className="flex w-[360px] shrink-0 flex-col border-r border-[var(--border)]">
-          <div className="border-b border-[var(--border)] p-3">
+      <div className="flex h-[72vh] w-[min(980px,calc(100vw-32px))] overflow-hidden rounded-lg border border-[var(--panel-border)] bg-[var(--bg-primary)] shadow-2xl">
+        <div className="flex w-[360px] shrink-0 flex-col border-r border-[var(--panel-border)]">
+          <div className="border-b border-[var(--panel-border)] p-3">
             <input
               ref={inputRef}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder={loading ? 'Loading workflows...' : 'Run workflow...'}
-              className="w-full rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] px-3 py-2 text-[14px] text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)] focus:border-[var(--accent)]"
+              className="w-full rounded-md border border-[var(--panel-border)] bg-[var(--bg-secondary)] px-3 py-2 text-[14px] text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)] focus:border-[var(--accent)]"
             />
             <button
               type="button"
               onClick={() => setEditorOpen(true)}
-              className="mt-2 w-full rounded-md border border-[var(--border)] px-3 py-1.5 text-left text-[13px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]"
+              className="mt-2 w-full rounded-md border border-[var(--panel-border)] px-3 py-1.5 text-left text-[13px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]"
             >
               New workflow
             </button>

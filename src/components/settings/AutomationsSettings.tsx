@@ -91,7 +91,7 @@ export function AutomationsSettings() {
         </p>
       </div>
 
-      <div className="rounded border border-[var(--border)] bg-[var(--bg-primary)] p-3">
+      <div className="rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] p-3">
         <h3 className="mb-2 text-[12px] uppercase tracking-wider text-[var(--text-muted)]">
           New automation
         </h3>
@@ -101,14 +101,14 @@ export function AutomationsSettings() {
             value={label}
             onChange={(e) => setLabel(e.target.value)}
             placeholder="label, e.g. 'morning PR triage'"
-            className="rounded border border-[var(--border)] bg-[var(--bg-secondary)] px-2 py-1 text-[13px] outline-none focus:border-[var(--accent)]"
+            className="rounded border border-[var(--panel-border)] bg-[var(--bg-secondary)] px-2 py-1 text-[13px] outline-none focus:border-[var(--accent)]"
           />
           <input
             type="text"
             value={cron}
             onChange={(e) => setCron(e.target.value)}
             placeholder="cron (min hour dom month dow), e.g. 0 9 * * *"
-            className="rounded border border-[var(--border)] bg-[var(--bg-secondary)] px-2 py-1 font-mono text-[12px] outline-none focus:border-[var(--accent)]"
+            className="rounded border border-[var(--panel-border)] bg-[var(--bg-secondary)] px-2 py-1 font-mono text-[12px] outline-none focus:border-[var(--accent)]"
           />
           <div className="flex flex-wrap gap-1">
             {CRON_HINTS.map((h) => (
@@ -116,7 +116,7 @@ export function AutomationsSettings() {
                 key={h.expr}
                 type="button"
                 onClick={() => setCron(h.expr)}
-                className="rounded border border-[var(--border)] bg-[var(--bg-secondary)] px-1.5 py-0.5 text-[10px] text-[var(--text-muted)] hover:border-[var(--accent)] hover:text-[var(--text-primary)]"
+                className="rounded border border-[var(--panel-border)] bg-[var(--bg-secondary)] px-1.5 py-0.5 text-[10px] text-[var(--text-muted)] hover:border-[var(--accent)] hover:text-[var(--text-primary)]"
               >
                 {h.label}
               </button>
@@ -127,12 +127,12 @@ export function AutomationsSettings() {
             onChange={(e) => setPrompt(e.target.value)}
             rows={3}
             placeholder="prompt — e.g. 'Summarize today's open issues across the repo.'"
-            className="rounded border border-[var(--border)] bg-[var(--bg-secondary)] px-2 py-1 text-[13px] outline-none focus:border-[var(--accent)]"
+            className="rounded border border-[var(--panel-border)] bg-[var(--bg-secondary)] px-2 py-1 text-[13px] outline-none focus:border-[var(--accent)]"
           />
           <select
             value={model}
             onChange={(e) => setModel(e.target.value)}
-            className="rounded border border-[var(--border)] bg-[var(--bg-secondary)] px-2 py-1 text-[13px] outline-none"
+            className="rounded border border-[var(--panel-border)] bg-[var(--bg-secondary)] px-2 py-1 text-[13px] outline-none"
           >
             <option value="">(use default model)</option>
             {models.map((m) => (
@@ -145,7 +145,7 @@ export function AutomationsSettings() {
             <button
               onClick={handleCreate}
               disabled={busy}
-              className="rounded border border-[var(--border)] bg-[var(--bg-secondary)] px-3 py-1 text-[12px] hover:border-[var(--accent)] disabled:opacity-50"
+              className="rounded border border-[var(--panel-border)] bg-[var(--bg-secondary)] px-3 py-1 text-[12px] hover:border-[var(--accent)] disabled:opacity-50"
             >
               {busy ? 'Saving…' : 'Add automation'}
             </button>
@@ -163,7 +163,7 @@ export function AutomationsSettings() {
         {items.map((a) => (
           <div
             key={a.id}
-            className="mb-2 rounded border border-[var(--border)] bg-[var(--bg-primary)] p-2 text-[12px]"
+            className="mb-2 rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] p-2 text-[12px]"
           >
             <div className="flex items-start gap-2">
               <input

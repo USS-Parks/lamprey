@@ -122,8 +122,8 @@ export function CodeBlock({ code, language }: CodeBlockProps) {
   if (isArtifact) {
     const previewLines = code.split('\n').slice(0, 4).join('\n')
     return (
-      <div className="my-2 rounded-lg border border-[var(--border)] bg-[var(--bg-primary)] overflow-hidden">
-        <div className="flex items-center justify-between px-3 py-1.5 border-b border-[var(--border)] bg-[var(--bg-tertiary)]">
+      <div className="my-2 rounded-lg border border-[var(--panel-border)] bg-[var(--bg-primary)] overflow-hidden">
+        <div className="flex items-center justify-between px-3 py-1.5 border-b border-[var(--panel-border)] bg-[var(--bg-tertiary)]">
           <span className="text-xs font-mono text-[var(--accent)]">{detectedType}</span>
           <div className="flex items-center gap-2">
             <button
@@ -139,7 +139,7 @@ export function CodeBlock({ code, language }: CodeBlockProps) {
         </pre>
         <button
           onClick={handleOpenArtifact}
-          className="w-full px-3 py-2 text-xs font-medium text-[var(--accent)] bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)] border-t border-[var(--border)] transition-colors"
+          className="w-full px-3 py-2 text-xs font-medium text-[var(--accent)] bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)] border-t border-[var(--panel-border)] transition-colors"
         >
           Open artifact
         </button>
@@ -148,8 +148,8 @@ export function CodeBlock({ code, language }: CodeBlockProps) {
   }
 
   return (
-    <div className="my-2 rounded-lg border border-[var(--border)] bg-[var(--bg-primary)] overflow-hidden">
-      <div className="flex items-center justify-between px-3 py-1.5 border-b border-[var(--border)] bg-[var(--bg-tertiary)]">
+    <div className="my-2 rounded-lg border border-[var(--panel-border)] bg-[var(--bg-primary)] overflow-hidden">
+      <div className="flex items-center justify-between px-3 py-1.5 border-b border-[var(--panel-border)] bg-[var(--bg-tertiary)]">
         <span className="text-xs font-mono text-[var(--text-muted)]">{lang || 'text'}</span>
         <button
           onClick={handleCopy}

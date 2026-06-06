@@ -119,7 +119,7 @@ export function PullRequestsPanel() {
             setSelectedRepo(found ? { owner: found.owner, repo: found.name, defaultBranch: found.defaultBranch } : null)
             setOpenNumber(null)
           }}
-          className="rounded border border-[var(--border)] bg-[var(--bg-primary)] px-2 py-1 text-[11px] text-[var(--text-primary)]"
+          className="rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] px-2 py-1 text-[11px] text-[var(--text-primary)]"
         >
           {repos.map((r) => (
             <option key={r.fullName} value={`${r.owner}/${r.name}`}>
@@ -154,7 +154,7 @@ export function PullRequestsPanel() {
         {prs.map((pr) => (
           <div
             key={pr.number}
-            className="rounded border border-[var(--border)] bg-[var(--bg-secondary)]"
+            className="rounded border border-[var(--panel-border)] bg-[var(--bg-secondary)]"
           >
             <button
               type="button"
@@ -164,7 +164,7 @@ export function PullRequestsPanel() {
               <div className="flex items-center gap-2">
                 <span className="text-[11px] text-[var(--text-muted)]">#{pr.number}</span>
                 {pr.draft && (
-                  <span className="rounded border border-[var(--border)] bg-[var(--bg-tertiary)] px-1 text-[10px] uppercase tracking-wider text-[var(--text-muted)]">
+                  <span className="rounded border border-[var(--panel-border)] bg-[var(--bg-tertiary)] px-1 text-[10px] uppercase tracking-wider text-[var(--text-muted)]">
                     draft
                   </span>
                 )}
@@ -186,8 +186,8 @@ export function PullRequestsPanel() {
             </button>
 
             {openNumber === pr.number && selectedRepo && (
-              <div className="border-t border-[var(--border)] bg-[var(--bg-primary)]">
-                <div className="flex items-center justify-between border-b border-[var(--border)] px-2 py-1">
+              <div className="border-t border-[var(--panel-border)] bg-[var(--bg-primary)]">
+                <div className="flex items-center justify-between border-b border-[var(--panel-border)] px-2 py-1">
                   <span className="text-[10px] uppercase tracking-wider text-[var(--text-muted)]">
                     Detail
                   </span>
@@ -210,7 +210,7 @@ export function PullRequestsPanel() {
                       {comments.map((c) => (
                         <li
                           key={c.id}
-                          className="rounded border border-[var(--border)] bg-[var(--bg-secondary)] p-1.5"
+                          className="rounded border border-[var(--panel-border)] bg-[var(--bg-secondary)] p-1.5"
                         >
                           <div className="flex items-center gap-2 text-[10px] text-[var(--text-muted)]">
                             <span className="font-mono">
@@ -226,7 +226,7 @@ export function PullRequestsPanel() {
                     </ul>
                   </div>
                 )}
-                <div className="border-t border-[var(--border)] px-2 py-2">
+                <div className="border-t border-[var(--panel-border)] px-2 py-2">
                   <InlineCommentComposer
                     owner={selectedRepo.owner}
                     repo={selectedRepo.repo}

@@ -123,7 +123,7 @@ export function ApiKeySettings() {
         </p>
       </div>
 
-      <div className="rounded border border-[var(--border)] bg-[var(--bg-primary)] p-3 text-[13px]">
+      <div className="rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] p-3 text-[13px]">
         <div className="flex items-center gap-2 text-[var(--text-muted)]">
           <span
             className={`inline-block rounded px-1.5 py-0.5 font-mono text-[11px] uppercase tracking-wider ${
@@ -151,7 +151,7 @@ export function ApiKeySettings() {
         const visible = showKey[p.id] || false
         const status = testStatus[p.id]
         return (
-          <div key={p.id} className="space-y-2 rounded border border-[var(--border)] bg-[var(--bg-primary)] p-3">
+          <div key={p.id} className="space-y-2 rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] p-3">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <div className="flex items-center gap-2">
@@ -187,12 +187,12 @@ export function ApiKeySettings() {
                 value={draft}
                 onChange={(e) => setDrafts((s) => ({ ...s, [p.id]: e.target.value }))}
                 placeholder={p.hasKey ? 'Replace key...' : 'Paste API key'}
-                className="flex-1 rounded border border-[var(--border)] bg-[var(--bg-secondary)] px-2 py-1.5 font-mono text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+                className="flex-1 rounded border border-[var(--panel-border)] bg-[var(--bg-secondary)] px-2 py-1.5 font-mono text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
               />
               <button
                 type="button"
                 onClick={() => setShowKey((s) => ({ ...s, [p.id]: !visible }))}
-                className="rounded border border-[var(--border)] bg-transparent px-3 py-1.5 text-xs text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]"
+                className="rounded border border-[var(--panel-border)] bg-transparent px-3 py-1.5 text-xs text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]"
               >
                 {visible ? 'Hide' : 'Show'}
               </button>
@@ -209,14 +209,14 @@ export function ApiKeySettings() {
               <button
                 onClick={() => handleTest(p.id, p.label)}
                 disabled={busy === p.id || !p.hasKey}
-                className="rounded border border-[var(--border)] bg-transparent px-3 py-1.5 text-xs text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)] disabled:opacity-40"
+                className="rounded border border-[var(--panel-border)] bg-transparent px-3 py-1.5 text-xs text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)] disabled:opacity-40"
               >
                 Test
               </button>
               <button
                 onClick={() => handleDelete(p.id, p.label)}
                 disabled={busy === p.id || !p.hasKey}
-                className="rounded border border-[var(--border)] bg-transparent px-3 py-1.5 text-xs text-[var(--error)] transition-colors hover:bg-[var(--error)]/10 disabled:opacity-40"
+                className="rounded border border-[var(--panel-border)] bg-transparent px-3 py-1.5 text-xs text-[var(--error)] transition-colors hover:bg-[var(--error)]/10 disabled:opacity-40"
               >
                 Delete
               </button>

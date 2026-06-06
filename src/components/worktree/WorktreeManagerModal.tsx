@@ -92,8 +92,8 @@ export function WorktreeManagerModal() {
         if (e.target === e.currentTarget) close()
       }}
     >
-      <div className="flex w-full max-w-lg flex-col overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--bg-primary)] shadow-xl">
-        <div className="flex items-center justify-between border-b border-[var(--border)] px-4 py-3">
+      <div className="flex w-full max-w-lg flex-col overflow-hidden rounded-lg border border-[var(--panel-border)] bg-[var(--bg-primary)] shadow-xl">
+        <div className="flex items-center justify-between border-b border-[var(--panel-border)] px-4 py-3">
           <h2 className="text-[14px] font-medium text-[var(--text-primary)]">Worktrees</h2>
           <button
             onClick={close}
@@ -107,7 +107,7 @@ export function WorktreeManagerModal() {
           </button>
         </div>
 
-        <div className="border-b border-[var(--border)] p-4">
+        <div className="border-b border-[var(--panel-border)] p-4">
           <h3 className="mb-2 text-[12px] uppercase tracking-wider text-[var(--text-muted)]">
             New worktree
           </h3>
@@ -117,20 +117,20 @@ export function WorktreeManagerModal() {
               value={newBranch}
               onChange={(e) => setNewBranch(e.target.value)}
               placeholder="branch name (e.g. feature-x)"
-              className="w-full rounded border border-[var(--border)] bg-[var(--bg-secondary)] px-2 py-1 text-[13px] text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+              className="w-full rounded border border-[var(--panel-border)] bg-[var(--bg-secondary)] px-2 py-1 text-[13px] text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
             />
             <input
               type="text"
               value={newPath}
               onChange={(e) => setNewPath(e.target.value)}
               placeholder="path (relative resolves next to repo, or absolute)"
-              className="w-full rounded border border-[var(--border)] bg-[var(--bg-secondary)] px-2 py-1 text-[13px] text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+              className="w-full rounded border border-[var(--panel-border)] bg-[var(--bg-secondary)] px-2 py-1 text-[13px] text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
             />
             <div className="flex items-center justify-end gap-2">
               <button
                 onClick={handleCreate}
                 disabled={creating}
-                className="rounded border border-[var(--border)] bg-[var(--bg-secondary)] px-3 py-1 text-[12px] text-[var(--text-secondary)] transition-colors hover:border-[var(--accent)] hover:text-[var(--text-primary)] disabled:opacity-50"
+                className="rounded border border-[var(--panel-border)] bg-[var(--bg-secondary)] px-3 py-1 text-[12px] text-[var(--text-secondary)] transition-colors hover:border-[var(--accent)] hover:text-[var(--text-primary)] disabled:opacity-50"
               >
                 {creating ? 'Creating…' : 'Create worktree'}
               </button>
@@ -149,7 +149,7 @@ export function WorktreeManagerModal() {
           {list.map((wt, i) => (
             <div
               key={wt.path}
-              className="mb-2 flex items-center justify-between gap-2 rounded border border-[var(--border)] bg-[var(--bg-secondary)] px-3 py-2 text-[12px]"
+              className="mb-2 flex items-center justify-between gap-2 rounded border border-[var(--panel-border)] bg-[var(--bg-secondary)] px-3 py-2 text-[12px]"
             >
               <div className="min-w-0 flex-1">
                 <div className="truncate font-mono text-[12px] text-[var(--text-primary)]" title={wt.path}>

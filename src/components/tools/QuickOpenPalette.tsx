@@ -138,7 +138,7 @@ export function QuickOpenPalette() {
         if (e.target === e.currentTarget) closeQuickOpen()
       }}
     >
-      <div className="flex w-full max-w-xl flex-col overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--bg-primary)] shadow-xl">
+      <div className="flex w-full max-w-xl flex-col overflow-hidden rounded-lg border border-[var(--panel-border)] bg-[var(--bg-primary)] shadow-xl">
         <input
           ref={inputRef}
           type="text"
@@ -147,7 +147,7 @@ export function QuickOpenPalette() {
           placeholder={loading ? 'Indexing files…' : 'Type a filename…'}
           className="w-full bg-transparent px-4 py-3 text-[15px] text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)]"
         />
-        <div className="border-t border-[var(--border)]" />
+        <div className="border-t border-[var(--panel-border)]" />
         <div ref={listRef} className="max-h-[40vh] overflow-y-auto py-1">
           {error && (
             <p className="px-4 py-3 text-[13px] text-[var(--error)]">{error}</p>
@@ -189,7 +189,7 @@ export function QuickOpenPalette() {
           })}
         </div>
         {index?.truncated && (
-          <div className="border-t border-[var(--border)] px-4 py-1.5 text-[11px] text-[var(--text-muted)]">
+          <div className="border-t border-[var(--panel-border)] px-4 py-1.5 text-[11px] text-[var(--text-muted)]">
             Index truncated at 5000 files.
           </div>
         )}

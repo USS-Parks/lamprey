@@ -126,6 +126,33 @@ export interface LoadedPlugin {
   }
 }
 
+// Skill Import Phase I4 — renderer mirrors of the discovery + importer
+// shapes. Kept narrow on purpose: the renderer never instantiates these,
+// it just receives them across IPC.
+
+export interface DiscoveredCcSkill {
+  slug: string
+  name: string
+  description: string
+  enabled: boolean
+  supportingFileCount: number
+}
+
+export interface DiscoveredCcPlugin {
+  sourcePath: string
+  pluginName: string
+  version: string
+  description: string
+  skills: DiscoveredCcSkill[]
+}
+
+export interface CcImportResult {
+  pluginId: string
+  installPath: string
+  skillsImported: string[]
+  skipped: string[]
+}
+
 export type MemoryType = 'user' | 'feedback' | 'project' | 'reference'
 
 export interface MemoryEntry {
@@ -241,6 +268,11 @@ export interface ThemePresetTokens {
   warning: string
   error: string
   codeBg: string
+  // Panels Phase tokens — substrate + panel surface system.
+  // appBg = outer shell substrate (sidebars float on this).
+  // panelBg = sidebar panel surface (rounded card tone).
+  appBg: string
+  panelBg: string
 }
 
 export interface ThemePreset {
@@ -308,6 +340,28 @@ export interface AppSettings {
    * would corrupt structured tool output (Invariant 13).
    */
   snipVerbose: boolean
+  /**
+   * T1 — SSE inactivity watchdog threshold (ms). 0 disables, min 5_000,
+   * default 60_000. Caps how long a streaming attempt can sit without
+   * receiving a chunk before being retried/aborted with a clear error.
+   */
+  streamInactivityMs?: number
+  /**
+   * T2 — Per-call MCP tool timeout (ms). 0 falls back to the MCP SDK's
+   * default, min 5_000, default 120_000. Capping it here prevents one
+   * stalled MCP server from blocking the whole turn.
+   */
+  mcpCallTimeoutMs?: number
+  /**
+   * T3 — Per-stage wall-clock budgets (ms) for the multi-agent pipeline.
+   * 0 disables a stage's budget, min 10_000. Defaults: planner 120_000,
+   * coder 600_000, reviewer 120_000.
+   */
+  stageBudgetMs?: {
+    planner?: number
+    coder?: number
+    reviewer?: number
+  }
 }
 
 export const DEFAULT_AGENTIC_CODING_SKILLS: string[] = [

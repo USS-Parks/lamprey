@@ -255,7 +255,7 @@ export function ActivityDashboard(): ReactElement {
   }
 
   return (
-    <div className="border-b border-[var(--border)] pb-2" data-testid="activity-dashboard">
+    <div className="border-b border-[var(--panel-border)] pb-2" data-testid="activity-dashboard">
       <div className="mx-3 mt-3 flex items-center justify-between">
         <button
           type="button"

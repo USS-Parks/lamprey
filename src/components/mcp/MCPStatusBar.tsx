@@ -35,7 +35,7 @@ function ServerPopover({ server, onClose }: { server: ServerWithStatus; onClose:
   return (
     <div
       ref={ref}
-      className="absolute bottom-10 left-0 z-50 w-64 rounded border border-[var(--border)] bg-[var(--bg-tertiary)] p-3 shadow-lg"
+      className="absolute bottom-10 left-0 z-50 w-64 rounded border border-[var(--panel-border)] bg-[var(--bg-tertiary)] p-3 shadow-lg"
     >
       <div className="mb-2 flex items-center gap-2">
         <StatusDot status={server.status} />
@@ -88,7 +88,7 @@ export function MCPStatusBar() {
   if (servers.length === 0) return null
 
   return (
-    <div className="flex h-8 items-center gap-3 border-t border-[var(--border)] bg-[var(--bg-secondary)] px-3">
+    <div className="flex h-8 items-center gap-3 border-t border-[var(--panel-border)] bg-[var(--bg-secondary)] px-3">
       {isR1 && (
         <span className="font-mono text-[13px] text-[var(--warning)]">
           R1 active - MCP tools unavailable

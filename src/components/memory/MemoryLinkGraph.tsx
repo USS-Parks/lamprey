@@ -71,7 +71,7 @@ export function MemoryLinkGraph({ projectSlug, onPick }: Props) {
   if (pips.length === 0) return null
 
   return (
-    <div className="mt-2 border-t border-[var(--border)] px-2 pt-2">
+    <div className="mt-2 border-t border-[var(--panel-border)] px-2 pt-2">
       <div className="mb-1 flex items-center gap-1.5 px-2">
         <span className="text-[11px] font-medium uppercase tracking-wider text-[var(--text-muted)]">
           To write
@@ -87,7 +87,7 @@ export function MemoryLinkGraph({ projectSlug, onPick }: Props) {
             type="button"
             onClick={() => onPick?.(target, refs[0]?.from ?? '')}
             title={`Referenced by: ${refs.map((r) => r.from).join(', ')}`}
-            className="rounded-full border border-dashed border-[var(--border)] bg-[var(--bg-tertiary)] px-2 py-0.5 text-[11px] text-[var(--text-secondary)] transition-colors hover:border-[var(--accent)] hover:text-[var(--accent)]"
+            className="rounded-full border border-dashed border-[var(--panel-border)] bg-[var(--bg-tertiary)] px-2 py-0.5 text-[11px] text-[var(--text-secondary)] transition-colors hover:border-[var(--accent)] hover:text-[var(--accent)]"
           >
             [[{target}]]{refs.length > 1 ? ` ×${refs.length}` : ''}
           </button>

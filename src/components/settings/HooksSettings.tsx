@@ -241,7 +241,7 @@ export function HooksSettings() {
         onApply={(template) => void applyTemplate(template)}
       />
 
-      <div className="flex flex-wrap gap-1 rounded-md border border-[var(--border)] bg-[var(--bg-primary)] p-1">
+      <div className="flex flex-wrap gap-1 rounded-md border border-[var(--panel-border)] bg-[var(--bg-primary)] p-1">
         {EVENT_OPTIONS.map((event) => {
           const active = event === activeEvent
           const count = countsByEvent[event]
@@ -267,14 +267,14 @@ export function HooksSettings() {
       </div>
 
       <div className="grid grid-cols-[260px_1fr] gap-3">
-        <div className="rounded border border-[var(--border)] bg-[var(--bg-primary)]">
-          <div className="flex items-center justify-between border-b border-[var(--border)] px-2 py-1.5">
+        <div className="rounded border border-[var(--panel-border)] bg-[var(--bg-primary)]">
+          <div className="flex items-center justify-between border-b border-[var(--panel-border)] px-2 py-1.5">
             <span className="text-[11px] uppercase tracking-wider text-[var(--text-muted)]">
               Hooks ({hooksForEvent.length})
             </span>
             <button
               onClick={newHook}
-              className="rounded border border-[var(--border)] bg-[var(--bg-secondary)] px-2 py-0.5 text-[11px] hover:border-[var(--accent)]"
+              className="rounded border border-[var(--panel-border)] bg-[var(--bg-secondary)] px-2 py-0.5 text-[11px] hover:border-[var(--accent)]"
             >
               + new
             </button>
@@ -322,7 +322,7 @@ export function HooksSettings() {
           </div>
         </div>
 
-        <div className="rounded border border-[var(--border)] bg-[var(--bg-primary)] p-3">
+        <div className="rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] p-3">
           <p className="mb-2 text-[11px] text-[var(--text-muted)]">
             {EVENT_DESCRIPTIONS[editor.event]}
           </p>
@@ -335,12 +335,12 @@ export function HooksSettings() {
                   setEditor((state) => ({ ...state, label: event.target.value }))
                 }
                 placeholder="block-rm-rf"
-                className="rounded border border-[var(--border)] bg-[var(--bg-secondary)] px-2 py-1 text-[12px] text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+                className="rounded border border-[var(--panel-border)] bg-[var(--bg-secondary)] px-2 py-1 text-[12px] text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
               />
             </label>
             <label className="flex flex-col gap-1 text-[11px] text-[var(--text-muted)]">
               Timeout (ms)
-              <div className="rounded border border-[var(--border)] bg-[var(--bg-secondary)] px-2 py-1">
+              <div className="rounded border border-[var(--panel-border)] bg-[var(--bg-secondary)] px-2 py-1">
                 <div className="mb-1 flex items-center justify-between gap-2">
                   <span className="text-[12px] text-[var(--text-primary)]">{editor.timeoutMs}</span>
                   <input
@@ -357,7 +357,7 @@ export function HooksSettings() {
                         )
                       }))
                     }
-                    className="w-20 rounded border border-[var(--border)] bg-[var(--bg-primary)] px-1 py-0.5 text-right text-[11px] text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+                    className="w-20 rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] px-1 py-0.5 text-right text-[11px] text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
                   />
                 </div>
                 <input
@@ -390,21 +390,21 @@ export function HooksSettings() {
             value={editor.code}
             onChange={(event) => setEditor((state) => ({ ...state, code: event.target.value }))}
             spellCheck={false}
-            className="mt-1 h-[200px] w-full resize-y rounded border border-[var(--border)] bg-[var(--bg-secondary)] p-2 font-mono text-[12px] leading-relaxed text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+            className="mt-1 h-[200px] w-full resize-y rounded border border-[var(--panel-border)] bg-[var(--bg-secondary)] p-2 font-mono text-[12px] leading-relaxed text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
           />
 
           <div className="mt-3 flex items-center gap-2">
             <button
               onClick={save}
               disabled={saving}
-              className="rounded border border-[var(--border)] bg-[var(--bg-secondary)] px-3 py-1 text-[12px] hover:border-[var(--accent)] disabled:opacity-50"
+              className="rounded border border-[var(--panel-border)] bg-[var(--bg-secondary)] px-3 py-1 text-[12px] hover:border-[var(--accent)] disabled:opacity-50"
             >
               {saving ? 'Saving...' : editor.hookId ? 'Save' : 'Create'}
             </button>
             {editor.hookId && (
               <button
                 onClick={handleDelete}
-                className="rounded border border-[var(--border)] bg-[var(--bg-secondary)] px-3 py-1 text-[12px] text-[var(--error)] hover:border-[var(--error)]"
+                className="rounded border border-[var(--panel-border)] bg-[var(--bg-secondary)] px-3 py-1 text-[12px] text-[var(--error)] hover:border-[var(--error)]"
               >
                 Delete
               </button>

@@ -69,7 +69,7 @@ export function HookTemplatesGallery({
   onApply
 }: HookTemplatesGalleryProps) {
   return (
-    <div className="rounded border border-[var(--border)] bg-[var(--bg-primary)] p-2">
+    <div className="rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] p-2">
       <div className="mb-2 flex items-center justify-between">
         <span className="text-[11px] uppercase tracking-wider text-[var(--text-muted)]">
           Templates
@@ -88,7 +88,7 @@ export function HookTemplatesGallery({
                 'min-h-[86px] rounded border bg-[var(--bg-secondary)] p-2 text-left transition-colors disabled:opacity-50 ' +
                 (matchesEvent
                   ? 'border-[var(--accent)]'
-                  : 'border-[var(--border)] hover:border-[var(--accent)]')
+                  : 'border-[var(--panel-border)] hover:border-[var(--accent)]')
               }
             >
               <span className="block text-[12px] font-medium text-[var(--text-primary)]">

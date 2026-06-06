@@ -215,7 +215,7 @@ export function WebToolsSettings() {
 
   if (apiMissing) {
     return (
-      <div className="rounded border border-[var(--border)] bg-[var(--bg-primary)] p-3 text-[13px] text-[var(--text-muted)]">
+      <div className="rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] p-3 text-[13px] text-[var(--text-muted)]">
         Web tools settings are unavailable — running outside Electron, or preload has not exposed
         the <code>webTools</code> namespace yet.
       </div>
@@ -240,7 +240,7 @@ export function WebToolsSettings() {
         </p>
       </div>
 
-      <div className="rounded border border-[var(--border)] bg-[var(--bg-primary)] p-3 text-[13px]">
+      <div className="rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] p-3 text-[13px]">
         <div className="flex flex-wrap items-center gap-2">
           <span className="font-mono text-[11px] uppercase tracking-wider text-[var(--text-muted)]">
             Active provider
@@ -251,7 +251,7 @@ export function WebToolsSettings() {
           <button
             onClick={handleTest}
             disabled={busy !== null}
-            className="ml-auto rounded border border-[var(--border)] bg-transparent px-3 py-1 text-xs text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)] disabled:opacity-40"
+            className="ml-auto rounded border border-[var(--panel-border)] bg-transparent px-3 py-1 text-xs text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)] disabled:opacity-40"
           >
             {busy === 'test' ? 'Testing…' : 'Test active adapter'}
           </button>
@@ -274,7 +274,7 @@ export function WebToolsSettings() {
         return (
           <div
             key={p.id}
-            className="space-y-2 rounded border border-[var(--border)] bg-[var(--bg-primary)] p-3"
+            className="space-y-2 rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] p-3"
           >
             <div className="flex items-start justify-between gap-3">
               <div>
@@ -329,7 +329,7 @@ export function WebToolsSettings() {
                 <button
                   onClick={() => handleActivate(p.id)}
                   disabled={busy !== null}
-                  className="rounded border border-[var(--border)] bg-transparent px-2.5 py-1 text-xs text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)] disabled:opacity-40"
+                  className="rounded border border-[var(--panel-border)] bg-transparent px-2.5 py-1 text-xs text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)] disabled:opacity-40"
                 >
                   Use this provider
                 </button>
@@ -346,14 +346,14 @@ export function WebToolsSettings() {
                       setDrafts((s) => ({ ...s, [p.id]: e.target.value }))
                     }
                     placeholder={p.hasKey ? 'Replace key…' : 'Paste API key'}
-                    className="flex-1 rounded border border-[var(--border)] bg-[var(--bg-secondary)] px-2 py-1.5 font-mono text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+                    className="flex-1 rounded border border-[var(--panel-border)] bg-[var(--bg-secondary)] px-2 py-1.5 font-mono text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
                   />
                   <button
                     type="button"
                     onClick={() =>
                       setShowKey((s) => ({ ...s, [p.id]: !visible }))
                     }
-                    className="rounded border border-[var(--border)] bg-transparent px-3 py-1.5 text-xs text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]"
+                    className="rounded border border-[var(--panel-border)] bg-transparent px-3 py-1.5 text-xs text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]"
                   >
                     {visible ? 'Hide' : 'Show'}
                   </button>
@@ -370,7 +370,7 @@ export function WebToolsSettings() {
                   <button
                     onClick={() => handleDeleteKey(p.id)}
                     disabled={busy !== null || !p.hasKey}
-                    className="rounded border border-[var(--border)] bg-transparent px-3 py-1.5 text-xs text-[var(--error)] transition-colors hover:bg-[var(--error)]/10 disabled:opacity-40"
+                    className="rounded border border-[var(--panel-border)] bg-transparent px-3 py-1.5 text-xs text-[var(--error)] transition-colors hover:bg-[var(--error)]/10 disabled:opacity-40"
                   >
                     Delete
                   </button>
@@ -386,7 +386,7 @@ export function WebToolsSettings() {
                     value={endpoint}
                     onChange={(e) => setEndpoint(e.target.value)}
                     placeholder="https://searxng.example.com"
-                    className="flex-1 rounded border border-[var(--border)] bg-[var(--bg-secondary)] px-2 py-1.5 font-mono text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+                    className="flex-1 rounded border border-[var(--panel-border)] bg-[var(--bg-secondary)] px-2 py-1.5 font-mono text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
                   />
                 </div>
                 <div className="flex flex-wrap items-center gap-2 pt-1">

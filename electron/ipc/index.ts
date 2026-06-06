@@ -44,6 +44,7 @@ import { registerAskUserHandlers } from './ask-user'
 import { registerStatusLineHandlers } from './statusline'
 import { registerResearchHandlers } from './research'
 import { registerSnipHandlers } from './snip'
+import { registerCcSkillImportHandlers } from './cc-skill-import'
 
 export function registerAllIpcHandlers(): void {
   registerChatHandlers()
@@ -87,4 +88,5 @@ export function registerAllIpcHandlers(): void {
   registerStatusLineHandlers()
   registerResearchHandlers()
   registerSnipHandlers()
+  registerCcSkillImportHandlers()
 }

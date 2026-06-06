@@ -139,6 +139,34 @@ export function useChat(): void {
       })
     }
 
+    // T4 — streaming-vitals heartbeat. The provider fires ~every 2s while
+    // a stream is active so the renderer can show "last chunk Ns ago / N
+    // tokens" — lets the user distinguish a slow think from a dead socket.
+    const onVitals = (window.api.chat as {
+      onStreamingVitals?: (
+        cb: (e: {
+          conversationId: string
+          lastChunkAt: number
+          msSinceLastChunk: number
+          chunkCount: number
+          tokenEstimate: number
+          attemptElapsedMs: number
+        }) => void
+      ) => () => void
+    }).onStreamingVitals
+    const vitalsUnsub = onVitals
+      ? onVitals((e) => {
+          if (!matchesActive(e)) return
+          useChatStore.getState().setStreamingVitals({
+            lastChunkAt: e.lastChunkAt,
+            msSinceLastChunk: e.msSinceLastChunk,
+            chunkCount: e.chunkCount,
+            tokenEstimate: e.tokenEstimate,
+            attemptElapsedMs: e.attemptElapsedMs
+          })
+        })
+      : undefined
+
     const onAgentStatus = window.api.chat.onAgentStatus
     if (onAgentStatus) {
       onAgentStatus((e: unknown) => {
@@ -169,6 +197,7 @@ export function useChat(): void {
       window.api?.chat.offAll()
       planUnsub?.()
       docUnsub?.()
+      vitalsUnsub?.()
     }
   }, [])
 }

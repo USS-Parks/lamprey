@@ -15,18 +15,18 @@
 
 ---
 
-## ⬇ Download v0.3.6
+## ⬇ Download v0.6.0
 
 Pick one — the `.exe` is the standard installer, the `.zip` is the portable bundle (unzip and run `Lamprey.exe` directly, no install required).
 
 | Format | File | Direct link |
 |---|---|---|
-| **NSIS installer** (Windows) | `Lamprey-0.3.6-x64.exe` | [Download .exe](https://github.com/USS-Parks/lamprey/releases/download/v0.3.6/Lamprey-0.3.6-x64.exe) |
-| **Portable ZIP** (Windows) | `Lamprey-0.3.6-x64.zip` | [Download .zip](https://github.com/USS-Parks/lamprey/releases/download/v0.3.6/Lamprey-0.3.6-x64.zip) |
+| **NSIS installer** (Windows) | `Lamprey-0.6.0-x64.exe` | [Download .exe](https://github.com/USS-Parks/lamprey/releases/download/v0.6.0/Lamprey-0.6.0-x64.exe) |
+| **Portable ZIP** (Windows) | `Lamprey-0.6.0-x64.zip` | [Download .zip](https://github.com/USS-Parks/lamprey/releases/download/v0.6.0/Lamprey-0.6.0-x64.zip) |
 
 Or browse all releases → <https://github.com/USS-Parks/lamprey/releases>
 
-**New in v0.3.6 — Sandbox parity for `shell_command`:** thirteen-prompt phase brings the shell tool to functional parity with Claude Code's Bash tool — persistent cwd across calls, OS-level sandbox on macOS (sandbox-exec) and Linux (bubblewrap), explicit `dangerously_disable_sandbox` opt-out with one-shot approval, bash/powershell selector, monitor/list/stop/output aux tools, anti-polling sleep guard, 2-minute default timeout, richer model-facing description. See [the spec](PLANNING/LAMPREY_SANDBOX_PARITY_PLAN.md).
+**New in v0.6.0 — Panels Phase (Claude-Code-style chrome restraint):** ten-prompt visual overhaul replaces Lamprey's border-heavy "boxed cells" look with a two-tone substrate + two rounded sidebar panels (left + right). The chat column between them is **transparent** — messages flow directly on a warm cream / dark substrate, with the bottom dock pill cluster (prompt input pill + adjacent chips + `FloatingEnvironmentCard`) as the only in-chat chrome. Right-panel interior cards (Recents, tool shortcuts, docked env card) preserved as-is; `FloatingEnvironmentCard` untouched. Zero `border-[var(--border)]` structural chrome remains — softened to a low-alpha `--panel-border` everywhere allow-list (popovers, modals, form controls, semantic stripes) requires an edge. See [the spec](PLANNING/LAMPREY_PANELS_PLAN.md).
 
 **Windows 10/11 x64.** Linux and macOS are buildable from source (`npm run build:linux` / `npm run build:mac`).
 

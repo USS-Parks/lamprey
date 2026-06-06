@@ -130,7 +130,7 @@ export function MemoryPanel() {
 
   if (editor.open) {
     return (
-      <div className="border-t border-[var(--border)] px-2 py-2">
+      <div className="border-t border-[var(--panel-border)] px-2 py-2">
         <MemoryEditor
           initial={editor.initial}
           initialDraft={editor.draft}
@@ -141,7 +141,7 @@ export function MemoryPanel() {
   }
 
   return (
-    <div className="border-t border-[var(--border)] px-2 py-2">
+    <div className="border-t border-[var(--panel-border)] px-2 py-2">
       <div className="flex items-center justify-between px-2 py-1">
         <div className="flex items-center gap-1.5">
           <span className="text-[12px] font-medium uppercase tracking-wider text-[var(--text-muted)]">
@@ -188,7 +188,7 @@ export function MemoryPanel() {
                   className="fixed inset-0 z-10 cursor-default bg-transparent"
                   aria-label="Close menu"
                 />
-                <div className="absolute right-0 top-full z-20 mt-1 w-40 overflow-hidden rounded border border-[var(--border)] bg-[var(--bg-tertiary)] shadow-lg">
+                <div className="absolute right-0 top-full z-20 mt-1 w-40 overflow-hidden rounded border border-[var(--panel-border)] bg-[var(--bg-tertiary)] shadow-lg">
                   <button
                     onClick={handleExport}
                     className="block w-full px-3 py-1.5 text-left text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-primary)] hover:text-[var(--text-primary)]"
@@ -206,7 +206,7 @@ export function MemoryPanel() {
                   </button>
                   <button
                     onClick={handleClearAll}
-                    className="block w-full border-t border-[var(--border)] px-3 py-1.5 text-left text-xs text-[var(--error)] hover:bg-[var(--bg-primary)]"
+                    className="block w-full border-t border-[var(--panel-border)] px-3 py-1.5 text-left text-xs text-[var(--error)] hover:bg-[var(--bg-primary)]"
                   >
                     Clear all
                   </button>

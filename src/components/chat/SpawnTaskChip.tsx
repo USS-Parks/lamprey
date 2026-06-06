@@ -24,7 +24,7 @@ export function SpawnTaskChip({
   onDismiss
 }: SpawnTaskChipProps) {
   return (
-    <div className="flex min-w-0 items-start gap-2 rounded border border-[var(--border)] bg-[var(--bg-primary)] px-2 py-2 text-xs shadow-sm">
+    <div className="flex min-w-0 items-start gap-2 rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] px-2 py-2 text-xs shadow-sm">
       <button
         type="button"
         onClick={() => onOpen(task)}
@@ -37,12 +37,12 @@ export function SpawnTaskChip({
         </span>
         <span className="mt-1 flex flex-wrap gap-1">
           {task.worktreePath && (
-            <span className="rounded border border-[var(--border)] px-1 py-0.5 text-[9px] uppercase text-[var(--text-muted)]">
+            <span className="rounded border border-[var(--panel-border)] px-1 py-0.5 text-[9px] uppercase text-[var(--text-muted)]">
               worktree
             </span>
           )}
           {task.branch && (
-            <span className="rounded border border-[var(--border)] px-1 py-0.5 text-[9px] text-[var(--text-muted)]">
+            <span className="rounded border border-[var(--panel-border)] px-1 py-0.5 text-[9px] text-[var(--text-muted)]">
               {task.branch}
             </span>
           )}
@@ -58,7 +58,7 @@ export function SpawnTaskChip({
             'rounded border px-1.5 py-0.5 text-[10px] transition-colors ' +
             (activeSource
               ? 'border-[var(--accent)] text-[var(--accent)]'
-              : 'border-[var(--border)] text-[var(--text-muted)] hover:border-[var(--accent)] hover:text-[var(--accent)]')
+              : 'border-[var(--panel-border)] text-[var(--text-muted)] hover:border-[var(--accent)] hover:text-[var(--accent)]')
           }
         >
           source

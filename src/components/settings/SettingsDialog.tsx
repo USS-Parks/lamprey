@@ -17,6 +17,7 @@ import { ActivityTimeline } from '@/components/activity/ActivityTimeline'
 import { LibraryView } from '@/components/library/LibraryView'
 import { RagSettings } from './RagSettings'
 import { SnipSettings } from './SnipSettings'
+import { StreamingTimeoutsSettings } from './StreamingTimeoutsSettings'
 import { useUiStore } from '@/stores/ui-store'
 
 interface SettingsDialogProps {
@@ -41,6 +42,7 @@ const TABS = [
   { id: 'library', label: 'Library' },
   { id: 'rag', label: 'RAG' },
   { id: 'snip', label: 'Snip' },
+  { id: 'timeouts', label: 'Timeouts' },
   { id: 'activity', label: 'Activity' }
 ] as const
 
@@ -52,9 +54,9 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
 
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/60">
-      <div className="flex h-[560px] w-[720px] overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)] shadow-2xl">
+      <div className="flex h-[560px] w-[720px] overflow-hidden rounded-lg border border-[var(--panel-border)] bg-[var(--bg-secondary)] shadow-2xl">
         {/* Sidebar tabs */}
-        <div className="flex w-40 flex-col border-r border-[var(--border)] bg-[var(--bg-primary)] py-2">
+        <div className="flex w-40 flex-col bg-[var(--bg-primary)] py-2">
           {TABS.map((tab) => (
             <button
               key={tab.id}
@@ -72,7 +74,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
 
         {/* Content */}
         <div className="flex flex-1 flex-col">
-          <div className="flex h-10 items-center justify-between border-b border-[var(--border)] px-4">
+          <div className="flex h-10 items-center justify-between px-4">
             <span className="font-mono text-xs font-semibold text-[var(--text-primary)]">
               Settings
             </span>
@@ -111,6 +113,7 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
             {activeTab === 'library' && <LibraryView />}
             {activeTab === 'rag' && <RagSettings />}
             {activeTab === 'snip' && <SnipSettings />}
+            {activeTab === 'timeouts' && <StreamingTimeoutsSettings />}
             {activeTab === 'activity' && <ActivityTimeline />}
           </div>
         </div>

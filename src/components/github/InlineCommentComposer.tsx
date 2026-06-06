@@ -83,7 +83,7 @@ export function InlineCommentComposer({ owner, repo, number, onPosted }: Props) 
   }
 
   return (
-    <div className="flex flex-col gap-2 rounded border border-[var(--border)] bg-[var(--bg-tertiary)] p-2 text-[12px]">
+    <div className="flex flex-col gap-2 rounded border border-[var(--panel-border)] bg-[var(--bg-tertiary)] p-2 text-[12px]">
       <div className="flex items-center gap-2">
         <span className="text-[10px] uppercase tracking-wider text-[var(--text-muted)]">
           New review
@@ -91,7 +91,7 @@ export function InlineCommentComposer({ owner, repo, number, onPosted }: Props) 
         <select
           value={event}
           onChange={(e) => setEvent(e.target.value as typeof event)}
-          className="rounded border border-[var(--border)] bg-[var(--bg-primary)] px-1.5 py-0.5 text-[11px] text-[var(--text-primary)]"
+          className="rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] px-1.5 py-0.5 text-[11px] text-[var(--text-primary)]"
         >
           {EVENT_OPTIONS.map((o) => (
             <option key={o.key} value={o.key}>
@@ -106,27 +106,27 @@ export function InlineCommentComposer({ owner, repo, number, onPosted }: Props) 
         onChange={(e) => setBody(e.target.value)}
         rows={3}
         placeholder="Overall review summary (optional)"
-        className="resize-none rounded border border-[var(--border)] bg-[var(--bg-primary)] px-2 py-1 text-[12px] text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+        className="resize-none rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] px-2 py-1 text-[12px] text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
       />
 
       {comments.length > 0 && (
         <ul className="flex flex-col gap-1.5">
           {comments.map((c) => (
-            <li key={c.id} className="rounded border border-[var(--border)] bg-[var(--bg-primary)] p-1.5">
+            <li key={c.id} className="rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] p-1.5">
               <div className="flex items-center gap-1">
                 <input
                   type="text"
                   value={c.path}
                   onChange={(e) => update(c.id, { path: e.target.value })}
                   placeholder="path/to/file.ts"
-                  className="flex-1 rounded border border-[var(--border)] bg-[var(--bg-secondary)] px-1.5 py-0.5 font-mono text-[11px] text-[var(--text-primary)]"
+                  className="flex-1 rounded border border-[var(--panel-border)] bg-[var(--bg-secondary)] px-1.5 py-0.5 font-mono text-[11px] text-[var(--text-primary)]"
                 />
                 <input
                   type="text"
                   value={c.line}
                   onChange={(e) => update(c.id, { line: e.target.value })}
                   placeholder="line"
-                  className="w-16 rounded border border-[var(--border)] bg-[var(--bg-secondary)] px-1.5 py-0.5 text-[11px] text-[var(--text-primary)]"
+                  className="w-16 rounded border border-[var(--panel-border)] bg-[var(--bg-secondary)] px-1.5 py-0.5 text-[11px] text-[var(--text-primary)]"
                 />
                 <button
                   type="button"
@@ -142,7 +142,7 @@ export function InlineCommentComposer({ owner, repo, number, onPosted }: Props) 
                 onChange={(e) => update(c.id, { body: e.target.value })}
                 rows={2}
                 placeholder="Inline comment body"
-                className="mt-1 w-full resize-none rounded border border-[var(--border)] bg-[var(--bg-secondary)] px-2 py-1 text-[11px] text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+                className="mt-1 w-full resize-none rounded border border-[var(--panel-border)] bg-[var(--bg-secondary)] px-2 py-1 text-[11px] text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
               />
             </li>
           ))}

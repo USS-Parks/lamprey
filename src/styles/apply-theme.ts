@@ -14,7 +14,9 @@ const TOKEN_TO_VAR: Record<keyof ThemePresetTokens, string> = {
   success: '--success',
   warning: '--warning',
   error: '--error',
-  codeBg: '--code-bg'
+  codeBg: '--code-bg',
+  appBg: '--app-bg',
+  panelBg: '--panel-bg'
 }
 
 export function applyThemePreset(preset: ThemePreset, mode: ThemeMode = 'dark'): void {

@@ -9,7 +9,7 @@ interface ActivityTrayProps {
 export function ActivityTray({ nodes, onUnpin }: ActivityTrayProps): ReactElement | null {
   if (nodes.length === 0) return null
   return (
-    <div className="mx-3 mt-2 rounded-md border border-[var(--border)] bg-[var(--bg-primary)]/70 p-2" data-testid="activity-tray">
+    <div className="mx-3 mt-2 rounded-md border border-[var(--panel-border)] bg-[var(--bg-primary)]/70 p-2" data-testid="activity-tray">
       <div className="mb-1 flex items-center justify-between">
         <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--text-muted)]">
           Watching
@@ -23,7 +23,7 @@ export function ActivityTray({ nodes, onUnpin }: ActivityTrayProps): ReactElemen
             type="button"
             onClick={() => onUnpin(node.id)}
             title={`Unpin ${node.title}`}
-            className="max-w-full rounded border border-[var(--border)] bg-[var(--bg-secondary)] px-1.5 py-1 text-left transition-colors hover:bg-[var(--bg-tertiary)]"
+            className="max-w-full rounded border border-[var(--panel-border)] bg-[var(--bg-secondary)] px-1.5 py-1 text-left transition-colors hover:bg-[var(--bg-tertiary)]"
           >
             <span className="block max-w-[10rem] truncate text-[11px] text-[var(--text-primary)]">
               {node.title}

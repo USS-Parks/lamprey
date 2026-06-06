@@ -36,6 +36,7 @@ import {
   resolveAgentDispatch,
   runAgentPipeline,
   validateRoster,
+  __setStageBudgetsForTesting,
   type AgentRoster,
   type PipelineEmitter
 } from './agent-pipeline'
@@ -558,5 +559,123 @@ describe('runAgentPipeline — coexistence with multi_agent_run', () => {
       emitter: makeEmitter().emitter
     })
     expect(seenTools).toBe(fakeTools)
+  })
+})
+
+describe('runAgentPipeline — per-stage wall-clock budgets (T3)', () => {
+  afterEach(() => {
+    __setStageBudgetsForTesting(null)
+  })
+
+  it('aborts the Coder via signal when its budget expires and reports a clean error', async () => {
+    __setStageBudgetsForTesting({ planner: 0, coder: 80, reviewer: 0 })
+
+    const subAgentRunner: SubAgentRunner = async (_m, modelId) =>
+      modelId === planner ? 'plan' : 'review'
+
+    // Coder runner that watches its passed signal: never resolves on its own,
+    // throws an AbortError if the signal fires (so we can prove the budget
+    // really did wire through and abort it).
+    const coderRunner = async (params: { signal: AbortSignal }) => {
+      return new Promise<{ message: unknown } | null>((_, reject) => {
+        params.signal.addEventListener('abort', () => {
+          const e = new Error('aborted by signal')
+          e.name = 'AbortError'
+          reject(e)
+        })
+      })
+    }
+
+    const { emitter, status, errors } = makeEmitter()
+    const signal = new AbortController().signal
+
+    const start = Date.now()
+    await runAgentPipeline({
+      conversationId: 'c1',
+      roster: validRoster,
+      userContent: 'do the thing',
+      systemPrompt: '<sys>',
+      priorMessages: [],
+      tools: undefined,
+      workspacePath: '/tmp',
+      signal,
+      subAgentRunner,
+      coderRunner,
+      emitter
+    })
+    const elapsed = Date.now() - start
+
+    expect(elapsed).toBeLessThan(2_000)
+    expect(elapsed).toBeGreaterThanOrEqual(70)
+    const coderError = status.find((s) => s.role === 'coder' && s.state === 'error')
+    expect(coderError).toBeDefined()
+    expect(errors.length).toBe(1)
+    expect(errors[0]).toMatch(/budget/i)
+  })
+
+  it('does NOT abort the Coder before its budget when work completes in time', async () => {
+    __setStageBudgetsForTesting({ planner: 0, coder: 5_000, reviewer: 0 })
+
+    const subAgentRunner: SubAgentRunner = async (_m, modelId) =>
+      modelId === planner ? 'plan' : 'review'
+
+    const coderRunner = async () => {
+      // Returns immediately — budget should never trigger.
+      return { message: { content: 'fast coder' } }
+    }
+
+    const { emitter, status, errors, done } = makeEmitter()
+    await runAgentPipeline({
+      conversationId: 'c1',
+      roster: validRoster,
+      userContent: 'fast task',
+      systemPrompt: '<sys>',
+      priorMessages: [],
+      tools: undefined,
+      workspacePath: '/tmp',
+      signal: new AbortController().signal,
+      subAgentRunner,
+      coderRunner,
+      emitter
+    })
+
+    expect(errors).toEqual([])
+    expect(status.find((s) => s.role === 'coder' && s.state === 'done')).toBeDefined()
+    expect(done.length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('budget=0 disables the cap entirely (coder can run indefinitely)', async () => {
+    __setStageBudgetsForTesting({ planner: 0, coder: 0, reviewer: 0 })
+
+    const subAgentRunner: SubAgentRunner = async (_m, modelId) =>
+      modelId === planner ? 'plan' : 'review'
+
+    let abortFired = false
+    const coderRunner = async (params: { signal: AbortSignal }) => {
+      params.signal.addEventListener('abort', () => {
+        abortFired = true
+      })
+      // Wait briefly to make sure no budget timer would have fired.
+      await new Promise((r) => setTimeout(r, 50))
+      return { message: { content: 'done' } }
+    }
+
+    const { emitter, errors } = makeEmitter()
+    await runAgentPipeline({
+      conversationId: 'c1',
+      roster: validRoster,
+      userContent: 'task',
+      systemPrompt: '<sys>',
+      priorMessages: [],
+      tools: undefined,
+      workspacePath: '/tmp',
+      signal: new AbortController().signal,
+      subAgentRunner,
+      coderRunner,
+      emitter
+    })
+
+    expect(errors).toEqual([])
+    expect(abortFired).toBe(false)
   })
 })

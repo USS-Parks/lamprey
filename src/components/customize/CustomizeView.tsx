@@ -6,7 +6,7 @@ import { ConnectorsColumn } from './ConnectorsColumn'
 import { PluginsColumn } from './PluginsColumn'
 import { NewSkillWizard } from './NewSkillWizard'
 import { AddConnectorFlow } from './AddConnectorFlow'
-import { InstallPluginFlow } from './InstallPluginFlow'
+import { InstallPluginFlow, type InstallPluginFlowTab } from './InstallPluginFlow'
 import connectAppsIconLight from '@assets/Lamprey Connect Apps Icon.png'
 import connectAppsIconDark from '@assets/Lamprey Connect Apps Icon Dark View.png'
 import skillsTeacherIconLight from '@assets/Lamprey Skills Teacher Icon Light View.png'
@@ -39,7 +39,7 @@ function CtaCard({ title, description, onClick, icon, disabled }: CtaCardProps) 
     <button
       onClick={onClick}
       disabled={disabled}
-      className={`group flex w-full items-start gap-3 rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)] p-4 text-left transition-colors ${
+      className={`group flex w-full items-start gap-3 rounded-lg border border-[var(--panel-border)] bg-[var(--bg-secondary)] p-4 text-left transition-colors ${
         disabled
           ? 'cursor-not-allowed opacity-60'
           : 'hover:border-[var(--accent)] hover:bg-[var(--bg-tertiary)]'
@@ -77,6 +77,14 @@ export function CustomizeView() {
   const [wizardOpen, setWizardOpen] = useState(false)
   const [addConnectorOpen, setAddConnectorOpen] = useState(false)
   const [installPluginOpen, setInstallPluginOpen] = useState(false)
+  const [installPluginTab, setInstallPluginTab] = useState<InstallPluginFlowTab | undefined>(
+    undefined
+  )
+
+  const openInstallPlugin = (tab?: InstallPluginFlowTab) => {
+    setInstallPluginTab(tab)
+    setInstallPluginOpen(true)
+  }
 
   // Highlighting only — every column renders all the time so the panel
   // shows the full surface at a glance, matching the Claude Code layout.
@@ -85,7 +93,7 @@ export function CustomizeView() {
   return (
     <div className="fixed inset-0 z-30 flex flex-col bg-[var(--bg-primary)]">
       {/* Breadcrumb / close row */}
-      <div className="flex h-12 shrink-0 items-center gap-2 border-b border-[var(--border)] px-4">
+      <div className="flex h-12 shrink-0 items-center gap-2 px-4">
         <button
           onClick={closeCustomize}
           aria-label="Back to chat"
@@ -135,17 +143,19 @@ export function CustomizeView() {
             key={col.id}
             aria-label={col.label}
             className={`flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border bg-[var(--bg-secondary)] ${
-              focusColumn === col.id ? 'border-[var(--accent)]' : 'border-[var(--border)]'
+              focusColumn === col.id ? 'border-[var(--accent)]' : 'border-[var(--panel-border)]'
             }`}
           >
-            <header className="shrink-0 border-b border-[var(--border)] px-4 py-3">
+            <header className="shrink-0 px-4 py-3">
               <div className="text-[15px] font-semibold text-[var(--text-primary)]">
                 {col.label}
               </div>
               <div className="text-[12px] text-[var(--text-secondary)]">{col.description}</div>
             </header>
             <div className="min-h-0 flex-1 overflow-y-auto">
-              {col.id === 'skills' && <SkillsColumn />}
+              {col.id === 'skills' && (
+                <SkillsColumn onOpenImport={() => openInstallPlugin('cc-import')} />
+              )}
               {col.id === 'connectors' && <ConnectorsColumn />}
               {col.id === 'plugins' && <PluginsColumn />}
             </div>
@@ -154,7 +164,7 @@ export function CustomizeView() {
       </div>
 
       {/* CTA cards. Wired live in C4/C6/C10; inert this prompt. */}
-      <div className="shrink-0 border-t border-[var(--border)] bg-[var(--bg-secondary)] px-6 py-4">
+      <div className="shrink-0 bg-[var(--bg-secondary)] px-6 py-4">
         <div className="mx-auto grid max-w-4xl grid-cols-1 gap-3 sm:grid-cols-3">
           <CtaCard
             title="Connect your apps"
@@ -171,7 +181,7 @@ export function CustomizeView() {
           <CtaCard
             title="Browse plugins"
             description="Discover and install bundled plugin packs."
-            onClick={() => setInstallPluginOpen(true)}
+            onClick={() => openInstallPlugin()}
             icon={<PlugInsIcon />}
           />
         </div>
@@ -179,7 +189,15 @@ export function CustomizeView() {
 
       {wizardOpen && <NewSkillWizard onClose={() => setWizardOpen(false)} />}
       {addConnectorOpen && <AddConnectorFlow onClose={() => setAddConnectorOpen(false)} />}
-      {installPluginOpen && <InstallPluginFlow onClose={() => setInstallPluginOpen(false)} />}
+      {installPluginOpen && (
+        <InstallPluginFlow
+          onClose={() => {
+            setInstallPluginOpen(false)
+            setInstallPluginTab(undefined)
+          }}
+          {...(installPluginTab ? { initialTab: installPluginTab } : {})}
+        />
+      )}
     </div>
   )
 }

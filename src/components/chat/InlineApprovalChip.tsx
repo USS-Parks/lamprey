@@ -23,7 +23,7 @@ interface InlineApprovalChipProps {
 }
 
 const RISK_COLOR: Record<ToolRisk, string> = {
-  read: 'text-[var(--text-muted)] border-[var(--border)]',
+  read: 'text-[var(--text-muted)] border-[var(--panel-border)]',
   write: 'text-amber-300 border-amber-500/30',
   network: 'text-sky-300 border-sky-500/30',
   destructive: 'text-red-300 border-red-500/40',
@@ -147,14 +147,14 @@ export function InlineApprovalChip({
         <button
           type="button"
           onClick={() => respond('deny', 'once')}
-          className="rounded border border-[var(--border)] px-2 py-1 text-[11px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]"
+          className="rounded border border-[var(--panel-border)] px-2 py-1 text-[11px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]"
         >
           <span className="font-mono">2</span> Deny
         </button>
         <button
           type="button"
           onClick={() => respond('allow', 'workspace')}
-          className="rounded border border-[var(--border)] px-2 py-1 text-[11px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]"
+          className="rounded border border-[var(--panel-border)] px-2 py-1 text-[11px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]"
           title="Always allow this tool in this workspace"
         >
           <span className="font-mono">3</span> Always

@@ -87,7 +87,7 @@ export function ApiKeyModal({ onComplete, onDismiss, defaultProvider, required =
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80">
-      <div className="relative w-[460px] rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)] p-6">
+      <div className="relative w-[460px] rounded-lg border border-[var(--panel-border)] bg-[var(--bg-secondary)] p-6">
         {!required && onDismiss && (
           <button
             onClick={onDismiss}
@@ -128,7 +128,7 @@ export function ApiKeyModal({ onComplete, onDismiss, defaultProvider, required =
           <select
             value={selected}
             onChange={(e) => setSelected(e.target.value)}
-            className="mt-1 w-full rounded border border-[var(--border)] bg-[var(--bg-primary)] px-2 py-2 font-mono text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+            className="mt-1 w-full rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] px-2 py-2 font-mono text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
           >
             {providers.map((p) => (
               <option key={p.id} value={p.id}>
@@ -145,7 +145,7 @@ export function ApiKeyModal({ onComplete, onDismiss, defaultProvider, required =
           onChange={(e) => setKey(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
           placeholder={selected === 'deepseek' ? 'sk-...' : 'API key'}
-          className="mt-3 w-full rounded border border-[var(--border)] bg-[var(--bg-primary)] px-3 py-2 font-mono text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+          className="mt-3 w-full rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] px-3 py-2 font-mono text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
           autoFocus
         />
 

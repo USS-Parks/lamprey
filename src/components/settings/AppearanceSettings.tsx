@@ -27,7 +27,7 @@ export function AppearanceSettings() {
         <div className="mb-2 text-[13px] font-medium uppercase tracking-wider text-[var(--text-muted)]">
           Mode
         </div>
-        <div className="inline-flex overflow-hidden rounded-md border border-[var(--border)]">
+        <div className="inline-flex overflow-hidden rounded-md border border-[var(--panel-border)]">
           <button
             onClick={() => updateSettings({ themeMode: 'light' })}
             aria-pressed={!isDark}
@@ -64,7 +64,7 @@ export function AppearanceSettings() {
               className={`flex flex-col items-stretch gap-2 rounded border bg-[var(--bg-primary)] p-3 text-left transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${
                 active
                   ? 'border-[var(--accent)] ring-1 ring-[var(--accent)]'
-                  : 'border-[var(--border)] hover:bg-[var(--bg-tertiary)]'
+                  : 'border-[var(--panel-border)] hover:bg-[var(--bg-tertiary)]'
               }`}
             >
               <div className="flex items-baseline justify-between gap-2">

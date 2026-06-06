@@ -33,7 +33,7 @@ export function MetaScaffolder({ onInsert }: MetaScaffolderProps): ReactElement 
     <button
       type="button"
       onClick={() => onInsert(workflowScaffold())}
-      className="rounded border border-[var(--border)] px-2 py-1 font-mono text-[11px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]"
+      className="rounded border border-[var(--panel-border)] px-2 py-1 font-mono text-[11px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]"
     >
       Scaffold meta
     </button>

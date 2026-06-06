@@ -663,7 +663,7 @@ export function Sidebar() {
         <aside
           role="dialog"
           aria-label="Navigation"
-          className="fixed bottom-0 left-0 top-0 z-50 flex flex-col border-r border-[var(--border)] bg-[var(--bg-secondary)] shadow-2xl"
+          className="fixed bottom-0 left-0 top-0 z-50 flex flex-col overflow-hidden rounded-r-[var(--panel-radius)] bg-[var(--panel-bg)] shadow-2xl"
           style={{
             width: Math.min(sidebarWidth, window.innerWidth - 48),
             transform: 'translateX(0)',
@@ -726,7 +726,7 @@ export function Sidebar() {
   if (sidebarCollapsed) {
     return (
       <div
-        className="relative flex h-full w-12 flex-col items-center border-r border-[var(--border)] bg-[var(--bg-secondary)] py-3"
+        className="relative flex h-full w-12 flex-col items-center overflow-hidden rounded-[var(--panel-radius)] bg-[var(--panel-bg)] py-3"
         style={transitionStyle}
       >
         <button
@@ -784,7 +784,7 @@ export function Sidebar() {
 
   return (
     <div
-      className="relative flex h-full flex-col border-r border-[var(--border)] bg-[var(--bg-secondary)]"
+      className="relative flex h-full flex-col overflow-hidden rounded-[var(--panel-radius)] bg-[var(--panel-bg)]"
       style={{ width: sidebarWidth, minWidth: sidebarWidth, ...(transitionStyle ?? {}) }}
     >
       <SidebarBody
@@ -1025,7 +1025,7 @@ function SidebarBody(props: SidebarBodyProps) {
                 if (!searchQuery.trim()) setFilterVisible(false)
               }}
               placeholder="Filter conversations…"
-              className="w-full rounded-md border border-[var(--border)] bg-[var(--bg-primary)] px-2 py-1 pl-7 text-[14px] text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)] focus:border-[var(--accent)]"
+              className="w-full rounded-md border border-[var(--panel-border)] bg-[var(--bg-primary)] px-2 py-1 pl-7 text-[14px] text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)] focus:border-[var(--accent)]"
             />
           </div>
         </div>
@@ -1140,7 +1140,7 @@ function SidebarBody(props: SidebarBodyProps) {
         </>
       )}
 
-      <div className="border-t border-[var(--border)] px-2 pb-2 pt-2">
+      <div className="mt-1 px-2 pb-2 pt-2">
         <NavRow
           icon={settingsIconUrl}
           label="Settings"

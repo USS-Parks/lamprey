@@ -35,7 +35,7 @@ export function TranscriptNotice({ notice, onDismiss }: TranscriptNoticeProps) {
       onClick={interactive ? notice.onActivate : undefined}
       data-transcript-notice={notice.id}
       className={
-        'mx-auto my-2 flex w-full max-w-[80%] items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--bg-secondary)]/60 px-3 py-1.5 text-left text-[12px] transition-colors ' +
+        'mx-auto my-2 flex w-full max-w-[80%] items-center gap-2 rounded-md bg-[var(--bg-tertiary)]/60 px-3 py-1.5 text-left text-[12px] transition-colors ' +
         (interactive ? 'hover:bg-[var(--bg-tertiary)]' : '')
       }
     >

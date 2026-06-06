@@ -97,7 +97,7 @@ export function ChapterQuickJumper({ conversationId }: ChapterQuickJumperProps) 
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-md rounded-md border border-[var(--border)] bg-[var(--bg-primary)] shadow-xl"
+        className="w-full max-w-md rounded-md border border-[var(--panel-border)] bg-[var(--bg-primary)] shadow-xl"
       >
         <input
           ref={inputRef}
@@ -110,7 +110,7 @@ export function ChapterQuickJumper({ conversationId }: ChapterQuickJumperProps) 
           placeholder="Jump to chapter…"
           className="w-full rounded-t-md bg-transparent px-3 py-2 text-[13px] text-[var(--text-primary)] outline-none"
         />
-        <div className="max-h-[280px] overflow-y-auto border-t border-[var(--border)]">
+        <div className="max-h-[280px] overflow-y-auto border-t border-[var(--panel-border)]">
           {ranked.length === 0 && (
             <div className="px-3 py-2 text-[12px] text-[var(--text-muted)]">No matches.</div>
           )}
@@ -125,7 +125,7 @@ export function ChapterQuickJumper({ conversationId }: ChapterQuickJumperProps) 
                   setOpen(false)
                 }}
                 className={
-                  'flex w-full items-start gap-2 border-b border-[var(--border)] px-3 py-1.5 text-left last:border-b-0 ' +
+                  'flex w-full items-start gap-2 border-b border-[var(--panel-border)] px-3 py-1.5 text-left last:border-b-0 ' +
                   (active ? 'bg-[var(--bg-secondary)]' : 'hover:bg-[var(--bg-secondary)]')
                 }
               >
@@ -141,7 +141,7 @@ export function ChapterQuickJumper({ conversationId }: ChapterQuickJumperProps) 
             )
           })}
         </div>
-        <div className="border-t border-[var(--border)] px-3 py-1 text-[10px] text-[var(--text-muted)]">
+        <div className="border-t border-[var(--panel-border)] px-3 py-1 text-[10px] text-[var(--text-muted)]">
           ↑ ↓ navigate · Enter jump · Esc close
         </div>
       </div>

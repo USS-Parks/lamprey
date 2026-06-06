@@ -55,8 +55,8 @@ export function WorkflowEditor({ onSaved }: WorkflowEditorProps): ReactElement {
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col border-l border-[var(--border)] bg-[var(--bg-primary)]" data-testid="workflow-editor">
-      <div className="flex items-center justify-between border-b border-[var(--border)] px-3 py-2">
+    <div className="flex min-h-0 flex-1 flex-col border-l border-[var(--panel-border)] bg-[var(--bg-primary)]" data-testid="workflow-editor">
+      <div className="flex items-center justify-between border-b border-[var(--panel-border)] px-3 py-2">
         <div>
           <div className="text-[13px] font-medium text-[var(--text-primary)]">New workflow</div>
           {validation && (
@@ -70,7 +70,7 @@ export function WorkflowEditor({ onSaved }: WorkflowEditorProps): ReactElement {
           <button
             type="button"
             onClick={() => setDryRun(dryRunWorkflowSource(script))}
-            className="rounded border border-[var(--border)] px-2 py-1 font-mono text-[11px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]"
+            className="rounded border border-[var(--panel-border)] px-2 py-1 font-mono text-[11px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]"
           >
             Dry run
           </button>
@@ -91,8 +91,8 @@ export function WorkflowEditor({ onSaved }: WorkflowEditorProps): ReactElement {
           spellCheck={false}
           className="min-h-0 resize-none border-0 bg-[var(--bg-primary)] p-3 font-mono text-[12px] leading-5 text-[var(--text-primary)] outline-none"
         />
-        <div className="flex min-h-0 flex-col gap-2 overflow-y-auto border-l border-[var(--border)] p-2">
-          <div className="rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] p-2">
+        <div className="flex min-h-0 flex-col gap-2 overflow-y-auto border-l border-[var(--panel-border)] p-2">
+          <div className="rounded-md border border-[var(--panel-border)] bg-[var(--bg-secondary)] p-2">
             <div className="mb-1 font-mono text-[10px] uppercase tracking-wider text-[var(--text-muted)]">
               Registry
             </div>

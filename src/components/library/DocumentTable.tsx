@@ -33,7 +33,7 @@ export function DocumentTable({ collectionId }: { collectionId: string }) {
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto rounded border border-[var(--border)]">
+    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto rounded border border-[var(--panel-border)]">
       <table className="w-full font-mono text-[11px]">
         <thead className="sticky top-0 bg-[var(--bg-secondary)]">
           <tr className="text-left text-[var(--text-muted)]">
@@ -72,7 +72,7 @@ function DocumentRow({
 }) {
   const style = STATUS_STYLES[doc.status]
   return (
-    <tr className="border-t border-[var(--border)]/50">
+    <tr className="border-t border-[var(--panel-border)]/50">
       <td className="truncate px-2 py-1 text-[var(--text-primary)]" title={doc.sourcePath ?? doc.displayName}>
         {doc.displayName}
       </td>

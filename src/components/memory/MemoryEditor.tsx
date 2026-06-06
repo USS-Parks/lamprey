@@ -105,7 +105,7 @@ export function MemoryEditor({ initial, initialDraft, onClose, onDeleted }: Prop
             id="memory-editor-type"
             value={type}
             onChange={(e) => setType(e.target.value as MemoryType)}
-            className="rounded border border-[var(--border)] bg-[var(--bg-primary)] px-2 py-1 text-[12px] text-[var(--text-primary)]"
+            className="rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] px-2 py-1 text-[12px] text-[var(--text-primary)]"
           >
             {ALL_TYPES.map((t) => (
               <option key={t} value={t}>
@@ -129,7 +129,7 @@ export function MemoryEditor({ initial, initialDraft, onClose, onDeleted }: Prop
           disabled={editing}
           onChange={(e) => setName(e.target.value)}
           placeholder="feedback_no_coauthor_trailer"
-          className="rounded border border-[var(--border)] bg-[var(--bg-primary)] px-2 py-1 text-[12px] text-[var(--text-primary)] disabled:opacity-60"
+          className="rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] px-2 py-1 text-[12px] text-[var(--text-primary)] disabled:opacity-60"
         />
 
         <label
@@ -144,7 +144,7 @@ export function MemoryEditor({ initial, initialDraft, onClose, onDeleted }: Prop
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           placeholder="One-line hook shown in MEMORY.md"
-          className="rounded border border-[var(--border)] bg-[var(--bg-primary)] px-2 py-1 text-[12px] text-[var(--text-primary)]"
+          className="rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] px-2 py-1 text-[12px] text-[var(--text-primary)]"
         />
       </div>
 
@@ -158,7 +158,7 @@ export function MemoryEditor({ initial, initialDraft, onClose, onDeleted }: Prop
           onChange={(e) => setBody(e.target.value)}
           rows={10}
           placeholder="Body — use [[other-memory-name]] to cross-reference."
-          className="mt-1 w-full resize-none rounded border border-[var(--border)] bg-[var(--bg-primary)] px-2 py-1.5 font-mono text-[12px] leading-relaxed text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+          className="mt-1 w-full resize-none rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] px-2 py-1.5 font-mono text-[12px] leading-relaxed text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
         />
         <MemoryLinkPicker textarea={bodyRef.current} />
       </div>

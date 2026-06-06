@@ -379,7 +379,7 @@ function App(): React.ReactElement {
   }
 
   return (
-    <div className="flex h-screen w-screen flex-col overflow-hidden bg-[var(--bg-primary)] text-[var(--text-primary)]">
+    <div className="flex h-screen w-screen flex-col overflow-hidden bg-[var(--app-bg)] text-[var(--text-primary)]">
       {needsApiKey && (
         <ApiKeyModal
           onComplete={() => {
@@ -411,13 +411,13 @@ function App(): React.ReactElement {
           SecondaryToolbar now lives at the top of the right panel only
           (suppressed when the right panel is collapsed or showing a
           transient ArtifactPanel). */}
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 gap-[var(--panel-gap)] overflow-hidden p-[var(--panel-gap)]">
         <Sidebar />
 
         <div ref={chatWorkspaceRef} className="flex flex-1 flex-col">
           <SecurityBanner />
           <UpdateBanner />
-          <div className="flex flex-1 overflow-hidden bg-[var(--bg-secondary)] p-2">
+          <div className="flex flex-1 overflow-hidden bg-transparent p-2">
             <ChatView rightInset={shouldShowEnvCard ? envCardWidth : 0} />
           </div>
         </div>
@@ -426,7 +426,7 @@ function App(): React.ReactElement {
             collapsed, full panel when expanded). On narrow viewports it's
             lifted out into a fixed slide-over drawer (see block below). */}
         {!isNarrow && rightPanelCollapsed && (
-          <div className="flex h-full w-8 flex-col items-center border-l border-[var(--border)] bg-[var(--bg-secondary)] py-2">
+          <div className="flex h-full w-8 flex-col items-center rounded-[var(--panel-radius)] bg-[var(--panel-bg)] py-2">
             <button
               onClick={() => setRightPanelCollapsed(false)}
               title="Expand artifacts panel"
@@ -442,7 +442,7 @@ function App(): React.ReactElement {
         )}
         {!isNarrow && !rightPanelCollapsed && activeTool && (
           <div
-            className="relative flex flex-col border-l border-[var(--border)] bg-[var(--bg-secondary)]"
+            className="relative flex flex-col overflow-hidden rounded-[var(--panel-radius)] bg-[var(--panel-bg)]"
             style={{ width: rightPanelWidth, minWidth: rightPanelWidth }}
           >
             <div
@@ -466,7 +466,7 @@ function App(): React.ReactElement {
         )}
         {!isNarrow && !rightPanelCollapsed && !activeTool && !artifactOpen && (
           <div
-            className="relative flex flex-col border-l border-[var(--border)] bg-[var(--bg-secondary)]"
+            className="relative flex flex-col overflow-hidden rounded-[var(--panel-radius)] bg-[var(--panel-bg)]"
             style={{ width: rightPanelWidth, minWidth: rightPanelWidth }}
           >
             <div
@@ -497,7 +497,7 @@ function App(): React.ReactElement {
           <aside
             role="dialog"
             aria-label="Workspace panel"
-            className="fixed bottom-0 right-0 top-0 z-50 flex flex-col border-l border-[var(--border)] bg-[var(--bg-secondary)] shadow-2xl"
+            className="fixed bottom-0 right-0 top-0 z-50 flex flex-col overflow-hidden rounded-l-[var(--panel-radius)] bg-[var(--panel-bg)] shadow-2xl"
             style={{
               width: Math.min(rightPanelWidth, window.innerWidth - 24),
               transition: 'transform 200ms ease-out',
