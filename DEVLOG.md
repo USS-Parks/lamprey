@@ -1,5 +1,20 @@
 # Lamprey Harness Dev Log
 
+## [Reasoning-Trace — Prompt RT1] Reviewer prompt-tuning  —  2026-06-06
+
+**Files changed:** `electron/services/system-prompt-builder.ts`, `electron/services/system-prompt-builder.test.ts`
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- electron-vite build ✓
+- vitest (system-prompt-builder): 29 passed (was 24, +5 new guard tests) ✓
+- user-verification-needed: re-run a multi-agent turn that historically triggered the `<bash>`-as-prose hallucination and confirm reviewer output is clean Markdown. No canned repro exists in-tree.
+
+**Notes:** Patched `AGENT_ROLE_PROMPTS.reviewer` to (a) declare the reviewer has no tools, (b) forbid pseudo-XML tool tags by name (`<bash>`, `<tool>`, `<run>`, `<shell>`, `<execute>`, `<command>`, `<terminal>`, `<output>`, `<result>`, `<stdout>`, `<stderr>`), (c) route code references through fenced Markdown blocks with language tags, (d) keep the SHIP / FAIL-with-reasons / file:line evidence contract intact. New `describe` block in the test file pins each guard plus the propagation through `buildAgentSystemPrompt('reviewer')`.
+
+**Commit:** _this commit_
+
 ## [UX Polish] — 2026-06-06 (v0.7.5)
 
 Two-strand polish pass to land final-mile chrome cleanup + Plan-pill consolidation, stacked on top of the same-day R6 Tavily promotion (v0.7.3) and the panels card-uniformity hotfix (v0.7.4). No new features, no plan roster — focused commits, build, ship. Version 0.7.5 (skipping the local-machine 0.7.4 slot consumed by the panels hotfix).

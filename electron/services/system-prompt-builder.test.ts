@@ -260,3 +260,42 @@ describe('buildAgentSystemPrompt (multi-agentic primitive)', () => {
     expect(out).not.toContain('<contract>')
   })
 })
+
+// RT1 — Reviewer prompt-tuning. The reviewer stage is text-only and was
+// historically silent on output format, which let some models hallucinate
+// `<bash>` or `<tool>` blocks in prose as if they were calling tools. The
+// reviewer prompt must explicitly forbid those pseudo-tags, declare itself
+// tool-less, and route code references through fenced Markdown blocks.
+describe('AGENT_ROLE_PROMPTS.reviewer — anti-hallucination guards (RT1)', () => {
+  const reviewer = AGENT_ROLE_PROMPTS.reviewer
+
+  it('declares the reviewer has no tools in this stage', () => {
+    expect(reviewer).toMatch(/no tools available/i)
+    expect(reviewer).toMatch(/do not emit tool calls/i)
+  })
+
+  it('forbids the common pseudo-XML tool tags by name', () => {
+    expect(reviewer).toContain('<bash>')
+    expect(reviewer).toContain('<tool>')
+    expect(reviewer).toContain('<run>')
+    expect(reviewer).toContain('<shell>')
+  })
+
+  it('routes code references through fenced Markdown blocks', () => {
+    expect(reviewer).toMatch(/fenced Markdown/i)
+    expect(reviewer).toContain('```bash')
+  })
+
+  it('preserves the existing SHIP / file:line contract', () => {
+    expect(reviewer).toContain('SHIP')
+    expect(reviewer.toLowerCase()).toContain('file:line')
+  })
+
+  it('propagates the guards into buildAgentSystemPrompt output', () => {
+    const out = buildAgentSystemPrompt('reviewer')
+    expect(out).toMatch(/no tools available/i)
+    expect(out).toContain('<bash>')
+    expect(out).toMatch(/fenced Markdown/i)
+    expect(out).toContain('SHIP')
+  })
+})
