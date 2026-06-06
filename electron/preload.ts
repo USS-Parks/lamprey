@@ -279,6 +279,11 @@ const api = {
     pickExtraRoot: () => ipcRenderer.invoke('ccImport:pickExtraRoot')
   },
 
+  reasoningTrace: {
+    export: (payload: { conversationId: string; format: 'md' | 'csv' }) =>
+      ipcRenderer.invoke('reasoning-trace:export', payload)
+  },
+
   mcp: {
     list: () => ipcRenderer.invoke('mcp:list'),
     getStatus: (id: string) => ipcRenderer.invoke('mcp:getStatus', id),

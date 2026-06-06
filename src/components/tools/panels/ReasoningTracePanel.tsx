@@ -152,6 +152,25 @@ export function ReasoningTracePanel(): React.ReactElement {
     )
   }
 
+  const handleExport = async (format: 'md' | 'csv'): Promise<void> => {
+    const api = typeof window !== 'undefined' ? window.api : undefined
+    if (!api?.reasoningTrace?.export || !conversationId) return
+    try {
+      const res = await api.reasoningTrace.export({ conversationId, format })
+      if (res?.success && res.data?.path) {
+        // Best-effort confirmation; toast utility is available elsewhere in
+        // the app but importing it here would couple this panel to that
+        // store — a console log + alert is sufficient for the audit use-case.
+        // The user picked the destination so they know where the file went.
+        console.info(`[reasoning-trace] exported to ${res.data.path}`)
+      } else if (res?.error && res.error !== 'cancelled') {
+        console.warn('[reasoning-trace] export failed:', res.error)
+      }
+    } catch (err) {
+      console.warn('[reasoning-trace] export threw:', err)
+    }
+  }
+
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       <div className="flex flex-col gap-2 border-b border-[var(--panel-border)] px-3 py-2">
@@ -167,6 +186,25 @@ export function ReasoningTracePanel(): React.ReactElement {
           <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--text-muted)]">
             {filteredRows.length}/{rows.length}
           </span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="text-[11px] text-[var(--text-muted)]">Export:</span>
+          <button
+            type="button"
+            onClick={() => void handleExport('md')}
+            className="rounded-md border border-[var(--panel-border)] bg-[var(--bg-primary)] px-2 py-0.5 text-[11px] text-[var(--text-secondary)] transition-colors hover:border-[var(--accent)] hover:text-[var(--text-primary)]"
+            title="Save full audit trail as Markdown"
+          >
+            .md
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleExport('csv')}
+            className="rounded-md border border-[var(--panel-border)] bg-[var(--bg-primary)] px-2 py-0.5 text-[11px] text-[var(--text-secondary)] transition-colors hover:border-[var(--accent)] hover:text-[var(--text-primary)]"
+            title="Save full audit trail as CSV (one row per turn × stage)"
+          >
+            .csv
+          </button>
         </div>
         <div className="flex flex-wrap items-center gap-1">
           {STAGE_FILTERS.map((f) => {

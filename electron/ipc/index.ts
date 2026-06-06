@@ -45,6 +45,7 @@ import { registerStatusLineHandlers } from './statusline'
 import { registerResearchHandlers } from './research'
 import { registerSnipHandlers } from './snip'
 import { registerCcSkillImportHandlers } from './cc-skill-import'
+import { registerReasoningTraceHandlers } from './reasoning-trace'
 
 export function registerAllIpcHandlers(): void {
   registerChatHandlers()
@@ -89,4 +90,5 @@ export function registerAllIpcHandlers(): void {
   registerResearchHandlers()
   registerSnipHandlers()
   registerCcSkillImportHandlers()
+  registerReasoningTraceHandlers()
 }

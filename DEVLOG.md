@@ -1,5 +1,21 @@
 # Lamprey Harness Dev Log
 
+## [Reasoning-Trace — Prompt RT7] Audit-trail export (.md + .csv)  —  2026-06-06
+
+**Files changed:** `electron/services/reasoning-trace-exporter.ts` (new), `electron/services/reasoning-trace-exporter.test.ts` (new), `electron/ipc/reasoning-trace.ts` (new), `electron/ipc/index.ts`, `electron/preload.ts`, `src/components/tools/panels/ReasoningTracePanel.tsx`
+
+**Verify gate:**
+- tsc node ✓
+- tsc web ✓
+- electron-vite build ✓
+- vitest (reasoning-trace-exporter): 12 passed ✓
+- vitest (full suite): 1939 passed, 38 skipped (baseline 1927 + 12 new) ✓
+- user-verification-needed: launch · open Reasoning trace panel on a real multi-agent conversation · click `.md` → save dialog opens, write the file, open it in a Markdown viewer (heading per turn, fenced reasoning + content, stage subsections) · click `.csv` → write the file, open in Excel/LibreOffice (header row + one row per turn × stage, commas/quotes/newlines in excerpts not breaking columns) · click `.md` then cancel the dialog → no error, no toast; the panel stays responsive · reasoning content is exported verbatim — user controls the destination path (local-only export, no upload).
+
+**Notes:** Reasoning content is exported verbatim — user controls the destination path. Local-only via `dialog.showSaveDialog`; never POSTs anywhere. New `reasoning-trace-exporter.ts` exports `toMarkdown` + `toCsv` as pure functions taking an `ExportInput` shape with `{conversationId, conversationTitle?, generatedAt, turns: TurnInput[], stageMetrics: Record<msgId, PersistedStageMetric[]>}`. Markdown layout: top header block (conversation id + title + ISO `generatedAt` + turn count), then per-turn `## Turn N` with `### Stage: <stage>` subsections, `**Model:**` / `**Tokens:**` / `**Duration:**` meta bullets, then `#### Reasoning` + `#### Content` fenced blocks. CSV layout: 10 columns (`turn_index, stage, role, model, prompt_tokens, completion_tokens, duration_ms, timestamp, content_excerpt, reasoning_excerpt`), excerpts capped at 200 chars + whitespace-flattened, RFC-4180 escape via `csvEscape` (commas, quotes-doubled, embedded newlines → quoted cell). 12 exporter tests cover header content, multi-stage ordering, the synthetic empty-stage row for non-assistant turns, CSV escape correctness (quotes / commas / newlines), excerpt truncation with ellipsis, and trailing-newline conformance. New `electron/ipc/reasoning-trace.ts` registers `reasoning-trace:export` — pulls `getMessages` + per-message `listStageMetrics`, builds an `ExportInput`, runs `toMarkdown` or `toCsv` based on the payload format, opens `dialog.showSaveDialog` (defaultPath = `lamprey-reasoning-trace-<slug>.<ext>`), writes via `fs/promises.writeFile`. Returns `{success: true, data: {path}}` on write, `{success: false, error: 'cancelled'}` on dialog dismiss, `{success: false, error: <message>}` on validation/IO failures. Preload exposes the namespace `window.api.reasoningTrace.export({conversationId, format})`. Panel UI: two pill buttons `.md` + `.csv` in a new row inside the header (below the search input + filter chips). Hover titles describe the audit purpose. Errors other than 'cancelled' log to console; no toast UI added because the user picked the destination path and gets the dialog's success/cancel signal directly.
+
+**Commit:** _this commit_
+
 ## [Reasoning-Trace — Prompt RT6] Viewer per-stage expansion + search + filter chips  —  2026-06-06
 
 **Files changed:** `src/components/tools/panels/ReasoningTracePanel.tsx`
