@@ -1,5 +1,51 @@
 # Lamprey Harness Dev Log
 
+## [UX Polish] — 2026-06-06 (v0.7.5)
+
+Two-strand polish pass to land final-mile chrome cleanup + Plan-pill consolidation, stacked on top of the same-day R6 Tavily promotion (v0.7.3) and the panels card-uniformity hotfix (v0.7.4). No new features, no plan roster — focused commits, build, ship. Version 0.7.5 (skipping the local-machine 0.7.4 slot consumed by the panels hotfix).
+
+| Commit | Title |
+|---|---|
+| `1c02e73` | ui(chrome): drop top/bottom hairline borders so titlebar + statusline match chat substrate |
+| `3fa0d1e` | ux(plan): consolidate Plan signal to right-panel pill with pulse/glow |
+| _this_ | chore(release, v0.7.5): polish ship + DEVLOG |
+
+**Strand A — chrome cleanup (no more screen-edge hairlines)**
+
+Both the Titlebar (top of window) and StatusLine (bottom of window) had been painting `--bg-secondary` with a 1px `--panel-border` edge against the warm two-tone `--app-bg` substrate the Panels Phase introduced. That produced a visible hairline above the menu row and below the status row — the rest of the chat column is already `bg-transparent` on `--app-bg`, so these two rows were the last structural-chrome regressions against the Panels §2 allow-list. Both reduced to `bg-transparent`; theme- and mode-agnostic by design.
+
+- `src/components/layout/Titlebar.tsx:268` — `bg-[var(--bg-secondary)]` + `border-b` → `bg-transparent`.
+- `src/components/layout/StatusLine.tsx:320` — `bg-[var(--bg-secondary)]` + `border-t` → `bg-transparent`.
+
+**Strand B — Plan pill consolidation**
+
+The compact "Plan" pip above the prompt input duplicated the right-sidebar Plan tile and shaved vertical space off the streaming column. Removed it. The right-panel Plan pill now carries the "plan is ready" signal itself, with three layered cues:
+
+- **Glow ring** around the button — `ring-2 ring-[var(--accent)]/50` + soft 18px box-shadow (amber/`--warning` instead when `planModeActive` is true).
+- **Pulsing dot** in the icon's top-right corner — `animate-pulse` accent (or amber) bead with a `--panel-bg` ring so it stands off the icon.
+- **Third label row** under the description — `"{done}/{total} ready to view"` in accent, or `"{done}/{total} · gated · awaiting approval"` in amber when gated. Each row carries its own pulsing dot.
+
+State derived from `usePlanStore` (`snapshot`, `planModeActive`) → `planState: 'idle' | 'ready' | 'gated'`. Idle pills are visually unchanged. `aria-label` is composed so screen readers announce the plan status, not just "Plan".
+
+**Interaction with the v0.7.4 panels card-uniformity hotfix**: that hotfix fixed every pill at `h-[68px] shrink-0` so the 8-card stack fits without scrolling. The Plan pill needs to grow vertically when `planSignal` fires (the status-line third row). Resolved by switching the pill height from `h-[68px]` to `min-h-[68px]` for all pills: idle pills still render at exactly 68px (content fits), and only the Plan pill expands — and only when active — so the expanded card visually emphasizes the "plan is ready" signal instead of clipping it. Uniformity-when-idle is preserved.
+
+- `src/components/chat/ChatView.tsx` — drop `PlanGoalsPanel` import + render.
+- `src/components/chat/PlanGoalsPanel.tsx` — **deleted** (sole consumer was ChatView; no half-finished implementations).
+- `src/components/artifacts/RightPanelHome.tsx` — wire plan store + pulsing-pill styling, `h-[68px]` → `min-h-[68px]`.
+- `src/components/tools/panels/PlanToolPanel.tsx` — stale "old inline PlanGoalsPanel" comment refreshed to describe the pulsing-pill signal.
+
+**Verification**
+
+- Both tsc configs (`tsconfig.web.json` + `tsconfig.node.json`) clean after rebase on top of the v0.7.4 panels hotfix.
+- No new test files; existing suite unaffected.
+
+**Version + release**
+
+- `package.json` bumped 0.7.3 → 0.7.5 (R6 Tavily promotion took 0.7.3; panels card-uniformity hotfix took 0.7.4; this ship lands at 0.7.5).
+- Windows installer built locally via `npm run build:win`; full `.exe` + `.zip` + `.blockmap` + `latest.yml` set placed in primary repo `dist/` per release-artifacts convention.
+
+---
+
 ## [Right Sidebar Card Uniformity Hotfix] — 2026-06-06 (v0.7.4)
 
 Single-file fix for non-uniform card heights in the right-sidebar `RightPanelHome` (Workspace). The user reported two visible problems: cards were inconsistent heights, and the column scrolled.
