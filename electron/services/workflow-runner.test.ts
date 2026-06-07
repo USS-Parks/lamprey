@@ -195,12 +195,13 @@ describe('runWorkflow - askUser sandbox helper', () => {
 // ---------------------------------------------------------------------------
 
 describe('runWorkflow — pipeline + parallel', () => {
-  it('3-stage pipeline runs concurrently across stages (wall clock < sum of slowest per stage)', async () => {
-    // Each agent takes ~30ms. Pipeline with 3 items × 3 stages: a pure
-    // sequential implementation would take ≥ 9 × 30ms = 270ms. A correct
-    // pipeline (no barrier between stages) lets item A advance to stage 3
-    // while item B is still at stage 1 — wall clock is closer to the
-    // slowest single-item chain, ~90ms.
+  it('3-stage pipeline runs concurrently across stages without stage barriers', async () => {
+    const events: Array<{ kind: 'start' | 'finish'; prompt: string; active: number }> = []
+    let active = 0
+    let peakActive = 0
+    // Each agent waits long enough for overlapping calls to be observable.
+    // A correct pipeline lets one item advance to the next stage before all
+    // other items finish the current stage.
     const script = `${META}
       const items = ['a', 'b', 'c']
       const out = await pipeline(
@@ -211,18 +212,30 @@ describe('runWorkflow — pipeline + parallel', () => {
       )
       return out
     `
-    const seam = makeSeam(
-      ({ prompt }) =>
-        new Promise<string>((resolve) => setTimeout(() => resolve(`(${prompt})`), 30))
-    )
-    const start = Date.now()
+    const seam = makeSeam(async ({ prompt }) => {
+      active++
+      peakActive = Math.max(peakActive, active)
+      events.push({ kind: 'start', prompt, active })
+      await new Promise((resolve) => setTimeout(resolve, 30))
+      events.push({ kind: 'finish', prompt, active })
+      active--
+      return `(${prompt})`
+    })
     const handle = runWorkflow({ script }, { forkSeam: seam })
     const result = await handle.promise
-    const wall = Date.now() - start
     expect((result.output as string[]).length).toBe(3)
     expect(result.agentCount).toBe(9)
-    // Sequential would be ≥270ms. Allow generous CI ceiling.
-    expect(wall).toBeLessThan(220)
+    expect(peakActive).toBeGreaterThan(1)
+
+    const firstStage2Start = events.findIndex(
+      (event) => event.kind === 'start' && event.prompt.startsWith('stage2 ')
+    )
+    const lastStage1Finish = events.findLastIndex(
+      (event) => event.kind === 'finish' && event.prompt.startsWith('stage1 ')
+    )
+    expect(firstStage2Start).toBeGreaterThanOrEqual(0)
+    expect(lastStage1Finish).toBeGreaterThanOrEqual(0)
+    expect(firstStage2Start).toBeLessThan(lastStage1Finish)
   })
 
   it('parallel is a barrier — all thunks resolve before continuation runs', async () => {
