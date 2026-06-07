@@ -1,4 +1,5 @@
 import type { Database } from 'better-sqlite3'
+import { applyProofReceiptSchema } from './proof-receipt-schema'
 
 // Persistence Phase / PS1 — migration ledger gated by PRAGMA user_version.
 //
@@ -131,6 +132,13 @@ export const MIGRATIONS: Migration[] = [
         CREATE INDEX IF NOT EXISTS idx_conversations_forked_from
           ON conversations(forked_from_id, created_at DESC);
       `)
+    }
+  },
+  {
+    version: 12,
+    description: 'Mechanical proof M1 receipt and artifact tables',
+    up(db) {
+      applyProofReceiptSchema(db)
     }
   }
 ]

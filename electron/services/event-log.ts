@@ -118,7 +118,12 @@ export const EVENT_TYPES = [
   'persistence.recovery',
   'conversation.forked',
   'conversation.seed.attached',
-  'conversation.seed.truncated'
+  'conversation.seed.truncated',
+  'proof.receipt.created',
+  'proof.receipt.failed',
+  'proof.gate.passed',
+  'proof.gate.failed',
+  'proof.gate.waived'
 ] as const
 
 export type EventType = (typeof EVENT_TYPES)[number]

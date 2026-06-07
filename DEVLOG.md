@@ -1,5 +1,20 @@
 # Lamprey Harness Dev Log
 
+## [Mechanical Proof Harness - Prompt M1] Proof receipt schema and service - 2026-06-07
+
+**Files changed:** `electron/services/proof-receipt-schema.ts`, `electron/services/proof-receipts.ts`, `electron/services/proof-receipts.test.ts`, `electron/services/db-migrations.ts`, `electron/services/event-log.ts`
+**Verify gate:**
+- lint OK
+- tsc node OK
+- tsc web not applicable
+- vitest `electron/services/proof-receipts.test.ts electron/services/event-log.test.ts electron/services/db-migrations.test.ts` OK (sqlite-native cases skipped under existing repo native-binding guard)
+- build/smoke/user-verification-needed: not applicable
+
+**Proof receipt:** not applicable
+**Notes:** Adds append-only proof receipt and artifact tables via migration v12, receipt hashing/capped redacted previews, metadata-only proof events, list/get/fresh-proof readers, and append-only SQL triggers. Plan checkbox update is pending because `PLANNING/LAMPREY_MECHANICAL_PROOF_HARNESS_PLAN.md` is currently locked by an adjacent Word temp file.
+
+**Commit:** _this commit_
+
 ## [Persistence & Seed Phase — Phase Complete] v0.9.0 — 24-prompt roster shipped end-to-end  —  2026-06-06
 
 24-prompt phase across three tracks shipped on `claude/flamboyant-cannon-e7bb34` (Track A + C + ship) merged with `codex/persistence-seed-track-b` (Track B). The persistence floor under v0.9.0 is now genuinely regulated-industry capable (backup + integrity + checkpoint + busy-timeout + opt-in encryption + versioned migrations) and the "per-hunk chat seeding" UI promise is fully wired (Fork button → full param IPC → seed channel → RAG copy → lineage chip → Pin sibling closed).
