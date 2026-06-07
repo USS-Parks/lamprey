@@ -7,6 +7,7 @@ import '../services/tool-packs'
 
 import { registerChatHandlers } from './chat'
 import { registerConversationHandlers } from './conversation'
+import { registerContractHandlers } from './contracts'
 import { registerSettingsHandlers } from './settings'
 import { registerModelHandlers } from './model'
 import { registerSkillsHandlers } from './skills'
@@ -51,6 +52,7 @@ import { registerAfterActionHandlers } from './after-action'
 export function registerAllIpcHandlers(): void {
   registerChatHandlers()
   registerConversationHandlers()
+  registerContractHandlers()
   registerSettingsHandlers()
   registerModelHandlers()
   registerSkillsHandlers()

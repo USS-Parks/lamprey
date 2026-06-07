@@ -1,5 +1,20 @@
 # Lamprey Harness Dev Log
 
+## [Mechanical Proof Harness - Prompt M2] Change contract store - 2026-06-07
+
+**Files changed:** `electron/services/change-contract-schema.ts`, `electron/services/change-contract-store.ts`, `electron/services/change-contract-store.test.ts`, `electron/ipc/contracts.ts`, `electron/ipc/index.ts`, `electron/preload.ts`, `electron/services/db-migrations.ts`, `src/lib/types.ts`, `src/lib/event-presentation.ts`
+**Verify gate:**
+- lint OK
+- tsc node OK
+- tsc web OK
+- vitest `electron/services/change-contract-store.test.ts` OK
+- build/smoke/user-verification-needed: not applicable
+
+**Proof receipt:** not applicable
+**Notes:** Adds scoped change contracts with typed scope arrays, active/closed/waived lifecycle, explicit waiver reasons, plan-goal and implicit-contract creation helpers, and renderer IPC/preload access. Also updates renderer proof-event presentation for M1 event types.
+
+**Commit:** _this commit_
+
 ## [Mechanical Proof Harness - Prompt M1] Proof receipt schema and service - 2026-06-07
 
 **Files changed:** `electron/services/proof-receipt-schema.ts`, `electron/services/proof-receipts.ts`, `electron/services/proof-receipts.test.ts`, `electron/services/db-migrations.ts`, `electron/services/event-log.ts`

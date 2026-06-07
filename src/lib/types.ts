@@ -503,6 +503,30 @@ export interface Goal {
   updatedAt: number
 }
 
+export type ChangeContractStatus = 'active' | 'closed' | 'waived'
+export type ChangeContractSource = 'user' | 'plan_goal' | 'implicit' | 'system'
+
+export interface ChangeContract {
+  id: string
+  conversationId: string
+  correlationId?: string
+  status: ChangeContractStatus
+  implicit: boolean
+  source: ChangeContractSource
+  goal: string
+  acceptanceCriteria: string[]
+  expectedFiles: string[]
+  nonGoals: string[]
+  verificationCommands: string[]
+  requiredReceiptKinds: string[]
+  createdAt: number
+  updatedAt: number
+  closedAt?: number
+  waiverReason?: string
+  waivedBy?: string
+  waivedAt?: number
+}
+
 // One conversation's persisted plan + goal state, for the inspect/clear panel.
 export interface ConversationPlanGoalState {
   conversationId: string
@@ -833,6 +857,11 @@ export type EventType =
   | 'conversation.forked'
   | 'conversation.seed.attached'
   | 'conversation.seed.truncated'
+  | 'proof.receipt.created'
+  | 'proof.receipt.failed'
+  | 'proof.gate.passed'
+  | 'proof.gate.failed'
+  | 'proof.gate.waived'
 
 export interface EventRecord {
   id: string

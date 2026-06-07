@@ -62,7 +62,12 @@ const TYPE_LABELS: Record<EventType, string> = {
   'persistence.recovery': 'DB recovery',
   'conversation.forked': 'Conversation forked',
   'conversation.seed.attached': 'Seed attached',
-  'conversation.seed.truncated': 'Seed budget hit'
+  'conversation.seed.truncated': 'Seed budget hit',
+  'proof.receipt.created': 'Proof receipt',
+  'proof.receipt.failed': 'Proof failed',
+  'proof.gate.passed': 'Proof gate passed',
+  'proof.gate.failed': 'Proof gate failed',
+  'proof.gate.waived': 'Proof gate waived'
 }
 
 export function eventTypeLabel(type: EventType): string {
@@ -208,6 +213,17 @@ export function eventSubtitle(event: EventRecord, maxChars = 120): string | null
       const seedKind = typeof p.seedKind === 'string' ? p.seedKind : undefined
       const seedBytes = typeof p.seedBytes === 'number' ? p.seedBytes : undefined
       s = seedKind && seedBytes !== undefined ? `${seedKind} (${seedBytes} bytes)` : seedKind ?? null
+      break
+    }
+    case 'proof.receipt.created':
+    case 'proof.receipt.failed':
+    case 'proof.gate.passed':
+    case 'proof.gate.failed':
+    case 'proof.gate.waived': {
+      const id = typeof p.id === 'string' ? p.id : undefined
+      const status = typeof p.status === 'string' ? p.status : undefined
+      const kind = typeof p.kind === 'string' ? p.kind : undefined
+      s = [id, kind, status].filter((part): part is string => Boolean(part)).join(' · ') || null
       break
     }
     case 'chat.cancelled':
