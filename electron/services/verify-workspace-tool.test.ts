@@ -5,6 +5,7 @@ import { tmpdir } from 'os'
 import {
   executeVerifyWorkspace,
   isFormatCommand,
+  parseVerificationMetrics,
   selectVerificationCommands,
   type VerificationReport
 } from './verify-workspace-tool'
@@ -74,14 +75,23 @@ describe('executeVerifyWorkspace', () => {
         JSON.stringify({ scripts: { typecheck: 'tsc --noEmit', test: 'vitest run' } })
       )
       const seen: string[] = []
+      const receipts: Array<{ id: string; status: string; command: string }> = []
       const out = await executeVerifyWorkspace(undefined, root, async (args, workspaceRoot) => {
         seen.push(args.command)
         return makeShellResult(args.command, args.cwd ?? workspaceRoot, 0)
+      }, {
+        writeReceipt: (input) => {
+          const id = `receipt-${receipts.length + 1}`
+          receipts.push({ id, status: input.status, command: input.command })
+          return { id }
+        }
       })
       const report = JSON.parse(out.result) as VerificationReport
       expect(out.status).toBe('done')
       expect(report.status).toBe('passed')
       expect(seen).toEqual(['npm run typecheck', 'npm test'])
+      expect(report.results.map((r) => r.receiptId)).toEqual(['receipt-1', 'receipt-2'])
+      expect(receipts.map((r) => r.status)).toEqual(['passed', 'passed'])
     } finally {
       rmSync(root, { recursive: true, force: true })
     }
@@ -94,13 +104,26 @@ describe('executeVerifyWorkspace', () => {
         join(root, 'package.json'),
         JSON.stringify({ scripts: { typecheck: 'tsc --noEmit' } })
       )
-      const out = await executeVerifyWorkspace(undefined, root, async (args, workspaceRoot) =>
-        makeShellResult(args.command, args.cwd ?? workspaceRoot, 1)
+      const receipts: Array<{ id: string; status: string; command: string }> = []
+      const out = await executeVerifyWorkspace(
+        undefined,
+        root,
+        async (args, workspaceRoot) =>
+          makeShellResult(args.command, args.cwd ?? workspaceRoot, 1),
+        {
+          writeReceipt: (input) => {
+            const id = `receipt-${receipts.length + 1}`
+            receipts.push({ id, status: input.status, command: input.command })
+            return { id }
+          }
+        }
       )
       const report = JSON.parse(out.result) as VerificationReport
       expect(out.status).toBe('error')
       expect(report.status).toBe('failed')
+      expect(report.results[0].receiptId).toBe('receipt-1')
       expect(report.results[0].stderrPreview).toContain('failed')
+      expect(receipts[0].status).toBe('failed')
     } finally {
       rmSync(root, { recursive: true, force: true })
     }
@@ -121,6 +144,35 @@ describe('executeVerifyWorkspace', () => {
     }
   })
 
+  it('persists skipped receipts for skipped format commands', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'verify-workspace-skip-'))
+    try {
+      writeFileSync(
+        join(root, 'package.json'),
+        JSON.stringify({ scripts: { format: 'prettier --write .' } })
+      )
+      const receipts: Array<{ id: string; status: string; command: string }> = []
+      const out = await executeVerifyWorkspace(undefined, root, async () => {
+        throw new Error('runner should not be called')
+      }, {
+        writeReceipt: (input) => {
+          const id = `receipt-${receipts.length + 1}`
+          receipts.push({ id, status: input.status, command: input.command })
+          return { id }
+        }
+      })
+      const report = JSON.parse(out.result) as VerificationReport
+      expect(out.status).toBe('done')
+      expect(report.status).toBe('skipped')
+      expect(receipts).toEqual([
+        { id: 'receipt-1', status: 'skipped', command: 'npm run format' }
+      ])
+      expect(report.notes.join('\n')).toContain('receipt-1')
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
   it('rejects cwd outside the workspace', async () => {
     const root = mkdtempSync(join(tmpdir(), 'verify-workspace-root-'))
     try {
@@ -128,5 +180,23 @@ describe('executeVerifyWorkspace', () => {
     } finally {
       rmSync(root, { recursive: true, force: true })
     }
+  })
+})
+
+describe('parseVerificationMetrics', () => {
+  it('parses vitest counts and TypeScript project status', () => {
+    expect(
+      parseVerificationMetrics(
+        'npm test',
+        'Test Files  1 passed\nTests  28 passed | 2 skipped',
+        '',
+        0
+      ).tests
+    ).toEqual({ passed: 28, skipped: 2, failed: 0 })
+
+    expect(
+      parseVerificationMetrics('npx tsc --noEmit -p tsconfig.node.json', '', '', 0)
+        .typescript
+    ).toEqual({ project: 'tsconfig.node.json', ok: true })
   })
 })

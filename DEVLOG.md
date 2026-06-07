@@ -1,5 +1,20 @@
 # Lamprey Harness Dev Log
 
+## [Mechanical Proof Harness - Prompt M4] Verify workspace receipts - 2026-06-07
+
+**Files changed:** `electron/services/verify-workspace-tool.ts`, `electron/services/verify-workspace-tool.test.ts`, `electron/services/verify-workspace-tool-pack.ts`
+**Verify gate:**
+- lint OK
+- tsc node OK
+- tsc web OK
+- vitest `electron/services/verify-workspace-tool.test.ts` OK
+- build/smoke/user-verification-needed: not applicable
+
+**Proof receipt:** not applicable
+**Notes:** `verify_workspace` now persists proof receipts for passed, failed, and skipped commands, returns receipt ids in the JSON report, attaches active-contract ids when available, captures git head/dirty/diff hash, and parses basic Vitest/Jest, TypeScript, ESLint, build, and smoke metrics.
+
+**Commit:** _this commit_
+
 ## [Mechanical Proof Harness - Prompt M3] Dynamic context upgrades - 2026-06-07
 
 **Files changed:** `electron/services/workspace-context-tool.ts`, `electron/services/workspace-context-tool.test.ts`, `electron/services/workspace-context-tool-pack.ts`, `electron/services/proof-policy.ts`

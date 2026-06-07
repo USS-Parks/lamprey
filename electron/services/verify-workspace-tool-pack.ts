@@ -10,7 +10,7 @@ toolRegistry.registerNative(
     name: 'verify_workspace',
     title: 'Verify workspace',
     description:
-      'Run the workspace verification checks inferred from package scripts and tsconfig files. Defaults to non-mutating checks such as test, typecheck, lint, check, and verify; format scripts are skipped unless include_format=true. Use after code edits before final response. Returns a JSON report with per-command status, output previews, and total duration.',
+      'Run the workspace verification checks inferred from package scripts and tsconfig files. Defaults to non-mutating checks such as test, typecheck, lint, check, and verify; format scripts are skipped unless include_format=true. Use after code edits before final response. Persists proof receipts for passed, failed, and skipped commands. Returns a JSON report with per-command status, proof receipt ids, parsed metrics, output previews, and total duration.',
     providerKind: 'native',
     providerId: 'internal',
     inputSchema: {
@@ -53,6 +53,13 @@ toolRegistry.registerNative(
   async (args, ctx) =>
     executeVerifyWorkspace(
       args as unknown as VerifyWorkspaceArgs,
-      ctx.workspacePath ?? process.cwd()
+      ctx.workspacePath ?? process.cwd(),
+      undefined,
+      {
+        conversationId: ctx.conversationId,
+        correlationId: ctx.correlationId,
+        toolCallId: ctx.callId,
+        createdBy: 'agent'
+      }
     )
 )
