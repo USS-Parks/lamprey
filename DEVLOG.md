@@ -1,5 +1,20 @@
 # Lamprey Harness Dev Log
 
+## [Mechanical Proof Harness - Prompt M5] Pre-final proof gate - 2026-06-07
+
+**Files changed:** `electron/services/proof-gate.ts`, `electron/services/proof-gate.test.ts`, `electron/ipc/chat.ts`
+**Verify gate:**
+- lint OK
+- tsc node OK
+- tsc web OK
+- vitest `electron/services/proof-gate.test.ts` OK
+- build/smoke/user-verification-needed: not applicable
+
+**Proof receipt:** not applicable
+**Notes:** Adds a pre-final proof gate that ignores read-only turns, excludes verification tools from the mutation marker, requires an active contract plus fresh passing proof after the last mutation, records pass/fail gate events, and appends an explicit untrusted proof notice to final text when the gate fails.
+
+**Commit:** _this commit_
+
 ## [Mechanical Proof Harness - Prompt M4] Verify workspace receipts - 2026-06-07
 
 **Files changed:** `electron/services/verify-workspace-tool.ts`, `electron/services/verify-workspace-tool.test.ts`, `electron/services/verify-workspace-tool-pack.ts`
