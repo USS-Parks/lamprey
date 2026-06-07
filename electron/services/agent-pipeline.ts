@@ -17,6 +17,7 @@ import {
   type SubAgentRunner
 } from './multi-agent-run-tool'
 import { saveStageMetrics } from './stage-metrics-store'
+import { transactional } from './database'
 import { summarizeRun } from './final-response-composer'
 import { trace } from './debug-trace'
 
@@ -664,21 +665,30 @@ export async function runAgentPipeline(opts: RunAgentPipelineOptions): Promise<v
     const coderStartedAt = stageStartedAt['coder']
     const coderDurationMs = coderStartedAt !== undefined ? Date.now() - coderStartedAt : null
     try {
-      if (pendingPlannerMetric.durationMs !== null || pendingPlannerMetric.tokensEstimate !== null) {
+      // PS8 — planner + coder metric writes share the same coder message
+      // id. Wrapping the pair in one transaction means a mid-failure
+      // can't leave a "planner row stamped, coder row missing" half-state
+      // that StageTokenChips would render as an incomplete pipeline.
+      transactional(() => {
+        if (
+          pendingPlannerMetric.durationMs !== null ||
+          pendingPlannerMetric.tokensEstimate !== null
+        ) {
+          saveStageMetrics(coderMsgId, {
+            stage: 'planner',
+            model: roster.planner,
+            promptTokens: null,
+            completionTokens: pendingPlannerMetric.tokensEstimate,
+            durationMs: pendingPlannerMetric.durationMs
+          })
+        }
         saveStageMetrics(coderMsgId, {
-          stage: 'planner',
-          model: roster.planner,
+          stage: 'coder',
+          model: roster.coder,
           promptTokens: null,
-          completionTokens: pendingPlannerMetric.tokensEstimate,
-          durationMs: pendingPlannerMetric.durationMs
+          completionTokens: approximateTokenCount(coderContent),
+          durationMs: coderDurationMs
         })
-      }
-      saveStageMetrics(coderMsgId, {
-        stage: 'coder',
-        model: roster.coder,
-        promptTokens: null,
-        completionTokens: approximateTokenCount(coderContent),
-        durationMs: coderDurationMs
       })
     } catch (err) {
       console.warn('[agent-pipeline] saveStageMetrics(planner/coder) failed:', err)

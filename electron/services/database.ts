@@ -914,6 +914,39 @@ export function withWriteRetry<T>(fn: () => T, opts: WriteRetryOpts = {}): T {
   }
 }
 
+/**
+ * PS8 — run `fn` inside a single SQLite transaction on the cached DB
+ * connection. better-sqlite3 transactions are synchronous; nothing
+ * inside `fn` may await. A throw rolls back the transaction;
+ * the throw propagates to the caller.
+ *
+ * Use for the small group-of-writes case where dropping the second
+ * write while keeping the first would leave a half-row state — e.g.
+ * the planner+coder metric pair on a shared message id, or a future
+ * "save message + write stage metric" handshake. The cross-stage
+ * relationship in the multi-agent pipeline is NOT transactional
+ * (awaits between stages); this helper covers the within-stage
+ * row+metric pair.
+ *
+ * Returns whatever `fn` returns.
+ */
+export function transactional<T>(fn: () => T): T {
+  const target = db
+  if (!target) {
+    // No cached DB means we're in a test that hasn't opened one, or
+    // the pre-init startup window. In either case, falling back to
+    // executing fn directly preserves the caller's contract without
+    // requiring them to predict which case they're in.
+    return fn()
+  }
+  let result!: T
+  const tx = target.transaction(() => {
+    result = fn()
+  })
+  tx()
+  return result
+}
+
 export function closeDb(): void {
   if (db) {
     // PS2 — TRUNCATE the WAL before closing so the next launch starts
