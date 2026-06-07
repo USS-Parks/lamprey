@@ -45,17 +45,29 @@ if (-not (Test-Path $configPath)) {
   Write-Host "Run: pwsh scripts\bucket-setup.ps1" -ForegroundColor Yellow
   exit 1
 }
-if (-not (Test-Path $awsCreds)) {
-  Write-Host "ERROR: $awsCreds not found." -ForegroundColor Red
-  Write-Host "Run: pwsh scripts\bucket-setup.ps1" -ForegroundColor Yellow
-  exit 1
-}
 
 $config = Get-Content $configPath -Raw | ConvertFrom-Json
 
-# Project-scoped AWS creds (overrides the user-global ~/.aws/...)
-$env:AWS_SHARED_CREDENTIALS_FILE = $awsCreds
-$env:AWS_CONFIG_FILE             = $awsConf
+# AWS creds resolution: prefer project-local `.aws/credentials` if present;
+# else fall back to the user-global `~/.aws/credentials`. The profile name
+# comes from .bucket.json (`aws.profile`, default = "default").
+$awsProfile = if ($config.aws -and $config.aws.profile) { $config.aws.profile } else { "default" }
+
+if (Test-Path $awsCreds) {
+  $env:AWS_SHARED_CREDENTIALS_FILE = $awsCreds
+  if (Test-Path $awsConf) { $env:AWS_CONFIG_FILE = $awsConf }
+  Write-Host "  Using project-local AWS creds (.aws\credentials) profile [$awsProfile]" -ForegroundColor Green
+} else {
+  Write-Host "  Using user-global AWS creds (~/.aws/credentials) profile [$awsProfile]" -ForegroundColor Green
+}
+
+# Locate aws.exe — it's installed but often not on PATH in non-PS shells.
+$awsExe = (Get-Command aws.exe -ErrorAction SilentlyContinue)?.Source
+if (-not $awsExe) { $awsExe = "C:\Program Files\Amazon\AWSCLIV2\aws.exe" }
+if (-not (Test-Path $awsExe)) {
+  Write-Host "ERROR: aws.exe not found. Install AWS CLI v2." -ForegroundColor Red
+  exit 1
+}
 
 # === Read version ===
 $pkg = Get-Content (Join-Path $repoRoot "package.json") -Raw | ConvertFrom-Json
@@ -145,17 +157,20 @@ if ($DryRun) {
 $endpoint = "https://$($config.r2.accountId).r2.cloudflarestorage.com"
 Write-Host ""
 Write-Host "  Starting R2 upload (background)..." -ForegroundColor White
+$useProjectCreds = (Test-Path $awsCreds)
 $r2Job = Start-Job -Name "bucket-r2" -ScriptBlock {
-  param($bucket, $endpoint, $dist, $awsCreds, $awsConf)
-  $env:AWS_SHARED_CREDENTIALS_FILE = $awsCreds
-  $env:AWS_CONFIG_FILE             = $awsConf
+  param($bucket, $endpoint, $dist, $awsCreds, $awsConf, $useProjectCreds, $awsProfile, $awsExe)
+  if ($useProjectCreds) {
+    $env:AWS_SHARED_CREDENTIALS_FILE = $awsCreds
+    if (Test-Path $awsConf) { $env:AWS_CONFIG_FILE = $awsConf }
+  }
   foreach ($f in "Lamprey-x64.exe", "Lamprey-x64.zip") {
     $src = Join-Path $dist $f
-    aws s3 cp $src "s3://$bucket/$f" `
-      --endpoint-url $endpoint --profile r2 --checksum-algorithm CRC32
+    & $awsExe s3 cp $src "s3://$bucket/$f" `
+      --endpoint-url $endpoint --profile $awsProfile --checksum-algorithm CRC32
     if ($LASTEXITCODE -ne 0) { throw "aws s3 cp $f failed (exit $LASTEXITCODE)" }
   }
-} -ArgumentList $config.r2.bucket, $endpoint, $dist, $awsCreds, $awsConf
+} -ArgumentList $config.r2.bucket, $endpoint, $dist, $awsCreds, $awsConf, $useProjectCreds, $awsProfile, $awsExe
 
 # GitHub release in the foreground (also takes a few minutes for the zip)
 Write-Host "  Creating/updating GH release $tag..." -ForegroundColor White
