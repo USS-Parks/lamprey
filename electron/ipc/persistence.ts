@@ -15,6 +15,13 @@ import {
   restoreFromBackup,
   type BackupInfo
 } from '../services/backup-runner'
+import {
+  getEncryptionStatus,
+  enableEncryption,
+  disableEncryption,
+  changePassphrase,
+  type EncryptionStatus
+} from '../services/db-encryption'
 
 // Persistence Phase / PS4 (+ PS5 + PS10) — read-write IPC for the
 // persistence floor. Three surface categories:
@@ -122,4 +129,52 @@ export function registerPersistenceHandlers(): void {
       return { success: false, error: err?.message ?? String(err) }
     }
   })
+
+  // PS9 — SQLCipher opt-in encryption surface.
+  ipcMain.handle('persistence:getEncryptionStatus', () => {
+    try {
+      return { success: true, data: getEncryptionStatus() }
+    } catch (err: any) {
+      return { success: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  ipcMain.handle('persistence:enableEncryption', (_event, passphrase: unknown) => {
+    if (typeof passphrase !== 'string' || passphrase.length === 0) {
+      return { success: false, error: 'passphrase must be a non-empty string' }
+    }
+    try {
+      const result = enableEncryption(passphrase)
+      return { success: true, data: result }
+    } catch (err: any) {
+      return { success: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  ipcMain.handle('persistence:disableEncryption', (_event, passphrase: unknown) => {
+    if (typeof passphrase !== 'string' || passphrase.length === 0) {
+      return { success: false, error: 'passphrase must be a non-empty string' }
+    }
+    try {
+      const result = disableEncryption(passphrase)
+      return { success: true, data: result }
+    } catch (err: any) {
+      return { success: false, error: err?.message ?? String(err) }
+    }
+  })
+
+  ipcMain.handle(
+    'persistence:changePassphrase',
+    (_event, oldPassphrase: unknown, newPassphrase: unknown) => {
+      if (typeof oldPassphrase !== 'string' || typeof newPassphrase !== 'string') {
+        return { success: false, error: 'both passphrases must be strings' }
+      }
+      try {
+        changePassphrase(oldPassphrase, newPassphrase)
+        return { success: true, data: null }
+      } catch (err: any) {
+        return { success: false, error: err?.message ?? String(err) }
+      }
+    }
+  )
 }

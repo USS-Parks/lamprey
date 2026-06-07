@@ -344,7 +344,15 @@ const api = {
     createBackup: () => ipcRenderer.invoke('persistence:createBackup'),
     listBackups: () => ipcRenderer.invoke('persistence:listBackups'),
     restoreFromBackup: (backupPath: string) =>
-      ipcRenderer.invoke('persistence:restoreFromBackup', backupPath)
+      ipcRenderer.invoke('persistence:restoreFromBackup', backupPath),
+    // PS9 encryption opt-in.
+    getEncryptionStatus: () => ipcRenderer.invoke('persistence:getEncryptionStatus'),
+    enableEncryption: (passphrase: string) =>
+      ipcRenderer.invoke('persistence:enableEncryption', passphrase),
+    disableEncryption: (passphrase: string) =>
+      ipcRenderer.invoke('persistence:disableEncryption', passphrase),
+    changePassphrase: (oldPassphrase: string, newPassphrase: string) =>
+      ipcRenderer.invoke('persistence:changePassphrase', oldPassphrase, newPassphrase)
   },
 
   permissions: {
