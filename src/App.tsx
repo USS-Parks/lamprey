@@ -22,6 +22,7 @@ import { useModelStore } from '@/stores/model-store'
 import { useSettingsStore } from '@/stores/settings-store'
 import { useAgentStore } from '@/stores/agent-store'
 import { usePlanStore } from '@/stores/plan-store'
+import { useProvidersStore, type ProviderEntry } from '@/stores/providers-store'
 import { useUiStore, RIGHT_PANEL_BOUNDS } from '@/stores/ui-store'
 import { toast } from '@/stores/toast-store'
 import { useChat } from '@/hooks/useChat'
@@ -358,7 +359,9 @@ function App(): React.ReactElement {
       // Considered "configured" if ANY provider key is present.
       const providerList = await window.api.settings.listProviderKeys()
       if (providerList.success) {
-        const anyKey = (providerList.data as Array<{ hasKey: boolean }>).some((p) => p.hasKey)
+        const providers = providerList.data as ProviderEntry[]
+        useProvidersStore.getState().setProviders(providers)
+        const anyKey = providers.some((p) => p.hasKey)
         setNeedsApiKey(!anyKey)
       } else {
         const fallback = await window.api.settings.hasApiKey()
