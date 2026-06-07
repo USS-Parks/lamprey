@@ -15,3 +15,8 @@ lamprey.db-journal
 SESSION-LOG/
 .claude/
 opencode.jsonc
+
+# Bucket pipeline — project-scoped secrets (NEVER commit)
+.aws/
+.cf/
+.bucket.json
