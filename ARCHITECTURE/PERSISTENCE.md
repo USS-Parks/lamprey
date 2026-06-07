@@ -42,6 +42,9 @@ All tables live in `lamprey.db` (WAL mode, foreign keys on, `safeAddColumn` is t
 | `events`                       | `event-log.ts`                                                            | The spine itself.                                                                                                            |
 | `project_github_repos`         | `github-repo-store.ts`                                                    | Not currently audited; GitHub linking is a high-trust user action.                                                           |
 | `conversation_pull_requests`   | `github-repo-store.ts`                                                    | Same.                                                                                                                        |
+| `rag_embedder_meta`            | `rag/embedder-meta.ts` (PS7)                                              | Singleton row; mismatch with configured embedder throws `EmbedderDimensionMismatchError`.                                    |
+| `message_stage_metrics`        | `stage-metrics-store.ts` (RT2)                                            | Per-stage token + duration metrics; cascade-deleted with `messages`.                                                         |
+| `conversations.forked_from_id` + `forked_from_message_id` + `seed_blob` + `seed_source_kind` | `conversation-store.ts` (PS11) | Fork lineage + seed metadata for the Per-hunk seed surface. `conversation.forked` + `conversation.seed.attached/truncated` event types. |
 
 The `events` table is intentionally permissive at the SQL layer (no CHECK constraints on `type`, `actor_kind`, or `severity`) so adding a new event category doesn't require a schema migration. The TypeScript `EVENT_TYPES` tuple in `event-log.ts` is the real allow-list; the writer rejects unknown types.
 
@@ -105,18 +108,54 @@ A `GIT_ASKPASS` helper script materialised once at first push and re-used. The s
 - **Renaming a project.** `renameProject` is silent. Rename is noisy enough (model-callable mid-turn) that it would dominate; the project's createdAt/lastActivityAt is the authoritative version timeline.
 - **Touching a project's `last_activity_at`.** Same reason as rename.
 
-## Migration story
+## Migration ledger (v0.9.0+, PS1)
 
-`safeAddColumn` is the project's migration primitive: a try-add-column, swallow-on-already-exists wrapper. New columns land via `safeAddColumn`; new tables via `CREATE TABLE IF NOT EXISTS`. There is no migration version table — the schema is forward-additive and old columns are never renamed or removed without a new column + dual-write window.
+Pre-v0.9.0 the schema evolved via `safeAddColumn` alone — a regex-guarded `ALTER TABLE` that swallowed `duplicate column name` and let every other failure bubble. That worked while every change was idempotent. From the Persistence & Seed Phase forward, the canonical path is the **PS1 migration ledger** gated by SQLite's built-in `PRAGMA user_version`:
 
-If a column needs renaming or a table needs splitting, the migration approach is:
+- The typed `MIGRATIONS: Migration[]` registry in `electron/services/db-migrations.ts` is the source of truth.
+- Each `Migration` has `{ version: number, description: string, up(db): void }`. The body runs **inside a transaction** that also bumps `PRAGMA user_version` — a throw rolls back both the DDL and the version stamp atomically.
+- The registry is **append-only**. Never renumber, never delete. A fix-forward migration is a new entry with the next version number.
+- `runMigrations(db)` reads the current version, runs every newer entry in ascending order, and refuses to run if the DB carries a version higher than `LATEST_VERSION` (downgrade guard).
+- `safeAddColumn` still lives in `electron/services/schema-init.ts` (the legacy bootstrap) and inside individual migrations for genuinely idempotent column adds.
 
-1. Add the new column / table via `safeAddColumn` / `CREATE TABLE IF NOT EXISTS`.
-2. Dual-write through the store module for one release.
-3. Backfill any existing rows in a one-off main-process startup step.
-4. Switch reads to the new column / table.
-5. Stop writing the old column / table (do not drop it — `safeAddColumn` doesn't drop either).
+A column rename or table split still follows the same five-step playbook (add new, dual-write, backfill, switch reads, stop old writes) — the only change is that step 1 lands as a Migration entry instead of a raw `safeAddColumn` call.
 
-## Carry-forward (Prompts 7-8 dependencies)
+## Legacy schema partition (v0.9.0+, PS6)
 
-The local retrieval foundation (Prompt 7) will add `documents` and `document_chunks` tables and a SQLite FTS5 index. Both land in `lamprey.db` and follow the repository pattern documented above. Retrieval queries become a new store module. The audit story (Prompt 8) wires `rag.index.started/completed/failed` and `rag.query.executed` event types and uses the same `boundedJsonPreview` helper for provenance previews. Nothing in this doc needs to change for those prompts.
+The pre-PS6 `initSchema` function in `database.ts` was ~700 lines of inline DDL in one block. PS6 extracts the body into named segments in `electron/services/schema-init.ts`:
+
+1. `initCoreDomainTables` — conversations, messages, memory_*, hooks, automations, projects, tool_calls, permission_policies, plan_steps, goals, events, agent_runs, loop_wakeups.
+2. `applyLegacyColumnMigrationsBatchA` — first historical `safeAddColumn` wave.
+3. `initChaptersAsyncEvents` — chapters + async_events tables sandwiching `messages.compressed_into`.
+4. `applyLegacyColumnMigrationsBatchB` — `parent_call_id`, `documents`, `stage`, `content_raw`.
+5. `initGithubRagSessionsSnip` — GitHub repo association tables, full RAG subtree, sessions FTS, snip events.
+6. `initStageMetricsTable` — `message_stage_metrics` (RT2).
+7. `initVecTable` — `rag_chunk_vec` gated on `isVecAvailable()`.
+
+The dispatcher `initLegacySchema(db)` calls them in the same order as the original monolithic function. **All new schema work goes through the PS1 migration ledger**, not by editing `schema-init.ts`.
+
+## Backup, integrity, and recovery (v0.9.0+, PS2 / PS4 / PS5)
+
+The persistence floor under v0.9.0 carries four hygiene layers, all owned by `electron/services/database.ts` and `electron/services/backup-runner.ts`:
+
+- **WAL checkpointing (PS2).** `checkpoint(db?)` runs `wal_checkpoint(TRUNCATE)` so the WAL file shrinks to zero. Wired into `closeDb()` for the will-quit path; `startPeriodicCheckpoint(intervalMs)` fires every 5 minutes during live sessions as the safety net for ungraceful exits.
+- **`busy_timeout` + retry (PS3).** `db.pragma('busy_timeout = 5000')` on open + `withWriteRetry(fn, opts)` for synthesised retries on the rare post-timeout `SQLITE_BUSY`. Adopted in the two highest-frequency writers: `conversation-store.saveMessage` and `tool-calls-store.insertToolCall`.
+- **Integrity check (PS4).** `runIntegrityCheck(db?)` wraps `PRAGMA integrity_check` with last-result cache; runs at startup right after migrations land. A non-`ok` result triggers `IntegrityBanner` in the renderer (non-dismissible — corruption isn't a preference).
+- **Daily backup (PS5).** `userData/backups/lamprey-YYYY-MM-DD.db`, 14-day rolling retention via `pruneOldBackups`. `restoreFromBackup` atomically moves the corrupt DB to `.corrupt-<ts>` and copies the backup into place; the caller relaunches the app afterward.
+
+Every PS2/PS4/PS5 operation emits a row on the events spine (PS22): `persistence.checkpoint`, `persistence.integrity`, `persistence.backup`, `persistence.recovery`. Severity is `info` for happy paths and `warning`/`error` for issues, so the Activity Timeline highlights them.
+
+## Optional encryption (v0.9.0+, PS9)
+
+`electron/services/db-encryption.ts` provides a structurally complete SQLCipher integration that is **gated on the optional `better-sqlite3-multiple-ciphers` binding**. When the binding is absent the app boots unchanged on plain better-sqlite3 and the Settings → Persistence panel shows an install hint instead of the toggle.
+
+When the binding IS available + the user opts in:
+- `enableEncryption(passphrase)` opens the plaintext source with the cipher binding, `ATTACH`es a new file with the passphrase, runs `sqlcipher_export`, then atomic file swap. Stamps `userData/encryption.flag` + writes the passphrase to `keys.json` under the new `encryption` provider namespace.
+- `disableEncryption(passphrase)` reverses direction.
+- `changePassphrase(old, new)` runs `PRAGMA rekey` on the live file.
+
+The passphrase lives in the same keychain primitive used for provider API keys — the existing security audit story (every mutating keychain op writes a `security.decision` event) applies uniformly.
+
+## Carry-forward (Prompts 7-8 dependencies, historical)
+
+The local retrieval foundation (Prompt 7) added `documents` and `document_chunks` tables and a SQLite FTS5 index. Both live in `lamprey.db` and follow the repository pattern. Retrieval queries became a new store module. The audit story (Prompt 8) wired `rag.index.started/completed/failed` and `rag.query.executed` event types using the same `boundedJsonPreview` helper for provenance previews. (Both shipped pre-v0.9.0.)
