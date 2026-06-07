@@ -8,6 +8,7 @@ export interface ProviderEntry extends ProviderInfo {
 interface ProvidersState {
   providers: ProviderEntry[]
   loaded: boolean
+  setProviders: (providers: ProviderEntry[]) => void
   refresh: () => Promise<void>
   hasKey: (providerId: string | undefined) => boolean
   byId: (providerId: string) => ProviderEntry | undefined
@@ -16,6 +17,9 @@ interface ProvidersState {
 export const useProvidersStore = create<ProvidersState>((set, get) => ({
   providers: [],
   loaded: false,
+  setProviders: (providers) => {
+    set({ providers, loaded: true })
+  },
   refresh: async () => {
     if (!window.api?.settings?.listProviderKeys) return
     const result = await window.api.settings.listProviderKeys()

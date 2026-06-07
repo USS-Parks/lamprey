@@ -162,6 +162,12 @@ function buildAttachmentBlock(file: ProcessedFile): string {
   return ''
 }
 
+function errorMessage(err: unknown, fallback: string): string {
+  if (err instanceof Error && err.message) return err.message
+  if (typeof err === 'string' && err.trim()) return err
+  return fallback
+}
+
 // Walk a freshly-loaded message list and synthesize ToolCallState entries
 // for every recorded tool invocation, pairing each assistant tool_call with
 // its matching tool-role result message. Used by selectConversation so the
@@ -262,21 +268,30 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   createConversation: async () => {
     const model = get().activeModel
-    const result = await window.api.conversation.create(model)
-    if (result.success) {
-      const conv = result.data
-      useNavHistoryStore.getState().push(conv.id)
-      set((state) => ({
-        conversations: [conv, ...state.conversations],
-        activeConversationId: conv.id,
-        messages: [],
-        toolCalls: [],
-        runPhase: null
-      }))
-      // Fresh conversation starts with an empty plan; load to seed the store
-      // (also drops any stale snapshot from the previous active conversation).
-      void usePlanStore.getState().loadForConversation(conv.id)
-      return conv.id
+    try {
+      const result = await window.api.conversation.create(model)
+      if (result.success) {
+        const conv = result.data
+        useNavHistoryStore.getState().push(conv.id)
+        set((state) => ({
+          conversations: [conv, ...state.conversations],
+          activeConversationId: conv.id,
+          messages: [],
+          toolCalls: [],
+          runPhase: null
+        }))
+        // Fresh conversation starts with an empty plan; load to seed the store
+        // (also drops any stale snapshot from the previous active conversation).
+        void usePlanStore.getState().loadForConversation(conv.id)
+        return conv.id
+      }
+      const msg = result.error ?? 'Could not create conversation'
+      console.error('[chat-store] conversation:create failed:', msg)
+      toast.error(msg)
+    } catch (err) {
+      const msg = errorMessage(err, 'Could not create conversation')
+      console.error('[chat-store] conversation:create threw:', err)
+      toast.error(msg)
     }
     return ''
   },
@@ -381,15 +396,32 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }))
 
     const agentMode = useAgentStore.getState().mode
-    const result = await window.api.chat.send({
-      conversationId,
-      model: state.activeModel,
-      content: augmentedContent,
-      activeSkillIds,
-      agentMode
-    })
+    let result
+    try {
+      result = await window.api.chat.send({
+        conversationId,
+        model: state.activeModel,
+        content: augmentedContent,
+        activeSkillIds,
+        agentMode
+      })
+    } catch (err) {
+      const msg = errorMessage(err, 'Message failed')
+      console.error('[chat-store] chat:send threw:', err)
+      toast.error(msg)
+      get().streamError(msg)
+      return
+    }
 
-    if (result.success && result.data.conversationId !== conversationId) {
+    if (!result.success) {
+      const msg = result.error ?? 'Message failed'
+      console.error('[chat-store] chat:send failed:', msg)
+      toast.error(msg)
+      get().streamError(msg)
+      return
+    }
+
+    if (result.data.conversationId !== conversationId) {
       set({ activeConversationId: result.data.conversationId })
     }
 

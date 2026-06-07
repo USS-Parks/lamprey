@@ -226,6 +226,7 @@ function ModelDropdown({ onRequestKey }: ModelDropdownProps) {
   const setModel = useChatStore((s) => s.setModel)
   const allModels = useModelStore((s) => s.models)
   const hasKey = useProvidersStore((s) => s.hasKey)
+  const providersLoaded = useProvidersStore((s) => s.loaded)
   const refreshProviders = useProvidersStore((s) => s.refresh)
   const [open, setOpen] = useState(false)
   const wrapRef = useRef<HTMLDivElement>(null)
@@ -255,7 +256,7 @@ function ModelDropdown({ onRequestKey }: ModelDropdownProps) {
   ]
   const models = allModels.length > 0 ? allModels : fallback
   const active = models.find((m) => m.id === activeModel) ?? models[0]
-  const activeLocked = !hasKey(active.provider)
+  const activeLocked = providersLoaded && !hasKey(active.provider)
 
   return (
     <div ref={wrapRef} className="relative">
@@ -270,7 +271,7 @@ function ModelDropdown({ onRequestKey }: ModelDropdownProps) {
       {open && (
         <div className="absolute bottom-full right-0 z-30 mb-1 w-72 overflow-hidden rounded-lg border border-[var(--panel-border)] bg-[var(--bg-secondary)] shadow-xl">
           {models.map((m) => {
-            const locked = !hasKey(m.provider)
+            const locked = providersLoaded && !hasKey(m.provider)
             return (
               <button
                 key={m.id}
@@ -639,11 +640,12 @@ export function ChatInput({ onSend, onCancel, isStreaming, disabled }: ChatInput
   const openSettings = useUiStore((s) => s.openSettings)
   const refreshProviders = useProvidersStore((s) => s.refresh)
   const hasKey = useProvidersStore((s) => s.hasKey)
+  const providersLoaded = useProvidersStore((s) => s.loaded)
   const activeModel = useChatStore((s) => s.activeModel)
   const allModels = useModelStore((s) => s.models)
   const activeModelInfo = allModels.find((m) => m.id === activeModel)
   const activeProvider = activeModelInfo?.provider
-  const activeProviderHasKey = activeProvider ? hasKey(activeProvider) : true
+  const activeProviderHasKey = activeProvider ? !providersLoaded || hasKey(activeProvider) : true
 
   useEffect(() => {
     if (textareaRef.current) {
