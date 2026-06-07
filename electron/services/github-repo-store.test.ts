@@ -2,8 +2,13 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'fs'
 import { join } from 'path'
 
-// The migrations that create the GitHub-integration tables live in
-// `electron/services/database.ts` and run as side effects of `getDb()`.
+// The migrations that create the GitHub-integration tables used to live
+// in `electron/services/database.ts`. Post-PS6 (Persistence Phase) the
+// DDL has been partitioned into `electron/services/schema-init.ts`
+// where each segment lives as a named function. The contract — every
+// column the github-repo-store reads or writes is present in DDL — is
+// preserved; the file we grep against has just moved.
+//
 // We can't open a real sqlite handle in vitest (the better-sqlite3 native
 // module is built against Electron's Node ABI, not system Node — the same
 // reason every other DB-touching test in this repo uses an in-memory
@@ -20,11 +25,11 @@ import { join } from 'path'
 // CI — the first `getDb()` call evaluates these statements for real.
 
 const DB_SOURCE = readFileSync(
-  join(__dirname, 'database.ts'),
+  join(__dirname, 'schema-init.ts'),
   'utf-8'
 )
 
-describe('database.ts migration — project_github_repos', () => {
+describe('schema-init.ts migration — project_github_repos', () => {
   it('keeps the CREATE TABLE statement', () => {
     expect(DB_SOURCE).toMatch(/CREATE TABLE IF NOT EXISTS project_github_repos/)
   })
@@ -60,7 +65,7 @@ describe('database.ts migration — project_github_repos', () => {
   })
 })
 
-describe('database.ts migration — conversation_pull_requests', () => {
+describe('schema-init.ts migration — conversation_pull_requests', () => {
   it('keeps the CREATE TABLE statement', () => {
     expect(DB_SOURCE).toMatch(/CREATE TABLE IF NOT EXISTS conversation_pull_requests/)
   })
