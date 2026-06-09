@@ -42,6 +42,7 @@ import { permissionsService, descriptorNeedsApproval } from '../services/permiss
 import { inferPhaseFromDescriptor, type AgentRunPhase } from '../services/agent-run-phase'
 import { getActiveWorkspace } from '../services/workspace-state'
 import { classifyToolResult } from '../services/tool-result-status'
+import { validateToolArguments } from '../services/tool-schema-validator'
 import { dispatchNativeTool } from '../services/native-dispatch'
 import { emitChatEvent } from '../services/chat-events'
 import { readDeepResearchSettings } from '../services/research/adapter-cascade'
@@ -1045,6 +1046,36 @@ async function resolveSingleToolCall(
     args = {}
   }
 
+  // FC-5 — Validate arguments against the tool's inputSchema before
+  // dispatching. If the model produced invalid arguments (wrong types,
+  // missing required fields, extra properties), return a corrective
+  // tool-result message instead of executing. This lets the model
+  // correct its call on the next turn rather than getting a cryptic
+  // handler error or worse, silent wrong behavior.
+  const descriptor = toolRegistry.getById(toolName)
+  if (descriptor?.inputSchema) {
+    const validation = validateToolArguments(toolName, args, descriptor.inputSchema)
+    if (!validation.valid) {
+      const errorDetail = validation.errors.join('; ')
+      trace('resolveToolCall.validation-failed', {
+        callId: tc.id,
+        conversationId,
+        toolName,
+        errors: validation.errors
+      })
+      return {
+        callId: tc.id,
+        result: JSON.stringify({
+          error: 'argument_validation_failed',
+          details: validation.errors,
+          hint: 'Check the tool schema and retry with corrected arguments.'
+        })
+      }
+    }
+    // Use the parsed (and potentially normalized) args from the validator
+    args = validation.parsed
+  }
+
   const startTime = Date.now()
   trace('resolveToolCall.enter', {
     callId: tc.id,
@@ -1083,7 +1114,6 @@ async function resolveSingleToolCall(
   let result: string
   let explicitStatus: 'done' | 'error' | 'denied' | undefined
 
-  const descriptor = toolRegistry.getById(toolName)
   if (descriptor) {
     emitPhase(conversationId, inferPhaseFromDescriptor(descriptor))
   }
