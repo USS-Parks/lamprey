@@ -1,4 +1,136 @@
+## [Function Calling Phase — Complete] FC-0 through FC-16 shipped end-to-end — 2026-06-08
+
+17-prompt phase shipped on `codex/function-calling`. All commits below.
+
+**Final gate:**
+- lint OK
+- tsc node OK
+- tsc web OK
+- vitest 139 passed | 11 skipped (2086 tests)
+- build OK
+
+**Phase summary:**
+- FC-0: Provider capability audit — confirmed all 4 providers use OpenAI-compatible endpoints; Google uses `v1beta/openai/` not native Gemini SDK; no old fallback parser existed
+- FC-1A/B/C: Schema infrastructure — `validateToolArguments()` with 27 unit tests; all 46 native tools hardened with `additionalProperties: false`; coverage test validates every tool
+- FC-2: `supportsTools` flags verified correct (6 audit tests)
+- FC-3: Provider schema normalizer — strips unsupported keywords; core tools fail-fast (9 tests)
+- FC-4: Canonical transcript model — `ToolCallRequest`/`ToolResult` types + per-provider serializers (8 tests)
+- FC-5: Argument validation gate wired into `resolveSingleToolCall` — invalid calls produce corrective messages
+- FC-6: Brace-balanced fallback parser — `extractBalancedJson()` + `parseFallbackToolCalls()` with `FALLBACK_TOOL_INSTRUCTION` contract (20 tests)
+- FC-7: `PSEUDO_TAG_GUARD` scoped to fallback models; sanitizer bypass for native toolCalls
+- FC-8: Pipeline refactored — fallback parsing integrated into `runChatRound`; role-based tool access (`filterToolsForRole`); capability-aware effective tools
+- FC-9: Fallback trust degradation — mutating fallback calls skip "always allow" policies; `fb_` call IDs force re-prompt
+- FC-10: Capability mismatch detection — 3-mismatch threshold, tool-like syntax detection, session-scoped downgrade (12 tests)
+- FC-11: Regression tests — ghost-reply fixture proves `<bash>` prose never dispatches (7 tests)
+- FC-12: Shadow-comparison logger — built, tested, then removed in FC-14 (shadow clean by construction)
+- FC-13: Manual smoke-test matrix — 9 provider/model rows documented; `user-verification-needed` for missing keys
+- FC-14: Shadow logger removed — shadow comparisons clean, no old parser to retain
+- FC-15: Architecture documentation — `ARCHITECTURE/FUNCTION_CALLING.md` with full pathway, diagram, how-to guides
+- FC-16: Phase wrap
+
+**Residual items:**
+- FC-13 matrix rows marked `user-verification-needed` — requires provider API keys for live smoke testing
+- Planner and Reviewer stages remain tool-less (use `chatOnce()` without tools) — architectural decision, deferred to future phase
+- Streaming tool calls deferred to future phase per plan §6 Non-Goals
+- `chatOnce()` never passes tools — sub-agent tool use is future work
+
+**Commits (17):**
+0d21fc1 feat(tools): FC-0 provider capability and schema audit
+f7d1fee feat(tools): FC-1A tool schema infrastructure and validator
+5d4baf4 feat(tools): FC-1B core tools schema hardening
+ea2a683 feat(tools): FC-1C remaining tools schema hardening + coverage test
+6e8a775 feat(providers): FC-2 audit and verify supportsTools flags
+8845be5 feat(providers): FC-3 provider schema normalizer
+44735b9 feat(tools): FC-4 canonical transcript model and tool-result serializers
+20f85a0 feat(tools): FC-5 native tool argument validation gate in dispatch path
+cafcb91 feat(tools): FC-6 brace-balanced fallback parser with schema validation
+06aa516 feat(tools): FC-7 scope PSEUDO_TAG_GUARD and sanitizer to fallback models
+ddb5907 feat(pipeline): FC-8 refactor agent pipeline to use native tool-calling pathway with fallback parsing
+41037b3 feat(tools): FC-9 fallback trust degradation and permission elevation
+89d0bdf feat(providers): FC-10 capability mismatch detection and downgrade path
+2d76c62 feat(tests): FC-11 regression test suite (ghost-reply, fallback boundaries)
+228b754 feat(tools): FC-12 shadow-comparison logger
+cefe1be feat(tools): FC-13 manual smoke-test matrix + FC-14 remove shadow logger (clean comparisons)
+fb977d1 docs: FC-15 architecture documentation for function calling pathway
+
 # Lamprey Harness Dev Log
+
+## [Function Calling – Prompt FC-1C] Remaining Tools Schema Hardening - 2026-06-08
+
+**Files changed:** 12 files — all remaining tool-pack files + `tool-registry.ts` + new `tool-schema-coverage.test.ts`
+**Verify gate:**
+- lint OK
+- tsc node OK
+- tsc web OK
+- vitest 133 passed | 11 skipped OK (2024 tests)
+- Coverage test: 6/6 — all native tools have type:"object", additionalProperties:false, descriptions, pass validation
+
+**Notes:**
+- Added `additionalProperties: false` to all remaining native tool schemas (30+ tools across 9 pack files)
+- Added missing `description` fields to push_notification and send_to_session properties
+- Added `additionalProperties: false` to nested items schema in ask_user_question and multi_agent_run
+- Coverage test enumerates all tools from registry, asserts strict schema properties, validates args
+- MCP tools excluded from coverage assertions (schemas come from external servers)
+
+**Commit:** ea2a683
+
+## [Function Calling – Prompt FC-1B] Core Tools Schema Hardening - 2026-06-08
+
+**Files changed:** `tool-registry.ts`, `apply-patch-tool-pack.ts`, `workspace-context-tool-pack.ts`, `native-dev-tool-pack.ts`, new `tool-schema-hardening.test.ts`
+**Verify gate:**
+- lint OK
+- tsc node OK
+- tsc web OK
+- vitest 132 passed | 11 skipped OK (2018 tests)
+- Schema hardening tests: 15/15 — shell_command, apply_patch, workspace_context, view_image
+
+**Notes:**
+- All 4 core tools now have `additionalProperties: false`
+- Each schema validated with positive and negative test cases
+- shell_command already had detailed property descriptions; only needed additionalProperties
+- workspace_context had no required fields (fully optional); now has additionalProperties gate
+
+**Commit:** 5d4baf4
+
+## [Function Calling – Prompt FC-1A] Tool Schema Infrastructure and Validator - 2026-06-08
+
+**Files changed:** `tool-registry.ts`, new `tool-schema-validator.ts`, new `tool-schema-validator.test.ts`
+**Verify gate:**
+- lint OK
+- tsc node OK
+- tsc web OK
+- vitest 131 passed | 11 skipped OK (2003 tests)
+- Validator tests: 27/27
+
+**Notes:**
+- Created `validateToolArguments()` — handles parsed objects, JSON strings, empty/missing input, type checks, required properties, additionalProperties, enums, array items, nested objects
+- Lightweight JSON Schema subset validator — ignores unsupported keywords rather than rejecting
+- Harden `getOpenAITools()` with dev-mode assertion on output shape
+- `additionalProperties: false` on nested objects now enforced recursively
+
+**Commit:** f7d1fee
+
+## [Function Calling – Prompt FC-0] Provider Capability and Schema Audit - 2026-06-08
+
+**Files changed:** `PLANNING/FC_AUDIT.md` (new, 265 lines)
+**Verify gate:**
+- lint OK
+- tsc node OK
+- tsc web OK
+- vitest 130 passed | 11 skipped OK
+- build OK
+- No code changes — read-only audit
+
+**Notes:**
+- Confirmed all four providers use OpenAI-compatible endpoints through a single unified transport (no separate adapter files)
+- Google uses `v1beta/openai/` OpenAI-compatible endpoint, NOT the native Gemini SDK
+- All providers accept standard OpenAI-format tools arrays; no per-provider structural transformations needed
+- No fallback tool-call parser exists — green field for FC-6
+- MCP tools ARE exposed to model tool lists and are IN SCOPE for this phase
+- All `supportsTools` flags are correct per current provider docs
+- PSEUDO_TAG_GUARD applied universally (not gated on `supportsTools`) — FC-7 will scope it
+
+**Commit:** 0d21fc1
 
 ## [Persistence & Seed Phase — Phase Complete] v0.9.0 — 24-prompt roster shipped end-to-end  —  2026-06-06
 
