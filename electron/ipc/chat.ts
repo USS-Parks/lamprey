@@ -1164,6 +1164,11 @@ async function resolveSingleToolCall(
   // tools do not honour the flag.
   const isDangerousShellBypass =
     toolName === 'shell_command' && args?.dangerously_disable_sandbox === true
+  // FC-9 — fallback-provenance calls (from text parsing, not native
+  // tool_calls) carry degraded trust. Mutating fallback calls skip any
+  // persisted "always allow" policy and always re-prompt the user.
+  const isFallbackProvenance = tc.id.startsWith('fb_')
+  const isFallbackMutating = isFallbackProvenance && isMutatingDescriptor(descriptor)
   const callRisks = isDangerousShellBypass && descriptor
     ? [...descriptor.risks, 'sandboxBypass' as const]
     : descriptor?.risks
@@ -1179,7 +1184,7 @@ async function resolveSingleToolCall(
           args,
           conversationId,
           correlationId,
-          dangerous: isDangerousShellBypass ? true : undefined
+          dangerous: (isDangerousShellBypass || isFallbackMutating) ? true : undefined
         })
       : { decision: 'allow' as const, source: 'none' }
   const approvalDecision = approvalOutcome.decision
