@@ -74,7 +74,7 @@ npx electron-vite build
 - `react-markdown` v10 requires `pre` passthrough override to prevent double-wrapping CodeBlock components
 
 ## Execution Rules
-1. **All shipped plans (`PLANNING/LAMPREY_HARNESS_FINAL.md`, the RAG roster, `LAMPREY_PARITY_PLAN.md`, `LAMPREY_FLUIDITY_PLAN.md`, `LAMPREY_DEEP_RESEARCH_PLAN.md`, `LAMPREY_SNIP_PLAN.md`, `LAMPREY_CUSTOMIZE_PLAN.md`, `LAMPREY_PANELS_PLAN.md`, `LAMPREY_REASONING_AUDIT_PLAN.md`, `LAMPREY_REASONING_TRACE_PLAN.md`, `LAMPREY_ROBUSTNESS_HOTFIX_PLAN.md`, and `Lamprey_Function_Calling_PSPR_.md`) are reference-only.** When the user starts a new plan, treat its §0 (or equivalent) as the source of truth for verify gates + commit discipline.
+1. **All shipped plans (`PLANNING/LAMPREY_HARNESS_FINAL.md`, the RAG roster, `LAMPREY_PARITY_PLAN.md`, `LAMPREY_FLUIDITY_PLAN.md`, `LAMPREY_DEEP_RESEARCH_PLAN.md`, `LAMPREY_SNIP_PLAN.md`, `LAMPREY_CUSTOMIZE_PLAN.md`, `LAMPREY_PANELS_PLAN.md`, `LAMPREY_REASONING_AUDIT_PLAN.md`, `LAMPREY_REASONING_TRACE_PLAN.md`, `LAMPREY_ROBUSTNESS_HOTFIX_PLAN.md`, and `Lamprey_Function_Calling_PSPR_.md`, and `LAMPREY_MECHANICAL_PROOF_HARNESS_PLAN.md`) are reference-only.** When the user starts a new plan, treat its §0 (or equivalent) as the source of truth for verify gates + commit discipline.
 
 Canonical planning shorthand:
 - **P-SPR = Plan - Sequential Prompt Roster.** A single canonical `PLANNING/*.md` file that defines one phase end to end: goal, scope, non-goals, ordered prompts, files, verify gates, commit/devlog discipline, completion criteria, and approval state. Pasted or drafted text becomes a P-SPR only after it is saved as that plan file.
