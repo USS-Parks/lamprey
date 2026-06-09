@@ -6,6 +6,8 @@ import {
   buildComposerPrompt,
   composeFinalResponse,
   concatReasoningTrail,
+  formatReceiptMetricsForCitation,
+  formatVerificationFooter,
   shouldComposeFinalResponse,
   summarizeRun,
   truncateForComposer
@@ -248,5 +250,93 @@ describe('concatReasoningTrail', () => {
     expect(out).toMatch(/\[truncated for length — \d+ kb omitted\]$/)
     // The pre-truncation prefix made it in.
     expect(out!.startsWith('--- round 1 ---\nxxx')).toBe(true)
+  })
+})
+
+describe('WC-6 formatReceiptMetricsForCitation', () => {
+  it('renders vitest pass/fail counts as a short line', () => {
+    expect(
+      formatReceiptMetricsForCitation({ passed: 142, failed: 0, skipped: 11 })
+    ).toBe('142 passed, 0 failed, 11 skipped')
+  })
+
+  it('renders eslint error/warning counts', () => {
+    expect(formatReceiptMetricsForCitation({ errors: 0, warnings: 2 })).toBe(
+      '0 errors, 2 warnings'
+    )
+  })
+
+  it('falls back to compact JSON for unknown shapes', () => {
+    const out = formatReceiptMetricsForCitation({ custom: 'foo' })
+    expect(out).toBe('{"custom":"foo"}')
+  })
+
+  it('returns undefined for empty metrics', () => {
+    expect(formatReceiptMetricsForCitation(undefined)).toBeUndefined()
+    expect(formatReceiptMetricsForCitation({})).toBeUndefined()
+  })
+})
+
+describe('WC-6 formatVerificationFooter', () => {
+  it('returns the empty string when no receipts exist', () => {
+    expect(formatVerificationFooter([])).toBe('')
+  })
+
+  it('cites receipt id, glyph, kind, command, metrics, exit code on passing receipts', () => {
+    const out = formatVerificationFooter([
+      {
+        id: 'prf_abc',
+        kind: 'verify',
+        status: 'pass',
+        command: 'npm test',
+        parsedMetrics: { passed: 142, failed: 0 },
+        exitCode: 0
+      }
+    ])
+    expect(out).toContain('---')
+    expect(out).toContain('**Verification:**')
+    expect(out).toContain('receipt prf_abc ✓ verify')
+    expect(out).toContain('`npm test`')
+    expect(out).toContain('142 passed, 0 failed')
+    expect(out).toContain('(exit 0)')
+  })
+
+  it('uses ✗ glyph on failing receipts', () => {
+    const out = formatVerificationFooter([
+      {
+        id: 'prf_xyz',
+        kind: 'verify',
+        status: 'fail',
+        command: 'npm run build',
+        exitCode: 1
+      }
+    ])
+    expect(out).toContain('receipt prf_xyz ✗ verify')
+    expect(out).toContain('(exit 1)')
+  })
+
+  it('uses ○ glyph on skipped receipts', () => {
+    const out = formatVerificationFooter([
+      {
+        id: 'prf_skip',
+        kind: 'verify',
+        status: 'skipped',
+        command: 'npm run e2e'
+      }
+    ])
+    expect(out).toContain('receipt prf_skip ○ verify')
+  })
+
+  it('caps at 20 receipts so the footer stays readable', () => {
+    const many = Array.from({ length: 30 }, (_, i) => ({
+      id: `prf_${i}`,
+      kind: 'verify',
+      status: 'pass',
+      command: 'noop',
+      exitCode: 0
+    }))
+    const out = formatVerificationFooter(many)
+    const lineCount = out.split('\n').filter((l) => l.startsWith('- receipt')).length
+    expect(lineCount).toBe(20)
   })
 })

@@ -1,3 +1,19 @@
+## [Wiring Closure — Prompt WC-6] Cite receipt IDs in final answer prose - 2026-06-09
+
+**Files changed:** `electron/services/final-response-composer.ts`, `electron/services/final-response-composer.test.ts`
+**Verify gate:**
+- lint OK
+- tsc node OK
+- vitest 2180 passed | 123 skipped (+9 new WC-6 footer + metric-formatter tests)
+
+**Live wiring proof:** `composeFinalResponse()` at `electron/services/final-response-composer.ts:357` now appends a deterministic `\n---\n**Verification:**\n…` footer to the model's reply whenever `summary.proofReceipts` is non-empty. Each line cites the receipt id (`prf_…`), a glyph (✓/○/✗), the receipt kind, the command in backticks, parsed metrics (passed/failed/skipped/errors/warnings) when available, and the exit code. `formatVerificationFooter()` and `formatReceiptMetricsForCitation()` are exported for testing.
+
+**Notes:** The model's reply is preserved exactly — the footer is additive. Capped at 20 receipts so the footer stays legible. Unknown metric shapes fall back to compact JSON (capped at 120 chars). The pre-WC-6 composer trusted the model to follow the in-prompt "cite receipt id" instruction; now it's guaranteed regardless of model behavior. Existing "(none recorded; if proof is relevant, say proof is missing instead of inventing counts)" instruction on line 259 still covers the no-receipts case.
+
+**Commit:** (pending)
+
+---
+
 ## [Wiring Closure — Prompt WC-5] UI + composer consume persisted trust status - 2026-06-09
 
 **Files changed:** `src/components/chat/ProofGateBanner.tsx`, `src/components/chat/MessageBubble.tsx`, `src/components/chat/proof-banner-state.ts` (new), `src/components/chat/proof-banner-state.test.ts` (new), `electron/services/conversation-store.ts`, `electron/ipc/contracts.ts`, `electron/preload.ts`
@@ -11,7 +27,7 @@
 
 **Notes:** Legacy fallback preserved — rows without a persisted `proof_status` (pre-WC-4) still render via inline-notice text. Composer-side context-injection of trust state is deferred — the M5 gate already keeps the notice in the assistant body so the next turn's model still sees it; adding a separate composer hook here would be redundant. Strict-mode `'blocked'` value is reserved but no call site emits it yet (no behavior change for current users; the surface is ready).
 
-**Commit:** (pending)
+**Commit:** 9890be3
 
 ---
 
