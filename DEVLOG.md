@@ -93,6 +93,14 @@ Plan: `PLANNING/LAMPREY_LAMPSHADE_PLAN.md`. Approved + STS authorized by user 20
 - Headline: `renderContract()` = 9,311 bytes / 2,328 ~tokens; coding-mode single-agent = 10,897 bytes / 2,725 ~tokens; Reviewer agent prompt = 11,016 bytes / 2,754 ~tokens
 - Verify: tsc node + web clean
 
+### L7 — Slim `COMPOSER_SYSTEM`
+- `electron/services/system-prompt-builder.ts` — dropped the mandatory `<think>` line from `COMPOSER_SYSTEM` (matches L3's conditional-think rule for the main turn); softened "Use exactly this structure" → "When the run has multiple concrete actions, this structure helps"; added "For simple turns, skip the structure and just answer directly" as an explicit out; removed the "After those sections, add the actual direct answer only if…" instruction (which read as a hedge against the structure mandate that L7 removes anyway).
+- **Load-bearing rule kept verbatim:** *"When proof receipts are supplied, cite receipt ids and parsed metrics exactly from the summary. If no receipt exists for relevant verification, say proof is missing; never invent counts."* — the M-phase gate (M1–M13, WC-6) depends on the composer naming receipt ids exactly, and the `final-response-composer.test.ts` already pins this phrase.
+- The deterministic `**Verification:**` footer appended by `runAgentPipeline` after the composer output is unchanged — that's code, not prompt.
+- PSEUDO_TAG_GUARD already removed at L6; no further injection points exist.
+- `final-response-composer.test.ts` 24 tests pass unchanged (pre-existing `'## What I did'` / `"## What's left"` / `'cite receipt ids and parsed metrics'` assertions all still match after the softening).
+- Verify: tsc node + web clean, vitest 66/66 across builder + composer, `npm run verify:proof -- --no-tests` exits 0.
+
 ### L6 — Drop `PSEUDO_TAG_GUARD` from the prompt path; sanitizer keeps safety
 - `electron/services/system-prompt-builder.ts` — removed PSEUDO_TAG_GUARD injection from every site: `COMPOSER_SYSTEM` array tail, `AGENT_ROLE_PROMPTS.planner / .coder / .reviewer / .coworker` each lost their trailing `+ PSEUDO_TAG_GUARD` concatenation. The `export const PSEUDO_TAG_GUARD` itself stays exported with `@deprecated` JSDoc so any downstream importer (none in this repo today; sanitize-pseudo-tags.ts only references it in a comment) doesn't suddenly break.
 - The persist-side `sanitizePseudoTags` in `electron/services/sanitize-pseudo-tags.ts` (HX3/HX4) is unchanged and remains the safety net — it rewrites any stray `<bash>`/`<tool>`/`<run>`/`<shell>`/`<execute>`/`<command>`/`<terminal>`/`<output>`/`<result>`/`<stdout>`/`<stderr>` into fenced markdown on save, and the verbatim original is preserved in `messages.content_raw`.
