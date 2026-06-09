@@ -214,6 +214,49 @@ describe('tool-registry WC-1 schema normalizer wiring', () => {
   })
 })
 
+// WC-2 — filterToolsForRole is wired into the tool prep path.
+describe('tool-registry WC-2 role-aware tool filtering wiring', () => {
+  it('getNormalizedToolsForRole exists for planner/coder/reviewer', async () => {
+    const { toolRegistry } = await import('./tool-registry')
+    expect(typeof toolRegistry.getNormalizedToolsForRole).toBe('function')
+    expect(() => toolRegistry.getNormalizedToolsForRole('planner', 'deepseek')).not.toThrow()
+    expect(() => toolRegistry.getNormalizedToolsForRole('coder', 'deepseek')).not.toThrow()
+    expect(() => toolRegistry.getNormalizedToolsForRole('reviewer', 'deepseek')).not.toThrow()
+  })
+
+  it('Coder receives the full normalized set', async () => {
+    const { toolRegistry } = await import('./tool-registry')
+    const allTools = toolRegistry.getNormalizedToolsForProvider('deepseek')
+    const coderTools = toolRegistry.getNormalizedToolsForRole('coder', 'deepseek')
+    expect(coderTools.length).toBe(allTools.length)
+  })
+
+  it('Planner subset excludes mutating tools (apply_patch, shell_command)', async () => {
+    const { toolRegistry } = await import('./tool-registry')
+    const plannerTools = toolRegistry.getNormalizedToolsForRole('planner', 'deepseek')
+    const names = plannerTools.map((t) => (t.type === 'function' ? t.function.name : ''))
+    expect(names).not.toContain('apply_patch')
+    expect(names).not.toContain('shell_command')
+  })
+
+  it('Reviewer subset excludes mutating tools (apply_patch, shell_command)', async () => {
+    const { toolRegistry } = await import('./tool-registry')
+    const reviewerTools = toolRegistry.getNormalizedToolsForRole('reviewer', 'deepseek')
+    const names = reviewerTools.map((t) => (t.type === 'function' ? t.function.name : ''))
+    expect(names).not.toContain('apply_patch')
+    expect(names).not.toContain('shell_command')
+  })
+
+  it('Planner and Reviewer subsets are smaller than the Coder set', async () => {
+    const { toolRegistry } = await import('./tool-registry')
+    const coderCount = toolRegistry.getNormalizedToolsForRole('coder', 'deepseek').length
+    const plannerCount = toolRegistry.getNormalizedToolsForRole('planner', 'deepseek').length
+    const reviewerCount = toolRegistry.getNormalizedToolsForRole('reviewer', 'deepseek').length
+    expect(plannerCount).toBeLessThan(coderCount)
+    expect(reviewerCount).toBeLessThan(coderCount)
+  })
+})
+
 // UX-shim tools must carry transcriptHidden so MessageList skips their
 // ToolUseCard. Their side effect (modal, banner, divider) already shows
 // up elsewhere in the UI — leaving a card on top reads as transcript noise

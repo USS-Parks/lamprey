@@ -1,3 +1,19 @@
+## [Wiring Closure — Prompt WC-2] Wire filterToolsForRole per agent role - 2026-06-09
+
+**Files changed:** `electron/services/tool-registry.ts`, `electron/services/tool-registry.test.ts`, `electron/ipc/chat.ts`
+**Verify gate:**
+- lint OK
+- tsc node OK
+- vitest 2159 passed | 122 skipped (+5 new WC-2 tests)
+
+**Live wiring proof:** Added `toolRegistry.getNormalizedToolsForRole(role, provider)` at `electron/services/tool-registry.ts:541`, combining FC-3 normalizer + FC-8 role filter. Chat dispatch at `electron/ipc/chat.ts:467` now calls it with `role='coder'` — the Coder is the only stage that currently receives tools (Planner uses chatOnce w/o tools, Reviewer uses subAgentRunner per FC_AUDIT §4). Planner and Reviewer subsets verifiably exclude `apply_patch` and `shell_command`; both subsets are strictly smaller than the Coder set.
+
+**Notes:** Coder behavior unchanged (Coder allowlist is unrestricted in role-tool-access.ts, so filtering returns the full set). The forward-compat wire is now in place: any future stage that opts into the `tools` parameter will get the role-correct subset for free.
+
+**Commit:** (pending)
+
+---
+
 ## [Wiring Closure — Prompt WC-1] Wire normalizeToolsForProvider into tool prep - 2026-06-09
 
 **Files changed:** `electron/services/tool-registry.ts`, `electron/services/tool-registry.test.ts`, `electron/ipc/chat.ts`
@@ -10,7 +26,7 @@
 
 **Notes:** Backwards-compatible — `getOpenAITools()` still exists for test/inspection use. Warnings are logged via `console.warn` when non-core tools drop. Core-tool failure throws at call site per FC plan invariant 3.
 
-**Commit:** (pending)
+**Commit:** d7ab2b3
 
 ---
 

@@ -456,9 +456,16 @@ export function registerChatHandlers(): void {
       // fails fast on core tools that can't be normalized, and drops non-core
       // tools with a logged warning. Single-mode and multi-mode share this
       // tools array (line 529 + 574), so both pathways are covered.
+      //
+      // WC-2: The Coder is the role that receives tools — single-mode is
+      // implicitly Coder; multi-mode's Planner uses chatOnce without tools
+      // and Reviewer uses subAgentRunner without tools (per FC_AUDIT §4).
+      // Filtering by role='coder' here returns the full set (Coder allowlist
+      // is unrestricted) but the call site is now the explicit source of
+      // truth for which role receives this tools array.
       const activeProvider = getProviderForModel(model)
       const tools: ChatCompletionTool[] =
-        toolRegistry.getNormalizedToolsForProvider(activeProvider)
+        toolRegistry.getNormalizedToolsForRole('coder', activeProvider)
 
       const apiMessages = buildApiMessagesFromStoredMessages(systemPrompt, promptHistory)
 
