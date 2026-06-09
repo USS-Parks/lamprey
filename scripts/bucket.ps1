@@ -197,10 +197,15 @@ try {
 
 # Wait for R2 job
 Write-Host "  Waiting for R2 upload..." -ForegroundColor White
-Wait-Job $r2Job | Out-Null
-$r2Output = Receive-Job $r2Job 2>&1
-$r2State = (Get-Job $r2Job).State
-Remove-Job $r2Job
+Wait-Job -Job $r2Job | Out-Null
+$r2Output = Receive-Job -Job $r2Job 2>&1
+# After Wait-Job returns, the job object's State property is the final
+# verdict — re-fetching via `Get-Job $r2Job` would pass the job object
+# as a positional -Name argument and fail with
+# "The command cannot find the job because the job name
+# System.Management.Automation.PSRemotingJob was not found."
+$r2State = $r2Job.State
+Remove-Job -Job $r2Job
 if ($r2State -ne "Completed") {
   Write-Host "ERROR: R2 upload failed. Output:" -ForegroundColor Red
   $r2Output | Write-Host
