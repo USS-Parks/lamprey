@@ -937,6 +937,20 @@ export async function runChatRound(
             if (!gate.trusted) {
               finalContent += proofGateNotice(gate)
             }
+            // WC-4 — Persist trust state as a structured column. NULL means
+            // "not applicable" (no mutating tool observed on this turn) so
+            // the column stays sparse on read-only / research turns.
+            // `gate.status === 'not_required'` is the proof-gate equivalent
+            // of "no mutations were observed", which maps to undefined.
+            // 'trusted' / 'untrusted' map directly from gate.trusted on
+            // applicable turns. 'blocked' and 'waived' are reserved for the
+            // M6 waiver flow (WC-5 plumbing).
+            const proofStatus: 'trusted' | 'untrusted' | undefined =
+              gate.status === 'not_required'
+                ? undefined
+                : gate.trusted
+                  ? 'trusted'
+                  : 'untrusted'
             const assistantMsg = convStore.saveMessage({
               id: randomUUID(),
               conversationId,
@@ -946,7 +960,8 @@ export async function runChatRound(
               draft,
               reasoning: finalReasoning,
               documents,
-              stage: finalStage
+              stage: finalStage,
+              proofStatus
             })
             if (!suppressDoneEvent) {
               emitPhase(conversationId, 'done')

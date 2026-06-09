@@ -26,6 +26,16 @@ export interface Message {
    *  emitted so audit / export consumers can inspect it. Undefined on
    *  legacy pre-hotfix rows and non-assistant rows. */
   contentRaw?: string | null
+  /** WC-4 — Persisted proof gate trust state for the assistant turn.
+   *
+   *  Undefined = not applicable (read-only turn, legacy row, no mutating
+   *  tool call observed). `'trusted'` = the M5 gate evaluated and found a
+   *  passing receipt after the last mutation. `'untrusted'` = mutations
+   *  observed but no fresh passing receipt. `'blocked'` = strict-mode
+   *  block (reserved). `'waived'` = user explicitly waived via the
+   *  contract waiver flow (M6). The ProofGateBanner reads from this field
+   *  rather than parsing the inline notice text. */
+  proofStatus?: 'trusted' | 'untrusted' | 'blocked' | 'waived'
   /** Standalone documents the model produced for this turn via the
    *  `create_document` native tool. Rendered as cards below the message
    *  body — separate from tool-call cards because these are deliverables,

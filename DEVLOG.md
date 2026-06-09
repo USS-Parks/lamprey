@@ -1,3 +1,20 @@
+## [Wiring Closure — Prompt WC-4] Persist proof gate trust status - 2026-06-09
+
+**Files changed:** `electron/services/db-migrations.ts`, `electron/services/db-migrations.test.ts`, `electron/services/schema-init.ts`, `electron/services/conversation-store.ts`, `electron/ipc/chat.ts`, `src/lib/types.ts`
+**Verify gate:**
+- lint OK
+- tsc node OK
+- tsc web OK
+- vitest 2164 passed | 123 skipped (+1 new WC-4 migration test, skipped under known better-sqlite3 binding guard per HX4)
+
+**Live wiring proof:** Migration v16 adds `messages.proof_status TEXT` at `electron/services/db-migrations.ts:178`. `saveMessage` in `electron/services/conversation-store.ts:629` accepts optional `proofStatus?: ProofStatus` and persists it via INSERT. `getMessages` at `:798` reads it back as `proofStatus?: ProofStatus | undefined`. The renderer `Message` type at `src/lib/types.ts:28` mirrors the field. The chat-dispatch `evaluateProofGate` site at `electron/ipc/chat.ts:935` now derives `proofStatus: 'trusted' | 'untrusted' | undefined` from `gate.status === 'not_required'` (→ undefined) vs `gate.trusted` (→ 'trusted' | 'untrusted'), and passes it through `saveMessage`.
+
+**Notes:** NULL means "not applicable" (read-only turn, legacy row). The proof-gate inline-notice text on `finalContent` is preserved during WC-4 — WC-5 will downgrade it once the banner reads the column directly. Migration test exercises `PRAGMA table_info(messages)` to confirm the column shape and idempotency. `'blocked'` and `'waived'` are valid ProofStatus values but no call site emits them yet (reserved for the WC-5 waiver path).
+
+**Commit:** (pending)
+
+---
+
 ## [Wiring Closure — Prompt WC-3] Synthesize implicit contract on first mutation - 2026-06-09
 
 **Files changed:** `electron/ipc/chat.ts`, `electron/ipc/chat-wc3-implicit-contract.test.ts` (new)
@@ -10,7 +27,7 @@
 
 **Notes:** Best-effort by design — DB failures fall through silently so tool dispatch is never blocked by contract synthesis. `firstObservedFile` extracted from common arg shapes (`path`, `file_path`, `target`). Default userRequest when no user message exists (e.g., sub-agent invocations). Test seam `__resetImplicitContractCacheForTesting` exposes the per-correlation cache for testing.
 
-**Commit:** (pending)
+**Commit:** b09d2b1
 
 ---
 

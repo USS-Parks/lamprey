@@ -173,6 +173,22 @@ export const MIGRATIONS: Migration[] = [
       safeAdd('projects', 'updated_at INTEGER NOT NULL DEFAULT 0')
       safeAdd('projects', 'last_opened_at INTEGER')
     }
+  },
+  {
+    version: 16,
+    description:
+      'WC-4 messages.proof_status — persisted proof gate trust state ' +
+      "(NULL = not-applicable | 'trusted' | 'untrusted' | 'blocked' | 'waived')",
+    up(db) {
+      const safeAdd = (table: string, ddl: string): void => {
+        try {
+          db.exec(`ALTER TABLE ${table} ADD COLUMN ${ddl};`)
+        } catch (err: any) {
+          if (!/duplicate column name/i.test(String(err?.message ?? err))) throw err
+        }
+      }
+      safeAdd('messages', 'proof_status TEXT')
+    }
   }
 ]
 

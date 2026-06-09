@@ -50,12 +50,28 @@ export interface MessageRow {
    *  assistant rows. UI continues to read `content` (sanitized); this
    *  column exists for the audit / export surface (RT-Viewer extension). */
   content_raw: string | null
+  /** WC-4 — Persisted proof gate trust state.
+   *
+   *  NULL = not applicable (read-only turn, legacy row, no mutating tool
+   *  call observed). `'trusted'` = the M5 gate evaluated and found a
+   *  passing receipt after the last mutation. `'untrusted'` = mutations
+   *  observed but no fresh passing receipt. `'blocked'` = a strict-mode
+   *  block (reserved; WC-5 surfaces this in the UI banner). `'waived'` =
+   *  user explicitly waived via the contract waiver flow (M6).
+   *
+   *  Replaces the WC-pre era of parsing `proofGateNotice` text out of the
+   *  message body to know whether a turn is trusted. */
+  proof_status: string | null
 }
 
 /** Allowed values for `MessageRow.stage`. Kept as a string union so
  *  callers can pass `undefined` to mean "not a multi-agent row".
  *  Coder rows intentionally stay NULL — see database.ts R1 migration. */
 export type MessageStage = 'planner' | 'reviewer' | 'composer'
+
+/** WC-4 — Allowed values for `MessageRow.proof_status`. NULL on the row
+ *  means "not applicable" (use the absence rather than a sentinel string). */
+export type ProofStatus = 'trusted' | 'untrusted' | 'blocked' | 'waived'
 export type SeedSourceKind = 'none' | 'message' | 'block' | 'transcript-range' | 'custom'
 
 export interface ConversationSeedBlob {
@@ -618,6 +634,11 @@ export function saveMessage(msg: {
    *  Pass 'planner' / 'reviewer' / 'composer' from agent-pipeline.ts +
    *  chat.ts composer path. Omit (NULL) for single-agent + Coder rows. */
   stage?: MessageStage
+  /** WC-4 — Persisted proof gate trust status. Omit (NULL) for read-only
+   *  turns or non-assistant rows. Chat dispatch writes this after the M5
+   *  gate evaluates. UI and composer consume from the column, not from
+   *  message body text. */
+  proofStatus?: ProofStatus
 }) {
   const db = getDb()
   const now = Date.now()
@@ -669,7 +690,7 @@ export function saveMessage(msg: {
   withWriteRetry(
     () => {
       db.prepare(
-        'INSERT INTO messages (id, conversation_id, role, content, model, tool_call_id, tool_calls, draft, reasoning, documents, stage, content_raw, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+        'INSERT INTO messages (id, conversation_id, role, content, model, tool_call_id, tool_calls, draft, reasoning, documents, stage, content_raw, proof_status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
       ).run(
         msg.id,
         msg.conversationId,
@@ -683,6 +704,7 @@ export function saveMessage(msg: {
         documentsJson,
         msg.stage || null,
         contentRaw,
+        msg.proofStatus || null,
         now
       )
       touchConversation(msg.conversationId)
@@ -710,7 +732,8 @@ export function saveMessage(msg: {
     draft: msg.draft,
     reasoning: split.reasoning,
     documents: msg.documents,
-    stage: msg.stage
+    stage: msg.stage,
+    proofStatus: msg.proofStatus
   }
 }
 
@@ -760,7 +783,10 @@ export function getMessages(conversationId: string) {
       // Robustness Hotfix HX4 (v0.8.4) — verbatim pre-sanitisation copy of
       // the assistant body. NULL on legacy + non-assistant + already-clean
       // assistant rows. Renderer ignores it; audit / export surfaces opt in.
-      contentRaw: row.content_raw ?? undefined
+      contentRaw: row.content_raw ?? undefined,
+      // WC-4 — persisted proof gate trust status. NULL → undefined so the
+      // renderer treats it as "not applicable" and renders no banner state.
+      proofStatus: (row.proof_status ?? undefined) as ProofStatus | undefined
     }
   })
 }
