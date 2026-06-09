@@ -399,7 +399,7 @@ function App(): React.ReactElement {
 
       {customizeOpen && <CustomizeView />}
 
-      <ProjectHome projectId={projectViewId} onClose={closeProjectView} />
+      {projectViewId && <ProjectHome projectId={projectViewId} onClose={closeProjectView} />}
 
       <MemoryModal />
 
