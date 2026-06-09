@@ -842,7 +842,10 @@ export function Sidebar() {
         copyPath={(p) => copyPath(p.id)}
         handleNewChatInProject={handleNewChatInProject}
         activeProjectId={activeProjectId}
-        selectProject={(id) => void selectProject(id)}
+        selectProject={(id) => {
+          void selectProject(id)
+          useUiStore.getState().openProjectView(id)
+        }}
         folderIcon={folderIcon}
         workIcon={workIcon}
         newChatIcon={newChatIcon}
