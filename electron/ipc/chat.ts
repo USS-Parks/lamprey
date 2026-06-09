@@ -43,6 +43,7 @@ import { inferPhaseFromDescriptor, type AgentRunPhase } from '../services/agent-
 import { getActiveWorkspace } from '../services/workspace-state'
 import { classifyToolResult } from '../services/tool-result-status'
 import { validateToolArguments } from '../services/tool-schema-validator'
+import { parseFallbackToolCalls } from '../services/fallback-tool-parser'
 import { dispatchNativeTool } from '../services/native-dispatch'
 import { emitChatEvent } from '../services/chat-events'
 import { readDeepResearchSettings } from '../services/research/adapter-cascade'
@@ -749,7 +750,34 @@ export async function runChatRound(
             reasoningLen: fullReasoning?.length ?? 0,
             toolCallsCount: toolCalls?.length ?? 0
           })
-          if (!toolCalls || toolCalls.length === 0) {
+
+          // FC-8 — when the model does not support native tool calling
+          // (toolCalls is empty/null), attempt fallback parsing from the
+          // text content. Fallback models are instructed to output JSON
+          // following the fallback contract. If a valid fallback call is
+          // found, convert it to the native toolCalls format and dispatch
+          // through the same pathway.
+          let effectiveToolCalls = toolCalls
+          if ((!effectiveToolCalls || effectiveToolCalls.length === 0) && !descriptor.supportsTools) {
+            const descriptors = toolRegistry.getDescriptors()
+            const fallbackResult = parseFallbackToolCalls(fullContent, descriptors)
+            if (fallbackResult && !fallbackResult.isFinalAnswer && fallbackResult.calls.length > 0) {
+              // Convert fallback ToolCallRequest[] to ProviderToolCall[]
+              effectiveToolCalls = fallbackResult.calls.map((fc) => ({
+                id: fc.id,
+                type: 'function' as const,
+                function: { name: fc.name, arguments: JSON.stringify(fc.arguments) }
+              }))
+              trace('runChatRound.fallback-parsed', {
+                conversationId,
+                round,
+                callCount: effectiveToolCalls.length,
+                provenance: 'fallback'
+              })
+            }
+          }
+
+          if (!effectiveToolCalls || effectiveToolCalls.length === 0) {
             let finalContent = fullContent
             let draft: string | undefined
             let composerReasoning: string | undefined
@@ -844,7 +872,7 @@ export async function runChatRound(
             return
           }
 
-          const persistedToolCalls = toolCalls.map((tc) => ({
+          const persistedToolCalls = effectiveToolCalls.map((tc) => ({
             id: tc.id,
             type: 'function' as const,
             function: { name: tc.function.name, arguments: tc.function.arguments }
@@ -871,8 +899,8 @@ export async function runChatRound(
           // calls run one at a time. The final tool-role messages are pushed
           // in tool_call array order regardless of completion order so the
           // next API round sees a consistent sequence.
-          const resolved: ResolvedToolCall[] = new Array(toolCalls.length)
-          const windows = partitionToolCallWindows(toolCalls, (id) =>
+          const resolved: ResolvedToolCall[] = new Array(effectiveToolCalls.length)
+          const windows = partitionToolCallWindows(effectiveToolCalls, (id) =>
             toolRegistry.getById(id)
           )
           for (const win of windows) {
@@ -880,7 +908,7 @@ export async function runChatRound(
               const settled = await Promise.all(
                 win.indices.map((idx) =>
                   resolveSingleToolCall(
-                    toolCalls[idx],
+                    effectiveToolCalls[idx],
                     conversationId,
                     model,
                     workspacePath,
@@ -894,7 +922,7 @@ export async function runChatRound(
               }
             } else {
               resolved[win.index] = await resolveSingleToolCall(
-                toolCalls[win.index],
+                effectiveToolCalls[win.index],
                 conversationId,
                 model,
                 workspacePath,
