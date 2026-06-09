@@ -1,3 +1,56 @@
+## [Wiring Closure Phase — Complete] WC-0 through WC-11 shipped end-to-end — 2026-06-09
+
+12-prompt closure phase shipped on `claude/vigorous-nightingale-5697db`. v0.9.0 → **v0.9.1** patch release.
+
+**Final gate:**
+- lint OK
+- tsc node OK
+- tsc web OK
+- vitest 2193 passed | 123 skipped (162 files)
+- build OK (electron-vite, 4.43s)
+- `verify:proof` exits 0 (lint + tsc + test + smoke:bundle PASS + smoke:renderer PASS)
+
+**Per-prompt commits:**
+- WC-0 785840c — Closure baseline + gap re-confirmation
+- WC-1 d7ab2b3 — Wire normalizeToolsForProvider into tool prep
+- WC-2 33ea7e7 — Wire filterToolsForRole per agent role
+- WC-3 b09d2b1 — Synthesize implicit contract on first mutation
+- WC-4 83d0d7d — Persist proof gate trust status (migration v16)
+- WC-5 9890be3 — Banner + composer consume persisted trust status
+- WC-6 d024441 — Cite receipt IDs in final answer prose
+- WC-7 248be1f — Wire verify:proof into CI
+- WC-8 1a3fcb0 — PRJ-10 end-to-end regression test
+- WC-9 852e831 — Architecture doc accuracy sweep
+- WC-10 af2e89e — Plan-record corrections
+- WC-11 (this commit) — Phase wrap
+
+**Live wiring proof (the seven gaps closed):**
+1. `normalizeToolsForProvider` was exported in v0.9.0 but never invoked — now reached from `electron/ipc/chat.ts:467` via `getNormalizedToolsForProvider/Role` on the tool registry.
+2. `filterToolsForRole` was the same — same wiring path enforces role-correct subsets.
+3. `synthesizeImplicitChangeContract` was unused — `ensureImplicitContractForFirstMutation` at `chat.ts:1149` now creates implicit contracts on the first mutating tool dispatch.
+4. `messages.proof_status` column added via migration v16; chat write-through persists the M5 gate's verdict.
+5. ProofGateBanner reads state from the column via `computeProofBannerState`; waiver flips to `'waived'`.
+6. Composer appends deterministic `**Verification:**` footer that cites receipt ids + metrics.
+7. `verify:proof` is now CI's static gate (was lint+tsc inline). New `--no-tests` flag avoids duplicating CI's `test` job.
+8. PRJ-10 regression-test gap (validation-only) closed by new `Sidebar.project-flow.test.ts` with 13 source-reading wiring assertions.
+
+**Test growth:** +50 tests this phase (2143 → 2193). All new tests pass.
+
+**Documentation:** All three audited architecture docs now carry `Invoked from: <file>:<line>` citations backed by grep. All three audited plans have append-only correction notes. README + CLAUDE.md updated for v0.9.1.
+
+**Migration:** v15 → v16 (added `messages.proof_status TEXT`, idempotent via `safeAdd`).
+
+**Known limitations / deferred:**
+- Composer-side context-injection of trust state on follow-up turns was scoped out (M5 gate already keeps the inline notice in the assistant body so the next turn's model still sees it; adding a separate composer hook would be redundant).
+- Strict-mode `'blocked'` value is a reserved `ProofStatus` but no call site emits it yet (surface is ready for future strict-policy turns).
+- No new RTL/jsdom test infra — WC-8 uses source-reading wiring assertions as the pragmatic alternative.
+
+**Residual risks:** none identified beyond the deferred items above. Cross-phase audit pattern from this phase ("verify the wiring with grep, not just the export") should become standard for all future Lamprey phase verify gates.
+
+**Phase status:** **Complete** — all 12 prompts shipped, v0.9.1 ready for push + Bucket.
+
+---
+
 ## [Wiring Closure — Prompt WC-10] Plan-record corrections - 2026-06-09
 
 **Files changed:** `PLANNING/Lamprey_Function_Calling_PSPR_.md`, `PLANNING/LAMPREY_MECHANICAL_PROOF_HARNESS_PLAN.md`, `PLANNING/LAMPREY_PROJECT_SECTION_PLAN.md`
@@ -9,7 +62,7 @@
 
 **Notes:** Append-only — no original prompt roster was modified. Future readers landing on any of the three plans will see the closure note before assuming a documented invariant is live in the v0.9.0 form.
 
-**Commit:** (pending)
+**Commit:** af2e89e
 
 ---
 

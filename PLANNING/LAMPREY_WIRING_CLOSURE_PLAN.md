@@ -144,7 +144,7 @@ Verify:
 | WC-8 | **PRJ-10 end-to-end regression test** | Add a vitest test that asserts the source-level wiring contract — sidebar imports modal, no `window.prompt(`, "+" opens modal, dialog/aria roles in place. | `src/components/layout/Sidebar.project-flow.test.ts` (new) | 13 assertions pass; would have failed against original `window.prompt()` "+"; lint; tsc web | [x] |
 | WC-9 | **Architecture doc accuracy sweep** | Update `ARCHITECTURE/FUNCTION_CALLING.md`, `ARCHITECTURE/MECHANICAL_PROOF.md`, `ARCHITECTURE/PROJECTS.md` to cite real invocation sites for each described invariant (now that WC-1 through WC-7 wired them). | The three architecture docs | Each invariant has a file:line citation that grep confirms; lint passes; no broken markdown links | [x] |
 | WC-10 | **Plan-record corrections** | Append a correction note to `PLANNING/Lamprey_Function_Calling_PSPR_.md` §3 FC-1B clarifying which tools were actually hardened (`shell_command, apply_patch, workspace_context, view_image`, not `read_file/write_file`); add a "Wiring Closure follow-up" subsection to each of the three audited plans pointing to this plan. | The three plan files | Notes added; existing prompt rosters not modified; lint passes | [x] |
-| WC-11 | **Phase wrap, version bump, push, and Bucket** | Run full gate; bump `package.json` to v0.9.1; update README "New in" + download URLs; update `CLAUDE.md` Current State; write DEVLOG phase-complete entry; mark all prompts `[x]`; commit; push to `main`; run `pwsh scripts\bucket.ps1`. | `package.json`, `README.md`, `CLAUDE.md`, `DEVLOG.md`, this plan | Full gate (lint, tsc node, tsc web, npm test, npm run build, npm run verify:proof) passes; Bucket completes (R2 + GH release + CF purge) | [ ] |
+| WC-11 | **Phase wrap, version bump, push, and Bucket** | Run full gate; bump `package.json` to v0.9.1; update README "New in" + download URLs; update `CLAUDE.md` Current State; write DEVLOG phase-complete entry; mark all prompts `[x]`; commit; push to `main`; run `pwsh scripts\bucket.ps1`. | `package.json`, `README.md`, `CLAUDE.md`, `DEVLOG.md`, this plan | Full gate (lint, tsc node, tsc web, npm test, npm run build, npm run verify:proof) passes; Bucket completes (R2 + GH release + CF purge) | [x] |
 
 ---
 
@@ -423,11 +423,11 @@ The Wiring Closure phase is complete only when all of the following are true:
 
 **Drafted:** 2026-06-09
 
-**Approved for STS:** _Pending — user review._ When the user approves with "STS", "Stem to Stern", "approved", "run it", or equivalent, execute WC-0 → WC-11 per §0 Step 2.
+**Approved for STS:** Yes — user approved "STS to Bucket" 2026-06-09; executed end-to-end same day.
 
-**Bucket step:** WC-11 explicitly includes `pwsh scripts\bucket.ps1` as the final action. The user's standing direction ("Bucket = one command, no asking") authorizes this as part of phase execution under the STS approval. No separate Bucket approval is needed.
+**Bucket step:** WC-11 explicitly includes `pwsh scripts\bucket.ps1` as the final action.
 
-**Phase status:** Drafted, awaiting approval.
+**Phase status:** **Complete** — all 12 prompts shipped, v0.9.1 released via Bucket pipeline.
 
 ---
 
