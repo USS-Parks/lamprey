@@ -93,6 +93,13 @@ Plan: `PLANNING/LAMPREY_LAMPSHADE_PLAN.md`. Approved + STS authorized by user 20
 - Headline: `renderContract()` = 9,311 bytes / 2,328 ~tokens; coding-mode single-agent = 10,897 bytes / 2,725 ~tokens; Reviewer agent prompt = 11,016 bytes / 2,754 ~tokens
 - Verify: tsc node + web clean
 
+### L5 — Strip full base contract from agent sub-stage prompts
+- `electron/services/system-prompt-builder.ts` — added `slimIdentityHead(modelId?)` (one-line "running inside Lamprey, be honest about your model") and `CODER_OPERATING_PRINCIPLES` (3-line read → smallest → verify). Refactored `buildAgentSystemPrompt` to use the slim head by default; an explicit `base` override still works. Only the `coder` role gets the operating-principles excerpt prepended (planner/reviewer don't edit; coworker is user-facing; reader/verifier are pure-text).
+- **Measured drop:** planner 10,630 → 996 (-90.6%), coder 10,604 → 1,205 (-88.6%), reviewer 11,016 → 1,382 (-87.5%), coworker 10,621 → 989 (-90.7%), reader 9,990 → 360 (-96.4%), verifier 10,030 → 400 (-96.0%). All clear the L5 ≥70% target.
+- The reviewer prompt is at 1,382 bytes because PSEUDO_TAG_GUARD (~700 bytes) is still baked into the reviewer role text — L6 strips that and tightens the lock to <1,024 bytes (≥90% drop).
+- `system-prompt-builder.test.ts` — flipped the prior "includes the default contract when no base override is given" test to "uses the slim identity head, not the full contract"; added the coder-only `<operating_principles>` test; added the L5 size lock (<3,305 bytes for reviewer).
+- Verify: tsc node + web clean, vitest 49/49 builder tests pass.
+
 ### L4 — Slim `ROLE_FRAGMENTS` to 2–3 imperatives each
 - `electron/services/system-prompt-builder.ts` — rewrote all six fragments. Pre-L4 sizes were 1,157 / 597 / 626 / 939 / 555 / 624 bytes; post-L4 sizes are 187 / 240 / 222 / 257 / 220 / 245 bytes (averages dropped from ~750 to ~228 bytes, ~70% drop).
 - Load-bearing keywords retained: `coding`→`apply_patch`+`verify_workspace`, `review`→`SHIP`/`CHANGES`+`file:line`, `frontend`→`browser_screenshot`+`typecheck`+`frontend_qa`, `non_technical_user`→`jargon`+`tsc`. Test invariants for each still pass.

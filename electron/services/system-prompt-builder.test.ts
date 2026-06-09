@@ -316,10 +316,36 @@ describe('buildAgentSystemPrompt (multi-agentic primitive)', () => {
     expect(out).toContain(AGENT_ROLE_PROMPTS.planner)
   })
 
-  it('includes the default contract when no base override is given', () => {
+  // L5 — sub-agent stages no longer receive the full single-agent contract.
+  // They receive a slim identity head, an optional operating-principles
+  // excerpt (coder only), and the role prompt.
+  it('uses the slim identity head, not the full contract (L5)', () => {
     const out = buildAgentSystemPrompt('coder')
-    expect(out).toContain('Lamprey is the interface, not the model')
-    expect(out).toContain('<contract>')
+    expect(out).toContain('Lamprey multi-agent coding harness')
+    expect(out).toContain('Be honest about which underlying model you are.')
+    expect(out).not.toContain('<contract>')
+    expect(out).not.toContain('## How you work')
+  })
+
+  it('adds the coder operating-principles block for the coder role only (L5)', () => {
+    const coderOut = buildAgentSystemPrompt('coder')
+    expect(coderOut).toContain('<operating_principles>')
+    expect(coderOut).toContain('Make the smallest correct change')
+
+    const plannerOut = buildAgentSystemPrompt('planner')
+    expect(plannerOut).not.toContain('<operating_principles>')
+
+    const reviewerOut = buildAgentSystemPrompt('reviewer')
+    expect(reviewerOut).not.toContain('<operating_principles>')
+  })
+
+  // L5 — rendered Reviewer prompt drops at least 70% vs L1 baseline (the
+  // plan's L5-only acceptance bound). L6 will tighten to ≥ 90% once the
+  // PSEUDO_TAG_GUARD bake-in is removed from the reviewer role text.
+  // L1 baseline was 11,016 bytes; ≥70% drop = under 3,305 bytes.
+  it('renders the reviewer prompt under the L5 size target (< 3,305 bytes, ≥70% drop from L1)', () => {
+    const out = buildAgentSystemPrompt('reviewer')
+    expect(out.length).toBeLessThan(3305)
   })
 
   it('respects an explicit base override', () => {

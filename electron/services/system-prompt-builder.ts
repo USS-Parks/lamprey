@@ -290,16 +290,56 @@ export const AGENT_ROLE_PROMPTS: Record<string, string> = {
     'short verdict: PASS, FAIL with reasons, or UNCERTAIN with what is missing. No tools.'
 }
 
+// L5 — slim identity head for sub-agent stages. Pre-L5 every sub-agent
+// received the full single-agent base (identity + the 9-section / 52-bullet
+// contract); post-L5 they receive this one-line head + their role prompt,
+// plus (coder only) a 3-line operating-principles excerpt. Drops Reviewer
+// from ~11 KB to ~700 B without touching the load-bearing SHIP / CHANGES /
+// file:line / no-tools rules that live in AGENT_ROLE_PROMPTS.reviewer.
+function slimIdentityHead(modelId?: string): string {
+  if (modelId) {
+    const desc = resolveModel(modelId)
+    const providerLabel = PROVIDERS[desc.provider]?.label ?? desc.provider
+    return (
+      `You are ${desc.name} (served by ${providerLabel}), running inside the Lamprey ` +
+      `multi-agent coding harness. Be honest about which underlying model you are.`
+    )
+  }
+  return (
+    `You are running inside the Lamprey multi-agent coding harness. ` +
+    `Be honest about which underlying model you are.`
+  )
+}
+
+// L5 — three-line coder operating excerpt. Read → smallest change → verify.
+// Applied only to the `coder` role; the others get just the role prompt
+// (planner doesn't edit, reviewer doesn't edit, coworker is user-facing,
+// reader/verifier are pure-text stages).
+const CODER_OPERATING_PRINCIPLES =
+  '- Read the file you intend to change before changing it.\n' +
+  '- Make the smallest correct change. Use apply_patch for code edits.\n' +
+  '- After edits, run verify_workspace and report what passed.'
+
 export function buildAgentSystemPrompt(
   role: keyof typeof AGENT_ROLE_PROMPTS,
   base?: string,
   modelId?: string,
-  // FC-7 — when true, strip the PSEUDO_TAG_GUARD from role prompts.
+  // FC-7 + L3 — when true, strip PSEUDO_TAG_GUARD + THINK_BULLET from output.
   supportsNativeTools?: boolean
 ): string {
-  const head = base?.trim() ? base.trim() : defaultBaseFor(modelId)
+  // L5 — by default sub-agents get the slim head, not the full contract.
+  // An explicit `base` override (used by tests and any caller that needs
+  // the full single-agent shape) still wins.
+  const head = base?.trim() ? base.trim() : slimIdentityHead(modelId)
   const role_block = AGENT_ROLE_PROMPTS[role] || ''
-  let result = `${head}\n\n<role>${role}</role>\n${role_block}`
+
+  const parts: string[] = [head]
+  if (role === 'coder') {
+    parts.push(`<operating_principles>\n${CODER_OPERATING_PRINCIPLES}\n</operating_principles>`)
+  }
+  parts.push(`<role>${role}</role>\n${role_block}`)
+
+  let result = parts.join('\n\n')
   if (supportsNativeTools) {
     result = result
       .replace(PSEUDO_TAG_GUARD, '')
