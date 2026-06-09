@@ -21,6 +21,9 @@ import {
   validateReviewerOutput
 } from './reviewer-output-validator'
 import { trace } from './debug-trace'
+// L8 (Lampshade Phase, 2026-06-09) — resolveAgentDispatch consults the
+// per-turn routing heuristic when agentMode === 'auto'.
+import { routeAgentMode } from './agent-router'
 
 // T3 — Per-stage wall-clock budgets. The MAX_TOOL_ROUNDS cap (chat.ts:204)
 // protects against infinite loops but not against 50 rounds × 60s thinking-
@@ -168,15 +171,43 @@ export interface ValidationResult<T> {
 // to single mode with a `reason` so the chat handler can warn-log it
 // — falling back keeps the user from being left without a reply while
 // they correct the roster in Settings.
+//
+// L8 (Lampshade Phase, 2026-06-09) — the `'auto'` mode is resolved here too.
+// When `agentMode === 'auto'`, the caller passes the user's turn text and
+// `routeAgentMode` (see `electron/services/agent-router.ts`) decides per
+// turn whether to go single or multi. The `routeReason` field carries the
+// heuristic's one-line explanation so the chat UI can surface it.
 export type AgentDispatchDecision =
-  | { kind: 'single'; reason?: string }
-  | { kind: 'multi'; roster: AgentRoster }
+  | { kind: 'single'; reason?: string; routeReason?: string }
+  | { kind: 'multi'; roster: AgentRoster; routeReason?: string }
 
 export function resolveAgentDispatch(
-  settingsRaw: Record<string, unknown> | null
+  settingsRaw: Record<string, unknown> | null,
+  // L8 — userText is only consulted when agentMode === 'auto'. Pass an
+  // empty string for explicit 'single' / 'multi' modes (no allocation).
+  userText: string = ''
 ): AgentDispatchDecision {
   if (!settingsRaw) return { kind: 'single' }
   const agentMode = settingsRaw.agentMode
+
+  // L8 — 'auto' mode delegates to the per-turn heuristic.
+  if (agentMode === 'auto') {
+    const decision = routeAgentMode(userText)
+    if (decision.mode === 'single') {
+      return { kind: 'single', routeReason: decision.reason }
+    }
+    // Auto promoted to multi — still need a valid roster, else fall through.
+    const validation = validateRoster(settingsRaw.agentRoster)
+    if (!validation.ok || !validation.value) {
+      return {
+        kind: 'single',
+        reason: validation.error ?? 'roster validation failed',
+        routeReason: `auto→multi (${decision.reason}), but ${validation.error ?? 'roster invalid'}`
+      }
+    }
+    return { kind: 'multi', roster: validation.value, routeReason: decision.reason }
+  }
+
   if (agentMode !== 'multi') return { kind: 'single' }
   const validation = validateRoster(settingsRaw.agentRoster)
   if (!validation.ok || !validation.value) {

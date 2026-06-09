@@ -495,7 +495,16 @@ export function registerChatHandlers(): void {
       // roster falls back to single mode so the user isn't left without
       // a reply. The whole decision tree lives in `resolveAgentDispatch`
       // so the chat:send wiring is testable in isolation.
-      const dispatch = resolveAgentDispatch(settingsRaw)
+      //
+      // L8 (Lampshade Phase, 2026-06-09) — when settings resolve to
+      // `agentMode: 'auto'` (the new default), `resolveAgentDispatch`
+      // calls `routeAgentMode(content)` to decide single vs multi per
+      // turn based on the user's prompt shape. The decision's
+      // `routeReason` is logged for UI surfacing.
+      const dispatch = resolveAgentDispatch(settingsRaw, content)
+      if (dispatch.routeReason) {
+        console.info(`[chat] auto-routed to ${dispatch.kind}: ${dispatch.routeReason}`)
+      }
       void requestedAgentMode
 
       if (dispatch.kind === 'multi') {

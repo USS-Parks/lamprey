@@ -779,6 +779,68 @@ describe('resolveAgentDispatch — chat:send dispatch decision', () => {
     // @ts-expect-error — single decisions never carry a roster
     expect(single.roster).toBeUndefined()
   })
+
+  // L8 (Lampshade Phase, 2026-06-09) — `'auto'` mode resolves per-turn via
+  // routeAgentMode. The decision tree is: short asks → single, long /
+  // multi-deliverable / phase-shaped → multi (when the roster is valid),
+  // or → single with a routeReason explaining why the auto-promotion fell
+  // back (e.g. invalid roster).
+  it('AUTO + short userText → single (with routeReason)', () => {
+    const r = resolveAgentDispatch(
+      { agentMode: 'auto', agentRoster: validRoster },
+      'What does the keychain do?'
+    )
+    expect(r.kind).toBe('single')
+    expect(r.routeReason).toMatch(/short/)
+  })
+
+  it('AUTO + long userText → multi with the validated roster', () => {
+    const longText = 'word '.repeat(200) // 1000 chars > 800 threshold
+    const r = resolveAgentDispatch({ agentMode: 'auto', agentRoster: validRoster }, longText)
+    expect(r.kind).toBe('multi')
+    expect(r.routeReason).toMatch(/long prompt/)
+    if (r.kind === 'multi') expect(r.roster).toEqual(validRoster)
+  })
+
+  it('AUTO + STS phrase → multi (phase-shaped ask)', () => {
+    const r = resolveAgentDispatch(
+      { agentMode: 'auto', agentRoster: validRoster },
+      'STS the error-boundary phase'
+    )
+    expect(r.kind).toBe('multi')
+    expect(r.routeReason).toMatch(/STS|phase/i)
+  })
+
+  it('AUTO + multi-promoting text but invalid roster → single (graceful fallback with routeReason)', () => {
+    const longText = 'STS the error-boundary phase'
+    const r = resolveAgentDispatch({ agentMode: 'auto' /* no roster */ }, longText)
+    expect(r.kind).toBe('single')
+    if (r.kind === 'single') {
+      expect(r.routeReason).toMatch(/auto→multi/)
+      expect(r.reason).toMatch(/roster/i)
+    }
+  })
+
+  it('AUTO + explicit --single flag in text → single, even on long text', () => {
+    const longText = '--single ' + 'word '.repeat(200)
+    const r = resolveAgentDispatch({ agentMode: 'auto', agentRoster: validRoster }, longText)
+    expect(r.kind).toBe('single')
+    expect(r.routeReason).toMatch(/--single/)
+  })
+
+  it('AUTO + explicit --multi flag in short text → multi', () => {
+    const r = resolveAgentDispatch(
+      { agentMode: 'auto', agentRoster: validRoster },
+      'Fix this --multi'
+    )
+    expect(r.kind).toBe('multi')
+    expect(r.routeReason).toMatch(/--multi/)
+  })
+
+  it('AUTO with no userText defaults to single (degenerate case is harmless)', () => {
+    const r = resolveAgentDispatch({ agentMode: 'auto', agentRoster: validRoster })
+    expect(r.kind).toBe('single')
+  })
 })
 
 describe('runAgentPipeline — coexistence with multi_agent_run', () => {

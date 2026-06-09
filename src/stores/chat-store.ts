@@ -395,7 +395,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
       pendingAttachments: []
     }))
 
-    const agentMode = useAgentStore.getState().mode
+    // L8 (Lampshade Phase, 2026-06-09) — the chat:send per-turn override
+    // remains binary ('single' | 'multi' | undefined). When the user picks
+    // 'auto' in Settings, the dispatch decision is made server-side by
+    // resolveAgentDispatch + routeAgentMode based on settings.agentMode,
+    // not the per-turn override. So we leave the override undefined here.
+    const storedMode = useAgentStore.getState().mode
+    const agentMode = storedMode === 'auto' ? undefined : storedMode
     let result
     try {
       result = await window.api.chat.send({

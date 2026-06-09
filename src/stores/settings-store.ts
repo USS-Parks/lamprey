@@ -16,7 +16,10 @@ const defaultSettings: AppSettings = {
   aiGeneratedTitles: false,
   modelConfig: {},
   customModels: [],
-  agentMode: 'single',
+  // L8 (Lampshade Phase, 2026-06-09) — `'auto'` is the new default. The
+  // chat dispatch path resolves it per-turn via `routeAgentMode` in
+  // `electron/services/agent-router.ts`.
+  agentMode: 'auto',
   agentRoster: {
     planner: 'deepseek-v4-pro',
     coder: 'deepseek-v4-flash',

@@ -276,7 +276,14 @@ export interface ModelInfo {
 }
 
 export type AgentRole = 'planner' | 'coder' | 'reviewer' | 'coworker'
-export type AgentMode = 'single' | 'multi'
+// L8 (Lampshade Phase, 2026-06-09) — `'auto'` joins the union as the new
+// default mode. Auto routes per-turn via `routeAgentMode` in
+// `electron/services/agent-router.ts` (pure heuristic, no LLM call): short
+// asks dispatch through `runChatRound` (single), long / multi-deliverable
+// / build-from-scratch / multi-file / phase-shaped asks dispatch through
+// `runAgentPipeline` (multi). The two manual modes stay available so power
+// users can override the heuristic.
+export type AgentMode = 'auto' | 'single' | 'multi'
 
 export interface AgentRoster {
   planner: string
@@ -447,7 +454,13 @@ export interface ChatRequest {
   model: string
   content: string
   activeSkillIds: string[]
-  agentMode?: AgentMode
+  // L8 (Lampshade Phase, 2026-06-09) — narrowed from `AgentMode` to the
+  // binary subset because 'auto' is a settings-level value, not a per-turn
+  // override. When settings.agentMode === 'auto' the dispatch decision is
+  // made server-side by `routeAgentMode`; the per-turn override stays
+  // binary for callers (skills, fork views, debug paths) that genuinely
+  // want to pin one path for this turn only.
+  agentMode?: Exclude<AgentMode, 'auto'>
 }
 
 export interface ChatChunkEvent {

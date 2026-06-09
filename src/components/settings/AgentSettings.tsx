@@ -40,13 +40,22 @@ export function AgentSettings() {
   }, [models.length, loadModels])
 
   useEffect(() => {
-    hydrate(settings.agentMode || 'single', settings.agentRoster)
+    // L8 (Lampshade Phase, 2026-06-09) — `'auto'` is the new default. New
+    // installs without `settings.agentMode` will get auto. Existing rows
+    // with `'single'` or `'multi'` pass through unchanged.
+    hydrate(settings.agentMode || 'auto', settings.agentRoster)
   }, [settings.agentMode, settings.agentRoster, hydrate])
 
   const persistMode = async (next: AgentMode) => {
     setMode(next)
     await updateSettings({ agentMode: next })
-    toast.success(next === 'multi' ? 'Multi-agent mode enabled' : 'Single-model mode enabled')
+    const label =
+      next === 'auto'
+        ? 'Auto mode enabled — Lamprey will pick single or multi per turn'
+        : next === 'multi'
+          ? 'Multi-agent mode enabled'
+          : 'Single-model mode enabled'
+    toast.success(label)
   }
 
   const persistRole = async (role: AgentRole, modelId: string) => {
@@ -68,7 +77,20 @@ export function AgentSettings() {
 
       <div className="rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] p-3">
         <div className="text-[12px] uppercase tracking-wider text-[var(--text-muted)]">Run mode</div>
-        <div className="mt-2 flex gap-2">
+        <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+          <button
+            onClick={() => persistMode('auto')}
+            className={`flex-1 rounded border px-3 py-2 text-left text-xs transition-colors ${
+              agentMode === 'auto'
+                ? 'border-[var(--accent)] bg-[var(--accent-dim)] text-[var(--accent)]'
+                : 'border-[var(--panel-border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+            }`}
+          >
+            <div className="font-mono font-semibold">Auto (recommended)</div>
+            <div className="mt-0.5 text-[12px] text-[var(--text-muted)]">
+              Picks single or multi per turn based on the ask. Short asks stay single.
+            </div>
+          </button>
           <button
             onClick={() => persistMode('single')}
             className={`flex-1 rounded border px-3 py-2 text-left text-xs transition-colors ${

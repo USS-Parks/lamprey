@@ -27,8 +27,12 @@ const defaultRoster: AgentRoster = {
   coworker: 'qwen3-coder-plus'
 }
 
+// L8 (Lampshade Phase, 2026-06-09) — `'auto'` is the new default for new
+// installs. Existing settings rows with an explicit `'single'` or `'multi'`
+// pass through unchanged via `hydrate` — only callers that pass a value
+// outside the AgentMode union (e.g. missing field) fall to `'auto'`.
 export const useAgentStore = create<AgentState>((set) => ({
-  mode: 'single',
+  mode: 'auto',
   roster: defaultRoster,
   activeRun: [],
 
@@ -37,8 +41,11 @@ export const useAgentStore = create<AgentState>((set) => ({
   setRole: (role, modelId) =>
     set((s) => ({ roster: { ...s.roster, [role]: modelId } })),
 
-  hydrate: (mode, roster) =>
-    set({ mode, roster: { ...defaultRoster, ...roster } }),
+  hydrate: (mode, roster) => {
+    const normalizedMode: AgentMode =
+      mode === 'auto' || mode === 'single' || mode === 'multi' ? mode : 'auto'
+    set({ mode: normalizedMode, roster: { ...defaultRoster, ...roster } })
+  },
 
   recordStatus: (event) =>
     set((s) => {
