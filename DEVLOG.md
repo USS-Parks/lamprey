@@ -5739,4 +5739,19 @@ Implemented the full Google OAuth flow in `electron/ipc/mcp.ts`. The `mcp:setupG
 **Project behavior:** Not applicable (types + helpers only, no UI change)
 **Notes:** Extended the existing Project type (not created new). Backward-compatible: slug and description are computed/generated on create; existing DB rows will get defaults via migration in PRJ-2. Validation rejects empty names, whitespace-only, >128 chars, and case-insensitive duplicates.
 
-**Commit:** `ce647c5`
+**Commit:** `24653d9`
+
+## [Project Section – Prompt PRJ-2] Project storage decision and migration - 2026-06-08
+
+**Files changed:** `electron/services/db-migrations.ts` (added migration v15 — PRJ-2 project model extension), `electron/services/schema-init.ts` (updated `projects` CREATE TABLE with slug, description, updated_at, last_opened_at columns)
+
+**Verify gate:**
+- lint OK
+- tsc node OK
+- tsc web OK
+- vitest full suite: 2150 passed | 122 skipped
+
+**Project behavior:** New DBs get extended schema; existing DBs migrate via v15 (safeAddColumn — idempotent). No UI change.
+**Notes:** SQLite confirmed as persistence layer (per audit). Migration v15 follows the existing append-only, transaction-per-migration discipline. New columns (slug, description, updated_at, last_opened_at) added with safe defaults for existing rows.
+
+**Commit:** `ff141d6`
