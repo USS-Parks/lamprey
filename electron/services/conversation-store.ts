@@ -645,8 +645,17 @@ export function saveMessage(msg: {
   // has to re-prompt. We persist the sanitised text in `content` (what
   // every UI surface reads) and the verbatim original in `content_raw`
   // for the audit trail. Non-assistant rows pass through unchanged.
+  //
+  // FC-7 — when the assistant message has native tool calls (toolCalls
+  // populated by the provider), skip sanitisation. The model used the API
+  // correctly; pseudo-XML in prose alongside real tool_calls is never a
+  // ghosted invocation. Fallback models (no tool_calls, supportsTools:
+  // false) still run through the sanitizer.
+  const hasNativeToolCalls = !!(msg.toolCalls && msg.toolCalls.length > 0)
   const sanitizedContent =
-    msg.role === 'assistant' ? sanitizePseudoTags(split.content) : split.content
+    msg.role === 'assistant' && !hasNativeToolCalls
+      ? sanitizePseudoTags(split.content)
+      : split.content
   const contentRaw =
     msg.role === 'assistant' && sanitizedContent !== split.content ? split.content : null
   const toolCallsJson = msg.toolCalls && msg.toolCalls.length > 0 ? JSON.stringify(msg.toolCalls) : null

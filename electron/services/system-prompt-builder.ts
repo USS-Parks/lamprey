@@ -261,7 +261,11 @@ export function buildSystemPrompt(
   // so the index sits just above the skill blocks below.
   memoryIndexBlock?: string,
   taskNotificationsBlock?: string,
-  chaptersBlock?: string
+  chaptersBlock?: string,
+  // FC-7 — when true (model has native function calling), the
+  // PSEUDO_TAG_GUARD is stripped from the resulting prompt. Native
+  // models use structured tool_calls and don't need the guard.
+  supportsNativeTools?: boolean
 ): string {
   // A non-empty override fully replaces the default base (identity + contract).
   // Power users who set a custom prompt are opting out of the contract on
@@ -308,7 +312,16 @@ export function buildSystemPrompt(
     parts.push(`<skill ${attrs.join(' ')}>\n${skill.content}\n</skill>`)
   }
 
-  return parts.join('\n\n')
+  let result = parts.join('\n\n')
+
+  // FC-7 — when the model supports native function calling, strip the
+  // PSEUDO_TAG_GUARD from the prompt. Native models use structured
+  // tool_calls arrays and don't need pseudo-XML protection.
+  if (supportsNativeTools) {
+    result = result.replace(PSEUDO_TAG_GUARD, '').replace(/\n{3,}/g, '\n\n')
+  }
+
+  return result
 }
 
 // Multi-agentic decomposition primitive. The harness uses a single underlying
@@ -348,9 +361,15 @@ export const AGENT_ROLE_PROMPTS: Record<string, string> = {
 export function buildAgentSystemPrompt(
   role: keyof typeof AGENT_ROLE_PROMPTS,
   base?: string,
-  modelId?: string
+  modelId?: string,
+  // FC-7 — when true, strip the PSEUDO_TAG_GUARD from role prompts.
+  supportsNativeTools?: boolean
 ): string {
   const head = base?.trim() ? base.trim() : defaultBaseFor(modelId)
   const role_block = AGENT_ROLE_PROMPTS[role] || ''
-  return `${head}\n\n<role>${role}</role>\n${role_block}`
+  let result = `${head}\n\n<role>${role}</role>\n${role_block}`
+  if (supportsNativeTools) {
+    result = result.replace(PSEUDO_TAG_GUARD, '').replace(/\n{3,}/g, '\n\n')
+  }
+  return result
 }

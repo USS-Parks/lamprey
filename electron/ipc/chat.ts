@@ -425,6 +425,7 @@ export function registerChatHandlers(): void {
       const activeWorkspace = getActiveWorkspace()
       const agentsMd = readAgentsMd(activeWorkspace)
       const chaptersBlock = buildChaptersBlock(conversationId)
+      const supportsTools = resolveModel(model).supportsTools
       const systemPrompt = buildSystemPrompt(
         skillContents,
         memoryBlock,
@@ -437,7 +438,8 @@ export function registerChatHandlers(): void {
         agentic.mode ? 'coding' : undefined,
         memoryIndexBlock,
         taskNotificationsBlock,
-        chaptersBlock
+        chaptersBlock,
+        supportsTools
       )
 
       // Tools come from the unified registry — natives (memory_add today) plus
