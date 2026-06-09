@@ -502,3 +502,74 @@ describe('PSEUDO_TAG_GUARD — deprecated; absent from every prompt path (L6)', 
     expect(out.length).toBeLessThan(1024)
   })
 })
+
+describe('HY4 — lazy skill bodies', () => {
+  const SKILL = {
+    name: 'deep-research',
+    description: 'Fan-out web searches and synthesize a cited report.',
+    content: '# Deep Research\n\nStep 1: do X.\nStep 2: do Y.\n'.repeat(20)
+  }
+
+  it('default (eager) injects the full skill body', () => {
+    const out = buildSystemPrompt([SKILL], '')
+    expect(out).toContain('<skill name="deep-research">')
+    expect(out).toContain('Step 1: do X')
+    expect(out).not.toContain('skill_open')
+  })
+
+  it('lazy=true injects a name+description stub + skill_open hint, not the body', () => {
+    const out = buildSystemPrompt(
+      [SKILL], '', undefined, undefined, undefined, undefined,
+      undefined, undefined, undefined, undefined, true /* lazySkillBodies */
+    )
+    expect(out).toContain('status="available"')
+    expect(out).toContain('Fan-out web searches')
+    expect(out).toContain('skill_open("deep-research")')
+    // the full repeated body is NOT inlined
+    expect(out).not.toContain('Step 1: do X.\nStep 2: do Y.\n# Deep Research')
+  })
+
+  it('lazy stub falls back to the first content line when no description', () => {
+    const out = buildSystemPrompt(
+      [{ name: 'x', content: 'First meaningful line\nmore' }],
+      '', undefined, undefined, undefined, undefined,
+      undefined, undefined, undefined, undefined, true
+    )
+    expect(out).toContain('First meaningful line')
+    expect(out).toContain('skill_open("x")')
+  })
+
+  it('lazy stub is materially smaller than the eager body for a large skill', () => {
+    const eager = buildSystemPrompt([SKILL], '').length
+    const lazy = buildSystemPrompt(
+      [SKILL], '', undefined, undefined, undefined, undefined,
+      undefined, undefined, undefined, undefined, true
+    ).length
+    expect(lazy).toBeLessThan(eager)
+  })
+})
+
+describe('HY6 — exemplar-based steering', () => {
+  it('embeds one ideal tool-using exemplar inside the contract', () => {
+    const out = renderContract()
+    expect(out).toContain('<example>')
+    expect(out).toContain('</example>')
+    expect(out).toContain('shell_command: grep')
+    expect(out).toContain('apply_patch')
+    expect(out).toContain('verify_workspace')
+    // exactly one exemplar
+    expect(out.split('<example>').length - 1).toBe(1)
+  })
+
+  it('keeps the exemplar inside <contract> and stays under the size guard', () => {
+    const out = renderContract()
+    expect(out.startsWith('<contract>')).toBe(true)
+    expect(out.endsWith('</contract>')).toBe(true)
+    const ex = out.indexOf('<example>')
+    const close = out.indexOf('</contract>')
+    expect(ex).toBeGreaterThan(0)
+    expect(ex).toBeLessThan(close)
+    // HY6 byte guard — exemplar is additive but the contract stays lean.
+    expect(out.length).toBeLessThan(3700)
+  })
+})

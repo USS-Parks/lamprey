@@ -139,6 +139,24 @@ const ROLE_FRAGMENTS: Record<ContractRole, string> = {
     'The user is not a developer. Avoid jargon — no tsc, lint, PR, merge, diff, commit, or filename extensions like .ts unless the user used those terms first. Describe what the user will see, click, or be able to do, not the code underneath.'
 }
 
+// HY6 (Hygiene Phase) — one compact few-shot exemplar of an ideal tool-using
+// turn. Exemplars steer instruction-tuned models (DeepSeek/Qwen/Gemma) more
+// reliably than prose rules: this shows read-before-edit, smallest correct
+// change, name-what-changed (file:symbol:line), and verify-by-outcome in the
+// shape the bullets describe. Deliberately tiny — one turn, no <think> line so
+// it stays consistent for native-reasoning models that strip the think bullet.
+export const IDEAL_TURN_EXEMPLAR = [
+  '<example>',
+  'User: The login button does nothing on click in src/components/Login.tsx.',
+  'Assistant:',
+  '- shell_command: grep -n "onClick" src/components/Login.tsx  → the submit button has no onClick.',
+  '- apply_patch: attach onClick={handleSubmit} to the submit button.',
+  '- verify_workspace  → tsc clean.',
+  'Wired `onClick={handleSubmit}` on the submit button (src/components/Login.tsx:42); tsc passes. ' +
+    'The handler already existed — it just was not attached.',
+  '</example>'
+].join('\n')
+
 export function renderContract(): string {
   const lines: string[] = ['<contract>']
   for (const section of CONTRACT_SECTIONS) {
@@ -146,6 +164,9 @@ export function renderContract(): string {
     for (const b of section.bullets) lines.push(`- ${b}`)
     lines.push('')
   }
+  // HY6 — a worked example beats a bullet for instruction-tuned models.
+  lines.push(IDEAL_TURN_EXEMPLAR)
+  lines.push('')
   lines.push('</contract>')
   return lines.join('\n').trimEnd()
 }
@@ -186,7 +207,7 @@ function defaultBaseFor(modelId?: string): string {
 }
 
 export function buildSystemPrompt(
-  activeSkillContents: { name: string; content: string; allowedTools?: string[] }[],
+  activeSkillContents: { name: string; content: string; allowedTools?: string[]; description?: string }[],
   memoryBlock: string,
   systemPromptOverride?: string,
   agentsMd?: string,
@@ -203,7 +224,11 @@ export function buildSystemPrompt(
   // FC-7 — when true (model has native function calling), the
   // PSEUDO_TAG_GUARD is stripped from the resulting prompt. Native
   // models use structured tool_calls and don't need the guard.
-  supportsNativeTools?: boolean
+  supportsNativeTools?: boolean,
+  // HY4 — when true, active skills are injected as name+description STUBS;
+  // the model loads a skill's full body on demand via `skill_open(name)`.
+  // Default (false) injects the full body, as before.
+  lazySkillBodies?: boolean
 ): string {
   // A non-empty override fully replaces the default base (identity + contract).
   // Power users who set a custom prompt are opting out of the contract on
@@ -247,7 +272,21 @@ export function buildSystemPrompt(
     if (skill.allowedTools && skill.allowedTools.length) {
       attrs.push(`allowed-tools="${skill.allowedTools.join(',')}"`)
     }
-    parts.push(`<skill ${attrs.join(' ')}>\n${skill.content}\n</skill>`)
+    if (lazySkillBodies) {
+      // HY4 — stub: name + description only. The full instructions load when
+      // the model calls skill_open("name"). Falls back to a derived one-liner
+      // when no description is set, and to the full body if the skill is tiny.
+      const desc =
+        skill.description?.trim() ||
+        skill.content.split('\n').find((l) => l.trim())?.trim() ||
+        '(no description)'
+      parts.push(
+        `<skill ${attrs.join(' ')} status="available">\n${desc}\n` +
+          `Call skill_open("${skill.name}") to load the full instructions before using this skill.\n</skill>`
+      )
+    } else {
+      parts.push(`<skill ${attrs.join(' ')}>\n${skill.content}\n</skill>`)
+    }
   }
 
   let result = parts.join('\n\n')

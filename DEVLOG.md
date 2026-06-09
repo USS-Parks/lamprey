@@ -1,3 +1,29 @@
+## [Hygiene Phase — Complete] HY0 through HY7 shipped end-to-end — 2026-06-09
+
+8-prompt context-economy + thin-harness phase shipped on `claude/github-pushes-audit-3wn41r`. v0.10.0 → **v0.11.0** minor release. Derived from a direct audit of the Claude Code harness vs. Lamprey (the two real differentiators were context hygiene + philosophy, not features).
+
+**Final gate:**
+- tsc node OK / tsc web OK
+- vitest **2271 passed / 117 skipped** (0 failures; +38 new tests)
+- `npm run build` OK
+- `verify:proof -- --no-tests` exits 0 (lint + tsc×2)
+
+**Headline result:** model tool-surface per turn cut **−63.8%** native-only (39,737 → 14,398 bytes), flat regardless of MCP connector count. See `PLANNING/HY_BASELINE.md` + `PLANNING/HY_AFTER.md`.
+
+**Per prompt:**
+- **HY0** — baseline measurement → `HY_BASELINE.md` (full surface 38,522 bytes/turn; eager skill bodies 11,775 bytes).
+- **HY1** — `model-tool-surface.ts`: `CORE_TOOL_NAMES`, `tool_search` meta-tool, pure `buildModelToolSurface()`; registry `getModelToolSurface()` + `resolveToolSearch()` reusing existing `search()`. Data layer only. 16 tests.
+- **HY2** — wired into `chat.ts` dispatch behind `toolSurface: 'lazy'|'full'` (default lazy). Per-conversation unlock (`tool-unlock-state.ts`), `rebuildToolsForNextRound`, FC-10-style malformed-search downgrade. `tool_search` handler in `resolveSingleToolCall`. 8 state tests.
+- **HY3** — `tool-result-spill.ts`: results > 8192 chars spilled to `userData/tool-results/`, model gets head+tail+ref; new `read_tool_result` native tool (in CORE) pages it back. Full result still persisted for the UI. 12 tests.
+- **HY4** — lazy skill bodies: active skills inject name+description stubs (`buildSystemPrompt` gains `lazySkillBodies`, default false for callers/snapshots); `skill_open` native tool (in CORE) loads the body on demand. Follows `toolSurface`. 5 tests.
+- **HY5 (Split, per user decision)** — L8 routing left untouched; only the proof gate + change-contract machinery scoped to rigor turns via `proof-rigor.ts` (rigor = audit/verify/prove/… verb, OR multi-agent dispatch, OR `proofGate:'always'`). Casual turns get clean replies, no receipts scan, `proofStatus` undefined. New `proofGate:'rigor'|'always'|'off'` setting. 7 tests; router + proof-gate suites unchanged.
+- **HY6** — one compact few-shot `<example>` turn embedded in `renderContract()` (read→edit→verify→name). Additive; contract still < 3,700 bytes. 2 tests.
+- **HY7** — wrap: full gate green, `HY_AFTER.md` delta, v0.11.0, this entry.
+
+**Honest gaps:** lazy round-trip + HY6 exemplar cogency need a live DeepSeek pass (byte savings + mechanical correctness are proven, fluency is not); spill files aren't GC'd within a session; `tool_search` has no live UI card yet. New settings (`toolSurface`, `toolResultSpill*`, `proofGate`) are optional with safe defaults — no settings UI yet.
+
+---
+
 ## [Lampshade Phase — Complete] L1 through L11 shipped end-to-end — 2026-06-09
 
 11-prompt prompt-cogency phase shipped on `claude/intelligent-agnesi-b00922`. v0.9.1 → **v0.10.0** minor release.

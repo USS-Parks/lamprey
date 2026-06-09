@@ -38,6 +38,11 @@ import {
 import { normalizeToolsForProvider } from './providers/schema-normalizer'
 import { filterToolsForRole, type PipelineRole } from './role-tool-access'
 import type { ProviderId } from './providers/registry'
+import {
+  buildModelToolSurface,
+  isAlreadyAvailable,
+  CORE_TOOL_NAMES
+} from './model-tool-surface'
 
 // Types are duplicated between main and renderer the same way mcp-manager.ts
 // keeps its own McpTool/McpServerConfig — the two tsconfig roots can't reach
@@ -554,6 +559,43 @@ class ToolRegistry {
   ): ChatCompletionTool[] {
     const descriptors = filterToolsForRole(this.getDescriptors(), role)
     return this.normalizeDescriptors(descriptors, provider)
+  }
+
+  /**
+   * HY1 — Lazy model tool-surface.
+   *
+   * Returns the always-on core tools (full schemas) + the `tool_search`
+   * meta-tool + any tools already unlocked for this conversation. This is the
+   * surface chat.ts hands the model when `settings.toolSurface === 'lazy'`
+   * (HY2). The full catalog is still reachable: the model calls `tool_search`,
+   * the dispatch resolves matches via `resolveToolSearch()` and adds their
+   * names to `unlockedNames` for subsequent rounds.
+   *
+   * `provider` is honored so unlocked tools are provider-normalized exactly as
+   * the full path would normalize them — an unlocked tool is byte-identical to
+   * what the full surface would have sent.
+   */
+  getModelToolSurface(
+    provider: ProviderId,
+    opts: { unlockedNames?: Iterable<string> } = {}
+  ): ChatCompletionTool[] {
+    const all = this.getNormalizedToolsForRole('coder', provider)
+    return buildModelToolSurface(all, { unlockedNames: opts.unlockedNames })
+  }
+
+  /**
+   * HY1 — Resolve a `tool_search` query to unlock-able tools. Reuses the
+   * existing `search()` scoring (keyword or `select:` exact-name). Excludes
+   * the always-on core + the `tool_search` meta-tool, since surfacing tools
+   * the model already has would waste its turn.
+   */
+  resolveToolSearch(
+    query: string,
+    maxResults = 8
+  ): { name: string; description: string }[] {
+    return this.search(query, maxResults)
+      .filter((d) => !isAlreadyAvailable(d.name, CORE_TOOL_NAMES))
+      .map((d) => ({ name: d.name, description: d.description }))
   }
 
   private normalizeDescriptors(

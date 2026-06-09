@@ -285,6 +285,9 @@ export type AgentRole = 'planner' | 'coder' | 'reviewer' | 'coworker'
 // users can override the heuristic.
 export type AgentMode = 'auto' | 'single' | 'multi'
 
+/** HY2 — model tool-surface presentation mode. */
+export type ToolSurfaceMode = 'lazy' | 'full'
+
 export interface AgentRoster {
   planner: string
   coder: string
@@ -374,6 +377,31 @@ export interface AppSettings {
   windowBounds?: WindowBounds
   agentMode: AgentMode
   agentRoster: AgentRoster
+  /**
+   * HY2 (Hygiene Phase) — how the tool catalog is presented to the model.
+   * `'lazy'` (default): send a small always-on core set + a `tool_search`
+   * meta-tool; the model unlocks additional tools on demand. `'full'`: send
+   * the entire normalized catalog every turn (pre-Hygiene behavior). The
+   * dispatch auto-downgrades a conversation to `'full'` if a model repeatedly
+   * emits malformed `tool_search` calls. Optional → treated as `'lazy'`.
+   */
+  toolSurface?: ToolSurfaceMode
+  /**
+   * HY3 — tool-result spill valve. When a tool result exceeds
+   * `toolResultSpillBytes` characters (default 8192), the model receives a
+   * head+tail preview + a `read_tool_result` ref instead of the full text
+   * (the conversation store + UI still keep the full result). Set
+   * `toolResultSpill: false` (or `toolResultSpillBytes: 0`) to disable.
+   */
+  toolResultSpill?: boolean
+  toolResultSpillBytes?: number
+  /**
+   * HY5 — when the proof gate + change-contract machinery engages. `'rigor'`
+   * (default): only on turns that ask for verification (audit/verify/prove/…)
+   * or dispatch multi-agent. `'always'`: every mutating turn (pre-Hygiene).
+   * `'off'`: never. L8 routing is unaffected either way.
+   */
+  proofGate?: 'rigor' | 'always' | 'off'
   // End-to-end agentic coding mode (Prompt 14). When `agenticCodingMode` is
   // on, every turn uses the coding contract role, auto-activates the listed
   // skill ids, and runs the final-response composer per the composer mode.

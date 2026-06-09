@@ -7,7 +7,8 @@ import {
   chatStream,
   getProviderForModel,
   resolveModel,
-  type ModelRequestAudit
+  type ModelRequestAudit,
+  type ProviderId
 } from '../services/providers/registry'
 import { boundedJsonPreview, recordEvent } from '../services/event-log'
 import { validateChatSendRequest } from './chat-validation'
@@ -35,6 +36,24 @@ import { mcpManager } from '../services/mcp-manager'
 import { listSkills, getSkillContent } from '../services/skill-loader'
 import { buildApiMessagesFromStoredMessages } from '../services/chat-history'
 import { toolRegistry, isMutatingDescriptor } from '../services/tool-registry'
+import { TOOL_SEARCH_TOOL_NAME } from '../services/model-tool-surface'
+import {
+  activateLazySurface,
+  isLazyActive,
+  isSurfaceDowngraded,
+  unlockTools,
+  getUnlockedTools,
+  recordMalformedSearch
+} from '../services/tool-unlock-state'
+import {
+  maybeSpillToolResult,
+  DEFAULT_SPILL_THRESHOLD
+} from '../services/tool-result-spill'
+import {
+  setProofRigor,
+  isProofRigorActive,
+  resolveProofRigor
+} from '../services/proof-rigor'
 import {
   partitionToolCallWindows,
   type ProviderToolCall
@@ -412,7 +431,12 @@ export function registerChatHandlers(): void {
         ? mergeAgenticSkillIds(activeSkillIds, agentic.skills)
         : activeSkillIds
 
-      let skillContents: { name: string; content: string; allowedTools?: string[] }[] = []
+      let skillContents: {
+        name: string
+        content: string
+        allowedTools?: string[]
+        description?: string
+      }[] = []
       if (effectiveSkillIds.length > 0) {
         const skills = listSkills()
         skillContents = effectiveSkillIds
@@ -424,11 +448,23 @@ export function registerChatHandlers(): void {
             return {
               name: skill.name,
               content,
-              ...(skill.allowedTools ? { allowedTools: skill.allowedTools } : {})
+              ...(skill.allowedTools ? { allowedTools: skill.allowedTools } : {}),
+              // HY4 — carry the description so lazy skill stubs can summarize.
+              ...(skill.description ? { description: skill.description } : {})
             }
           })
-          .filter(Boolean) as { name: string; content: string; allowedTools?: string[] }[]
+          .filter(Boolean) as {
+          name: string
+          content: string
+          allowedTools?: string[]
+          description?: string
+        }[]
       }
+
+      // HY4 — lazy skill bodies follow the tool-surface mode: lazy (default)
+      // injects name+description stubs; 'full' injects full bodies as before.
+      const lazySkillBodies =
+        ((settingsRaw as { toolSurface?: string } | null)?.toolSurface ?? 'lazy') !== 'full'
 
       const { params: modelParams, systemPromptOverride } = loadModelConfig(settingsRaw, model)
       const activeWorkspace = getActiveWorkspace()
@@ -448,7 +484,8 @@ export function registerChatHandlers(): void {
         memoryIndexBlock,
         taskNotificationsBlock,
         chaptersBlock,
-        supportsTools
+        supportsTools,
+        lazySkillBodies
       )
 
       // Tools come from the unified registry — natives (memory_add today) plus
@@ -468,8 +505,12 @@ export function registerChatHandlers(): void {
       // is unrestricted) but the call site is now the explicit source of
       // truth for which role receives this tools array.
       const activeProvider = getProviderForModel(model)
+      // HY2 — lazy model tool-surface. Default `'lazy'`: send the always-on
+      // core set + `tool_search`; the model unlocks the rest on demand (state
+      // in tool-unlock-state.ts). `'full'` or a downgraded conversation gets
+      // the entire normalized catalog, byte-for-byte the pre-Hygiene path.
       const tools: ChatCompletionTool[] =
-        toolRegistry.getNormalizedToolsForRole('coder', activeProvider)
+        buildDispatchTools(conversationId, activeProvider, settingsRaw)
 
       const apiMessages = buildApiMessagesFromStoredMessages(systemPrompt, promptHistory)
 
@@ -507,6 +548,18 @@ export function registerChatHandlers(): void {
       }
       void requestedAgentMode
 
+      // HY5 (Split) — decide whether the heavyweight proof machinery (change
+      // contracts + proof-gate trust notice) engages this turn. L8 routing is
+      // unchanged above; this only scopes the proof flow to rigor turns.
+      setProofRigor(
+        conversationId,
+        resolveProofRigor({
+          proofGateMode: (settingsRaw as { proofGate?: string } | null)?.proofGate,
+          dispatchKind: dispatch.kind,
+          content
+        })
+      )
+
       if (dispatch.kind === 'multi') {
         // P11 review-P1: the Coder must execute with ITS OWN model's
         // identity, system-prompt override, and modelConfig params —
@@ -530,7 +583,12 @@ export function registerChatHandlers(): void {
           'coding',
           memoryIndexBlock,
           taskNotificationsBlock,
-          chaptersBlock
+          chaptersBlock,
+          // supportsNativeTools left undefined — preserves the exact pre-HY4
+          // coder prompt (no guard/think stripping change); HY4 only adds the
+          // lazy skill-body flag in the next position.
+          undefined,
+          lazySkillBodies // HY4
         )
         const priorWithoutLatestUser = apiMessages.filter(
           (m, idx) => idx !== 0 // drop the system entry; pipeline owns it
@@ -703,6 +761,49 @@ export function registerChatHandlers(): void {
 // value; the byte-for-byte behaviour of the pre-Prompt-11 path is
 // preserved.
 export type RunChatRoundResult = { message: unknown } | null
+
+/**
+ * HY2 — Build the tool array handed to the model for a turn. `'lazy'` (default)
+ * returns the core set + `tool_search` + any tools already unlocked for this
+ * conversation; `'full'` (or a downgraded conversation) returns the entire
+ * normalized catalog, identical to the pre-Hygiene dispatch.
+ */
+function buildDispatchTools(
+  conversationId: string,
+  provider: ProviderId,
+  settingsRaw: unknown
+): ChatCompletionTool[] {
+  const mode = (settingsRaw as { toolSurface?: string } | undefined)?.toolSurface ?? 'lazy'
+  if (mode === 'lazy' && !isSurfaceDowngraded(conversationId)) {
+    activateLazySurface(conversationId)
+    return toolRegistry.getModelToolSurface(provider, {
+      unlockedNames: getUnlockedTools(conversationId)
+    })
+  }
+  return toolRegistry.getNormalizedToolsForRole('coder', provider)
+}
+
+/**
+ * HY2 — Recompute the tool array between tool-call rounds so tools unlocked by
+ * a `tool_search` call this round are callable next round. In `'full'` mode
+ * (and for non-lazy conversations) the array passes through unchanged; a
+ * mid-loop downgrade rebuilds the full catalog.
+ */
+function rebuildToolsForNextRound(
+  conversationId: string,
+  model: string,
+  currentTools: ChatCompletionTool[] | undefined
+): ChatCompletionTool[] | undefined {
+  if (isLazyActive(conversationId)) {
+    return toolRegistry.getModelToolSurface(getProviderForModel(model), {
+      unlockedNames: getUnlockedTools(conversationId)
+    })
+  }
+  if (isSurfaceDowngraded(conversationId)) {
+    return toolRegistry.getNormalizedToolsForRole('coder', getProviderForModel(model))
+  }
+  return currentTools
+}
 
 export async function runChatRound(
   conversationId: string,
@@ -935,15 +1036,20 @@ export async function runChatRound(
               ? concatReasoningTrail(roundsForTrail, composerReasoning)
               : fullReasoning
             const finalStage: 'composer' | undefined = composerRan ? 'composer' : undefined
-            const gate = evaluateProofGate({
-              conversationId,
-              correlationId,
-              workspacePath,
-              sinceMs: turnStartedAt,
-              toolCalls: toolRegistry.getCallsForConversation(conversationId, 50),
-              getDescriptor: (toolId) => toolRegistry.getById(toolId)
-            })
-            if (!gate.trusted) {
+            // HY5 (Split) — only run the proof gate + append its notice on
+            // rigor turns. Non-rigor turns skip the receipts scan and keep a
+            // clean reply; proofStatus stays undefined (banner shows nothing).
+            const gate = isProofRigorActive(conversationId)
+              ? evaluateProofGate({
+                  conversationId,
+                  correlationId,
+                  workspacePath,
+                  sinceMs: turnStartedAt,
+                  toolCalls: toolRegistry.getCallsForConversation(conversationId, 50),
+                  getDescriptor: (toolId) => toolRegistry.getById(toolId)
+                })
+              : null
+            if (gate && !gate.trusted) {
               finalContent += proofGateNotice(gate)
             }
             // WC-4 — Persist trust state as a structured column. NULL means
@@ -955,7 +1061,7 @@ export async function runChatRound(
             // applicable turns. 'blocked' and 'waived' are reserved for the
             // M6 waiver flow (WC-5 plumbing).
             const proofStatus: 'trusted' | 'untrusted' | undefined =
-              gate.status === 'not_required'
+              !gate || gate.status === 'not_required'
                 ? undefined
                 : gate.trusted
                   ? 'trusted'
@@ -1041,7 +1147,17 @@ export async function runChatRound(
             }
           }
 
+          // HY3 — spill threshold (chars). Default DEFAULT_SPILL_THRESHOLD;
+          // `toolResultSpill: false` or `toolResultSpillBytes: 0` disables it.
+          const spillSettings = readSettingsJson() ?? {}
+          const spillThreshold =
+            spillSettings.toolResultSpill === false
+              ? 0
+              : typeof spillSettings.toolResultSpillBytes === 'number'
+                ? spillSettings.toolResultSpillBytes
+                : DEFAULT_SPILL_THRESHOLD
           for (const r of resolved) {
+            // Persist the FULL result — the UI shows it in full.
             convStore.saveMessage({
               id: randomUUID(),
               conversationId,
@@ -1049,9 +1165,12 @@ export async function runChatRound(
               content: r.result,
               toolCallId: r.callId
             })
+            // Feed the MODEL a head+tail preview when the result is large; the
+            // full text stays on disk, reachable via read_tool_result.
+            const spill = maybeSpillToolResult(r.result, { threshold: spillThreshold })
             messages.push({
               role: 'tool',
-              content: r.result,
+              content: spill.result,
               tool_call_id: r.callId
             } as any)
           }
@@ -1068,7 +1187,8 @@ export async function runChatRound(
               conversationId,
               model,
               messages,
-              tools,
+              // HY2 — fold in any tools unlocked by a tool_search this round.
+              rebuildToolsForNextRound(conversationId, model, tools),
               workspacePath,
               signal,
               round + 1,
@@ -1265,6 +1385,42 @@ async function resolveSingleToolCall(
     args = {}
   }
 
+  // HY2 — `tool_search` meta-tool. Synthetic surface-only tool (no registry
+  // descriptor), handled before the dispatch path: resolve matches, unlock
+  // them for this conversation so the next round can call them natively, and
+  // return the match list. A malformed (empty-query) call counts toward the
+  // surface downgrade so a model that can't drive the round-trip falls back
+  // to the full catalog.
+  if (toolName === TOOL_SEARCH_TOOL_NAME) {
+    const query = typeof args.query === 'string' ? args.query.trim() : ''
+    if (!query) {
+      const n = recordMalformedSearch(conversationId)
+      return {
+        callId: tc.id,
+        result: JSON.stringify({
+          error: 'tool_search requires a non-empty "query" string.',
+          malformedCount: n
+        })
+      }
+    }
+    const matches = toolRegistry.resolveToolSearch(query)
+    unlockTools(
+      conversationId,
+      matches.map((m) => m.name)
+    )
+    return {
+      callId: tc.id,
+      result: JSON.stringify({
+        query,
+        unlocked: matches.map((m) => m.name),
+        tools: matches,
+        note: matches.length
+          ? 'These tools are now available — call them directly on your next turn.'
+          : 'No matching tools found. Try a different capability description.'
+      })
+    }
+  }
+
   // FC-5 — Validate arguments against the tool's inputSchema before
   // dispatching. If the model produced invalid arguments (wrong types,
   // missing required fields, extra properties), return a corrective
@@ -1342,7 +1498,14 @@ async function resolveSingleToolCall(
   // evaluate against. Best-effort, cached per (conversation, correlation).
   // Plan-mode-authored contracts are detected by listChangeContracts and
   // preserve their authored shape.
-  if (correlationId && descriptor && isMutatingDescriptor(descriptor)) {
+  // HY5 (Split) — only synthesize the implicit change contract on rigor turns;
+  // the proof gate that consumes it is likewise rigor-gated above.
+  if (
+    correlationId &&
+    descriptor &&
+    isMutatingDescriptor(descriptor) &&
+    isProofRigorActive(conversationId)
+  ) {
     ensureImplicitContractForFirstMutation({
       conversationId,
       correlationId,
