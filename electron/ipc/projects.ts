@@ -23,7 +23,7 @@ export function registerProjectsHandlers(): void {
 
   ipcMain.handle(
     'projects:create',
-    async (_e, input: { name: string; path?: string | null }) => {
+    async (_e, input: { name: string; path?: string | null; description?: string | null }) => {
       try {
         if (!input?.name?.trim()) return { success: false, error: 'name required' }
         return { success: true, data: projects.createProject(input) }

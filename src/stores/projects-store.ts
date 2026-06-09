@@ -6,7 +6,7 @@ interface ProjectsState {
   projects: Project[]
   loading: boolean
   loadProjects: () => Promise<void>
-  createProject: (name: string, path?: string | null) => Promise<Project | null>
+  createProject: (name: string, path?: string | null, description?: string | null) => Promise<Project | null>
   renameProject: (id: string, name: string) => Promise<void>
   pinProject: (id: string, pinned: boolean) => Promise<void>
   archiveProject: (id: string, archived: boolean) => Promise<void>
@@ -31,9 +31,9 @@ export const useProjectsStore = create<ProjectsState>((set, get) => ({
     }
   },
 
-  createProject: async (name, path) => {
+  createProject: async (name, path, description) => {
     if (!window.api?.projects) return null
-    const res = await window.api.projects.create({ name, path: path ?? null })
+    const res = await window.api.projects.create({ name, path: path ?? null, description: description ?? null })
     if (res.success) {
       const project = res.data as Project
       set({ projects: [project, ...get().projects] })

@@ -5724,3 +5724,19 @@ Implemented the full Google OAuth flow in `electron/ipc/mcp.ts`. The `mcp:setupG
 **Notes:** Original plan drafted under incorrect assumption that project system was missing. Adjusted prompt strategy documented in audit §9. Implementation will extend existing system, not rebuild.
 
 **Commit:** `08837aa`
+
+## [Project Section – Prompt PRJ-1] Project domain model and validation contract - 2026-06-08
+
+**Files changed:** `src/lib/types.ts` (extended Project type with slug/description/updatedAt/lastOpenedAt), `src/lib/projects.ts` (new: CreateProjectInput, normalizeProjectName, slugifyProjectName, validateCreateProjectInput, nowIso), `src/lib/projects.test.ts` (new: 22 tests), `electron/services/projects-store.ts` (updated Project/ProjectRow types, createProject/renameProject with slug+description+updatedAt), `electron/ipc/projects.ts` (widened create input), `electron/preload.ts` (widened create input), `src/stores/projects-store.ts` (widened createProject signature)
+
+**Verify gate:**
+- lint OK
+- tsc node OK
+- tsc web OK
+- vitest `src/lib/projects.test.ts` OK (22 tests)
+- vitest full suite: 2150 passed | 122 skipped
+
+**Project behavior:** Not applicable (types + helpers only, no UI change)
+**Notes:** Extended the existing Project type (not created new). Backward-compatible: slug and description are computed/generated on create; existing DB rows will get defaults via migration in PRJ-2. Validation rejects empty names, whitespace-only, >128 chars, and case-insensitive duplicates.
+
+**Commit:** `ce647c5`

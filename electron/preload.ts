@@ -702,7 +702,7 @@ const api = {
   projects: {
     list: (args?: { includeArchived?: boolean }) => ipcRenderer.invoke('projects:list', args),
     get: (id: string) => ipcRenderer.invoke('projects:get', id),
-    create: (input: { name: string; path?: string | null }) =>
+    create: (input: { name: string; path?: string | null; description?: string | null }) =>
       ipcRenderer.invoke('projects:create', input),
     rename: (id: string, name: string) => ipcRenderer.invoke('projects:rename', id, name),
     setPinned: (id: string, pinned: boolean) =>
