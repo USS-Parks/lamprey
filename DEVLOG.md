@@ -1,3 +1,86 @@
+## [Schema Bootstrap Hotfix] — 2026-06-09 — v0.9.2
+
+P0 hotfix for v0.9.1: every chat send returned `table messages has no column named proof_status`.
+
+**Root cause (one layer deeper than the visible symptom).** `electron/services/schema-init.ts` segment 5 (`initGithubRagSessionsSnip`) included this DDL for the `conversation_rag_attachments` table:
+
+```sql
+CREATE TABLE IF NOT EXISTS conversation_rag_attachments (
+  conversation_id TEXT NOT NULL,
+  collection_id   TEXT,
+  document_id     TEXT,
+  attached_at     INTEGER NOT NULL,
+  PRIMARY KEY (
+    conversation_id,
+    COALESCE(collection_id, ''),
+    COALESCE(document_id, '')
+  )
+);
+```
+
+SQLite **does not allow** expressions inside `PRIMARY KEY` or `UNIQUE` **table constraints** — the prepare-time error is `expressions prohibited in PRIMARY KEY and UNIQUE constraints`. (SQLite *does* allow expression columns in a separate `CREATE UNIQUE INDEX`; that's the supported path.)
+
+Effect: on every launch with an existing DB, `db.exec` for segment 5 threw partway through. The earlier statements in that exec block (the `rag_*` tables before `conversation_rag_attachments`) committed; everything after — `sessions_fts`, `snip_events`, `snip_command_log`, plus segment 6's `message_stage_metrics` and segment 7's `rag_chunk_vec` — never ran. Critically, the throw propagated out of `initLegacySchema(db)` in `getDb()`, so the very next line — `runMigrations(db)` — was **never reached**. The `db` handle was already cached as non-null, so all subsequent `getDb()` calls returned the half-initialised handle without retrying.
+
+That's why the live `lamprey.db` showed:
+- `PRAGMA user_version = 0` (no migration ever applied — not even v1's baseline-check no-op)
+- `messages` missing `proof_status` (v16 never ran)
+- `proof_receipts`, `change_contracts`, `failure_ledger` tables all missing (v12 / v13 / v14 never ran)
+- `projects` table missing the v15 columns
+- but the columns the WC-4 INSERT *didn't* reference (content, tool_calls, draft, reasoning, documents, stage, content_raw) were all present, because those came from the safeAddColumn batches A + B that ran BEFORE segment 5's throw.
+
+WC-4's INSERT statement adds `proof_status` to the column list:
+
+```ts
+'INSERT INTO messages (id, conversation_id, role, content, model, tool_call_id, tool_calls, draft, reasoning, documents, stage, content_raw, proof_status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+```
+
+When that statement was prepared against the migration-starved DB on the first user send, SQLite raised the `table messages has no column named proof_status` error and `saveMessage` returned an error envelope to the renderer. Every send produced the same bubble.
+
+**Why no test caught this.** `electron/services/schema-init.test.ts:111` is the regression test that asserts every expected table is created by `initLegacySchema(:memory:)` — including `conversation_rag_attachments`. But the suite is gated by `describe.skipIf(!HAS_NATIVE_SQLITE)`, and on this build machine vitest's host Node (v137) does not match Electron's bundled NODE_MODULE_VERSION (v133), so `new BetterSqlite3(':memory:')` throws at load time and the entire describe block silently skips. The Wiring Closure ship's `vitest 2193 passed | 123 skipped (162 files)` line is the receipt of that skip. The conversation-store sanitize tests skip for the same reason — flagged on HX4 in v0.8.4 with the note "skips under known better-sqlite3 binding guard; smoke covers in production." Smoke covered HX4 because the column it added came from a safeAddColumn that ran *before* the broken DDL. WC-4 was unlucky: its column came from a migration that never had a chance to run.
+
+**Fix.** Move the uniqueness rule from a table-level `PRIMARY KEY (expr…)` to an external `CREATE UNIQUE INDEX (expr…)`. The `ON CONFLICT(conversation_id, COALESCE(collection_id,''), COALESCE(document_id,''))` upsert in `electron/services/rag/store.ts:858` matches the new index byte-for-byte.
+
+```sql
+CREATE TABLE IF NOT EXISTS conversation_rag_attachments (
+  conversation_id TEXT NOT NULL,
+  collection_id   TEXT,
+  document_id     TEXT,
+  attached_at     INTEGER NOT NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_conversation_rag_attachments_uniq
+  ON conversation_rag_attachments(
+    conversation_id,
+    COALESCE(collection_id, ''),
+    COALESCE(document_id, '')
+  );
+```
+
+**Recovery on user DBs.** No data migration needed. On the first launch with v0.9.2:
+1. `initLegacySchema` now completes — the missing segment-5/6 tables (`sessions_fts`, `snip_events`, `snip_command_log`, `message_stage_metrics`, `conversation_rag_attachments`) are created on the existing DB.
+2. `runMigrations(db)` finally runs. `user_version = 0` matches no migrations applied, so v1 → v16 run in order, each in its own transaction (idempotent CREATE/ALTER calls throughout). `proof_receipts` / `change_contracts` / `failure_ledger` are created, projects columns are added, and `messages.proof_status TEXT` lands.
+3. The next chat send succeeds with `proof_status` resolvable.
+
+The diagnostic plumbing (`PRAGMA user_version`, the migration ledger, the integrity check) all worked exactly as designed — they just never got to run. PS1's design assumption that `initLegacySchema` always completes before `runMigrations` starts held; the bug was that `initLegacySchema` was broken in a way no shipping test surfaced.
+
+**Files touched (single-file fix):**
+- `electron/services/schema-init.ts` — DDL change above.
+- `package.json` — version bump 0.9.1 → 0.9.2.
+- `README.md` — download header + table URLs + new "New in v0.9.2" paragraph + Quick start link + Roadmap entry.
+- `DEVLOG.md` — this entry.
+- `CLAUDE.md` — current-state line for the hotfix.
+
+**Verify:**
+- `npx tsc --noEmit -p tsconfig.node.json` → clean
+- `npx tsc --noEmit -p tsconfig.web.json` → clean
+- Standalone DDL probe against `:memory:` confirms the new schema + the existing upsert dedupes correctly across `NULL` collection_id and `NULL` document_id.
+- End-to-end probe against a copy of the live (broken) DB: schema completes → `runMigrations` applies v1 → v16 → `user_version = 16`, `messages.proof_status` present, `proof_receipts`/`change_contracts`/`failure_ledger` created.
+
+**Follow-up worth scheduling (not blocking the ship):** the `schema-init.test.ts` skip-when-no-native-sqlite gate is exactly the kind of "silent test loss" the proof harness was designed to flag. A separate task should either land an electron-native-binding test runner the suite can fall back to, or make the skip explicit in `verify:proof`'s output so a future regression is visible at gate-time instead of at user-runtime.
+
+---
+
 ## [Wiring Closure Phase — Complete] WC-0 through WC-11 shipped end-to-end — 2026-06-09
 
 12-prompt closure phase shipped on `claude/vigorous-nightingale-5697db`. v0.9.0 → **v0.9.1** patch release.

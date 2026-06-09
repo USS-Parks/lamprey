@@ -568,17 +568,25 @@ function initGithubRagSessionsSnip(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_rag_retrievals_conversation
       ON rag_retrievals(conversation_id, created_at DESC);
 
+    -- SQLite rejects expressions inside PRIMARY KEY / UNIQUE table
+    -- constraints, so the (conversation_id, COALESCE(collection_id,''),
+    -- COALESCE(document_id,'')) uniqueness rule lives in an external
+    -- UNIQUE INDEX where expression columns are legal. The
+    -- ON CONFLICT(...) upsert in rag/store.ts matches this index by
+    -- exact expression list.
     CREATE TABLE IF NOT EXISTS conversation_rag_attachments (
       conversation_id TEXT NOT NULL,
       collection_id   TEXT,
       document_id     TEXT,
-      attached_at     INTEGER NOT NULL,
-      PRIMARY KEY (
+      attached_at     INTEGER NOT NULL
+    );
+
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_conversation_rag_attachments_uniq
+      ON conversation_rag_attachments(
         conversation_id,
         COALESCE(collection_id, ''),
         COALESCE(document_id, '')
-      )
-    );
+      );
 
     CREATE INDEX IF NOT EXISTS idx_conversation_rag_attachments_conv
       ON conversation_rag_attachments(conversation_id);
