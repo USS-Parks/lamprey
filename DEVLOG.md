@@ -1,3 +1,19 @@
+## [Wiring Closure — Prompt WC-3] Synthesize implicit contract on first mutation - 2026-06-09
+
+**Files changed:** `electron/ipc/chat.ts`, `electron/ipc/chat-wc3-implicit-contract.test.ts` (new)
+**Verify gate:**
+- lint OK
+- tsc node OK
+- vitest 2164 passed | 122 skipped (+5 new WC-3 tests)
+
+**Live wiring proof:** `ensureImplicitContractForFirstMutation()` exported from `electron/ipc/chat.ts:1149` runs inside `resolveSingleToolCall` at `electron/ipc/chat.ts:1244` before the plan-mode gate, whenever `descriptor && isMutatingDescriptor(descriptor)` and a correlation id is set. The helper checks `listChangeContracts({ status: 'active' })` for an existing contract on the (conversationId, correlationId) pair and only synthesizes via `synthesizeImplicitChangeContract` when none exists. Per-correlation cache prevents repeat queries on subsequent calls in the same turn. Plan-authored contracts are preserved unchanged (test asserts).
+
+**Notes:** Best-effort by design — DB failures fall through silently so tool dispatch is never blocked by contract synthesis. `firstObservedFile` extracted from common arg shapes (`path`, `file_path`, `target`). Default userRequest when no user message exists (e.g., sub-agent invocations). Test seam `__resetImplicitContractCacheForTesting` exposes the per-correlation cache for testing.
+
+**Commit:** (pending)
+
+---
+
 ## [Wiring Closure — Prompt WC-2] Wire filterToolsForRole per agent role - 2026-06-09
 
 **Files changed:** `electron/services/tool-registry.ts`, `electron/services/tool-registry.test.ts`, `electron/ipc/chat.ts`
@@ -10,7 +26,7 @@
 
 **Notes:** Coder behavior unchanged (Coder allowlist is unrestricted in role-tool-access.ts, so filtering returns the full set). The forward-compat wire is now in place: any future stage that opts into the `tools` parameter will get the role-correct subset for free.
 
-**Commit:** (pending)
+**Commit:** 33ea7e7
 
 ---
 

@@ -65,6 +65,10 @@ import {
 } from '../services/final-response-composer'
 import { evaluateProofGate, proofGateNotice } from '../services/proof-gate'
 import { listProofReceipts } from '../services/proof-receipts'
+import {
+  listChangeContracts,
+  synthesizeImplicitChangeContract
+} from '../services/change-contract-store'
 import { getPlanSnapshot } from '../services/plan-goal-store'
 import { getAskUserRuntime } from '../services/ask-user-runtime'
 import type { ChatCompletionMessageParam, ChatCompletionTool } from 'openai/resources/chat/completions'
@@ -1142,6 +1146,85 @@ interface ResolvedToolCall {
   result: string
 }
 
+/**
+ * WC-3 — Per-correlation cache so the implicit-contract check fires at
+ * most once per turn. Cleared by id when the run completes via the
+ * `cancelTurnTracking` helper called from the chat round's done/error
+ * handlers (or by garbage collection when correlation ids age out).
+ */
+const _implicitContractCheckedCorrelations = new Set<string>()
+
+/**
+ * WC-3 — Ensure a change contract exists for the current correlation
+ * before the first mutating tool call dispatches. If a Plan-mode contract
+ * is already open for this conversation+correlation, do nothing. Otherwise
+ * synthesize an implicit one tagged `implicit: true` so the M5 proof gate
+ * has something concrete to evaluate against.
+ *
+ * Failures (DB unavailable, contract store fallback, etc.) are swallowed —
+ * implicit contract synthesis is best-effort and must not block tool
+ * dispatch. Tests assert the success path.
+ */
+export function ensureImplicitContractForFirstMutation(input: {
+  conversationId: string
+  correlationId: string
+  toolName: string
+  args: Record<string, unknown>
+}): void {
+  const key = `${input.conversationId}::${input.correlationId}`
+  if (_implicitContractCheckedCorrelations.has(key)) return
+  _implicitContractCheckedCorrelations.add(key)
+  try {
+    const existing = listChangeContracts({
+      conversationId: input.conversationId,
+      correlationId: input.correlationId,
+      status: 'active'
+    })
+    if (existing.length > 0) return
+    let userRequest = `Mutating tool call: ${input.toolName}`
+    try {
+      const msgs = convStore.getMessages(input.conversationId)
+      const lastUser = [...msgs].reverse().find((m) => m.role === 'user')
+      if (lastUser?.content) {
+        userRequest = lastUser.content.slice(0, 2000)
+      }
+    } catch {
+      // Best-effort — fall through to the default userRequest.
+    }
+    const firstObservedFile =
+      typeof input.args?.path === 'string'
+        ? input.args.path
+        : typeof input.args?.file_path === 'string'
+          ? input.args.file_path
+          : typeof input.args?.target === 'string'
+            ? input.args.target
+            : undefined
+    synthesizeImplicitChangeContract({
+      conversationId: input.conversationId,
+      correlationId: input.correlationId,
+      userRequest,
+      firstObservedFile
+    })
+  } catch (err) {
+    // Best-effort — the M5 gate will surface the contract gap on its own
+    // pass if synthesis fails.
+    trace('implicitContract.synthesize-failed', {
+      conversationId: input.conversationId,
+      correlationId: input.correlationId,
+      toolName: input.toolName,
+      error: (err as Error)?.message ?? String(err)
+    })
+  }
+}
+
+/**
+ * WC-3 — Test-only seam: reset the per-correlation cache so a fresh
+ * synthesis check fires the next time the helper is invoked.
+ */
+export function __resetImplicitContractCacheForTesting(): void {
+  _implicitContractCheckedCorrelations.clear()
+}
+
 async function resolveSingleToolCall(
   tc: ProviderToolCall,
   conversationId: string,
@@ -1228,6 +1311,20 @@ async function resolveSingleToolCall(
 
   if (descriptor) {
     emitPhase(conversationId, inferPhaseFromDescriptor(descriptor))
+  }
+
+  // WC-3 — Synthesize an implicit change contract for the first mutating
+  // tool call on this correlation, so the M5 proof gate has scope to
+  // evaluate against. Best-effort, cached per (conversation, correlation).
+  // Plan-mode-authored contracts are detected by listChangeContracts and
+  // preserve their authored shape.
+  if (correlationId && descriptor && isMutatingDescriptor(descriptor)) {
+    ensureImplicitContractForFirstMutation({
+      conversationId,
+      correlationId,
+      toolName,
+      args
+    })
   }
 
   // Track 2 / C3 — plan-mode gate. Block mutating tools without asking
