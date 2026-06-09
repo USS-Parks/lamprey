@@ -91,7 +91,9 @@ current full-catalog behavior with zero regression.
   the HY0 baseline, with **no capability lost** (every tool still reachable via `tool_search`).
 
 ### Approval state
-- **PENDING** — awaiting explicit user green light + STS instruction.
+- **APPROVED 2026-06-09** by user ("STS and Bucket now please"). HY5 scope resolved
+  mid-run via AskUserQuestion → **"Split"**: L8 routing left untouched, only the proof-gate +
+  change-contract machinery scoped to rigor turns. Shipped HY0–HY7, v0.11.0.
 
 ---
 
