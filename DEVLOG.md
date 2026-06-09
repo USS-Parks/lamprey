@@ -1,3 +1,19 @@
+## [Wiring Closure — Prompt WC-8] PRJ-10 end-to-end regression test - 2026-06-09
+
+**Files changed:** `src/components/layout/Sidebar.project-flow.test.ts` (new)
+**Verify gate:**
+- lint OK
+- tsc web OK
+- vitest 2193 passed | 123 skipped (+13 new WC-8 wiring-contract tests)
+
+**Live wiring proof:** New test file `src/components/layout/Sidebar.project-flow.test.ts` reads `Sidebar.tsx` and `NewProjectModal.tsx` as source text and asserts the wiring contract that PRJ-10 was supposed to lock: (1) `Sidebar` does NOT call `window.prompt(` to collect a project name — direct regression against the original defect; (2) `NewProjectModal` is imported; (3) the "+" click handler sets `newProjectOpen` to `true`; (4) `<NewProjectModal />` is rendered in the tree; (5) the "+" button has `aria-label="New project"`; (6) the modal has dialog/aria-modal roles, autofocus, ESC-to-close, validation, role="alert" errors, and disabled Create on empty name.
+
+**Notes:** Vitest runs node-only in this repo (no jsdom/RTL — confirmed via `vitest.config.ts:14`). A full component-render test would require infra changes outside this phase's scope. The source-reading wiring-contract pattern is the pragmatic alternative: it catches the original defect class deterministically. The negative assertion `expect(sidebar).not.toMatch(/window\.prompt\(/)` would have failed against the pre-`c7a96ac` code, and the imported/rendered/aria-labeled chain catches the post-merge bugs (`8f33b60`, `29cd818`) that escaped the original PRJ verify gate. 13 assertions in two `describe` blocks.
+
+**Commit:** (pending)
+
+---
+
 ## [Wiring Closure — Prompt WC-7] Wire verify:proof into CI - 2026-06-09
 
 **Files changed:** `scripts/verify-proof.cjs`, `.github/workflows/ci.yml`
@@ -13,7 +29,7 @@
 
 **Notes:** This closes M10's gap: the script existed but CI invoked an inline lint+tsc combo. CI now exercises the canonical proof-policy gate path. Script composition drift will surface as a CI failure. The header comment on `verify-proof.cjs` documents all three flags for future maintainers.
 
-**Commit:** (pending)
+**Commit:** 248be1f
 
 ---
 
