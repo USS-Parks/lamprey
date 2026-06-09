@@ -471,18 +471,48 @@ class ToolRegistry {
    * OpenAI Chat Completions-compatible tool array, built from the current
    * descriptor set. Tool names match descriptor ids so chat.ts can route
    * results by exact match.
+   *
+   * FC-1A — output is now dev-mode asserted for strictness. Every tool's
+   * parameters object must include `type: "object"` at minimum; descriptors
+   * with missing or non-object `inputSchema` get a minimal fallback.
    */
   getOpenAITools(): ChatCompletionTool[] {
-    return this.getDescriptors().map((d) => ({
-      type: 'function' as const,
-      function: {
-        name: d.name,
-        description: d.description,
-        parameters:
-          (d.inputSchema as Record<string, unknown>) ||
-          { type: 'object', properties: {} }
+    const descriptors = this.getDescriptors()
+    const tools: ChatCompletionTool[] = []
+    for (const d of descriptors) {
+      let parameters = d.inputSchema as Record<string, unknown> | undefined
+      if (!parameters || typeof parameters !== 'object' || Array.isArray(parameters)) {
+        parameters = { type: 'object', properties: {} }
+      } else if (!parameters.type) {
+        parameters = { ...parameters, type: 'object' }
       }
-    }))
+      tools.push({
+        type: 'function' as const,
+        function: {
+          name: d.name,
+          description: d.description,
+          parameters
+        }
+      })
+    }
+    // Dev-mode assertion — validate every tool entry conforms.
+    // Skipped in production builds (process.env.NODE_ENV check) to avoid
+    // runtime overhead. The assertion catches schema regressions early.
+    if (typeof process !== 'undefined' && process.env?.NODE_ENV === 'development') {
+      for (const t of tools) {
+        const fn = (t as { function?: { name?: string; parameters?: unknown } }).function
+        if (t.type !== 'function') {
+          console.error('[tool-registry] getOpenAITools: tool entry missing type="function"', t)
+        }
+        if (!fn?.name || typeof fn.name !== 'string') {
+          console.error('[tool-registry] getOpenAITools: tool entry missing function.name', t)
+        }
+        if (!fn?.parameters || typeof fn.parameters !== 'object') {
+          console.error('[tool-registry] getOpenAITools: tool entry missing function.parameters', t)
+        }
+      }
+    }
+    return tools
   }
 
   recordCallStart(
