@@ -5,6 +5,7 @@ import { join } from 'path'
 import {
   chatOnce,
   chatStream,
+  getProviderForModel,
   resolveModel,
   type ModelRequestAudit
 } from '../services/providers/registry'
@@ -449,7 +450,15 @@ export function registerChatHandlers(): void {
       // Tools come from the unified registry — natives (memory_add today) plus
       // all currently-connected MCP server tools, with stable descriptors and
       // OpenAI-compatible function schemas.
-      const tools: ChatCompletionTool[] = toolRegistry.getOpenAITools()
+      //
+      // WC-1: Tools are now normalized for the active model's provider before
+      // dispatch. The normalizer strips unsupported JSON Schema keywords,
+      // fails fast on core tools that can't be normalized, and drops non-core
+      // tools with a logged warning. Single-mode and multi-mode share this
+      // tools array (line 529 + 574), so both pathways are covered.
+      const activeProvider = getProviderForModel(model)
+      const tools: ChatCompletionTool[] =
+        toolRegistry.getNormalizedToolsForProvider(activeProvider)
 
       const apiMessages = buildApiMessagesFromStoredMessages(systemPrompt, promptHistory)
 

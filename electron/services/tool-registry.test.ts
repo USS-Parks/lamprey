@@ -156,16 +156,60 @@ describe('tool-registry lazy schemas (C1)', () => {
   it('chat dispatch surface still has every tool resolved (auto-resolve invariant)', async () => {
     // The "first model call to unresolved tool auto-resolves" verify gate
     // maps to this invariant: even though `tools:list` only ships stubs,
-    // `getOpenAITools()` — the path chat.ts uses — always materializes
-    // every tool's full schema. The model never sees a tool without its
-    // parameters block.
+    // `getNormalizedToolsForProvider()` — the path chat.ts uses since WC-1 —
+    // always materializes every tool's full schema. The model never sees a
+    // tool without its parameters block.
     const { toolRegistry } = await import('./tool-registry')
-    const oai = toolRegistry.getOpenAITools()
+    const oai = toolRegistry.getNormalizedToolsForProvider('deepseek')
     for (const t of oai) {
       // `ChatCompletionTool` is a union (function | custom). Lamprey only
       // emits function-shaped tools today; narrow before reading.
       if (t.type !== 'function') continue
       expect(t.function.parameters).toBeDefined()
+    }
+  })
+})
+
+// WC-1 — schema normalizer is wired into the tool prep path.
+describe('tool-registry WC-1 schema normalizer wiring', () => {
+  it('getNormalizedToolsForProvider exists and returns ChatCompletionTool[]', async () => {
+    const { toolRegistry } = await import('./tool-registry')
+    expect(typeof toolRegistry.getNormalizedToolsForProvider).toBe('function')
+    const tools = toolRegistry.getNormalizedToolsForProvider('deepseek')
+    expect(Array.isArray(tools)).toBe(true)
+    expect(tools.length).toBeGreaterThan(0)
+  })
+
+  it('normalized tools are shaped as { type: "function", function: { name, description, parameters } }', async () => {
+    const { toolRegistry } = await import('./tool-registry')
+    const tools = toolRegistry.getNormalizedToolsForProvider('google')
+    for (const t of tools) {
+      expect(t.type).toBe('function')
+      if (t.type !== 'function') continue
+      expect(typeof t.function.name).toBe('string')
+      expect(typeof t.function.description).toBe('string')
+      expect(t.function.parameters).toBeDefined()
+      expect(typeof t.function.parameters).toBe('object')
+    }
+  })
+
+  it('normalized output strips unsupported JSON Schema keywords (oneOf etc.)', async () => {
+    const { toolRegistry } = await import('./tool-registry')
+    const tools = toolRegistry.getNormalizedToolsForProvider('dashscope')
+    for (const t of tools) {
+      if (t.type !== 'function') continue
+      const json = JSON.stringify(t.function.parameters)
+      expect(json).not.toContain('"oneOf"')
+      expect(json).not.toContain('"anyOf"')
+      expect(json).not.toContain('"allOf"')
+      expect(json).not.toContain('"$ref"')
+    }
+  })
+
+  it('runs cleanly against all four providers (no thrown error)', async () => {
+    const { toolRegistry } = await import('./tool-registry')
+    for (const provider of ['deepseek', 'google', 'dashscope', 'openrouter'] as const) {
+      expect(() => toolRegistry.getNormalizedToolsForProvider(provider)).not.toThrow()
     }
   })
 })

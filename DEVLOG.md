@@ -1,3 +1,19 @@
+## [Wiring Closure — Prompt WC-1] Wire normalizeToolsForProvider into tool prep - 2026-06-09
+
+**Files changed:** `electron/services/tool-registry.ts`, `electron/services/tool-registry.test.ts`, `electron/ipc/chat.ts`
+**Verify gate:**
+- lint OK
+- tsc node OK
+- vitest 2154 passed | 122 skipped (+4 new wiring tests)
+
+**Live wiring proof:** Added `toolRegistry.getNormalizedToolsForProvider(provider)` at `electron/services/tool-registry.ts:518`, wired into the single chat-dispatch site at `electron/ipc/chat.ts:457–460`. The active provider is resolved from the conversation's model via `getProviderForModel(model)` from `electron/services/providers/registry.ts:414`. Both single-mode (chatStream at `chat.ts:574`) and multi-mode (runAgentPipeline at `chat.ts:529`) share this tools array, so normalization now runs on every outgoing tool list. Test added that proves `oneOf/anyOf/allOf/$ref` are stripped from the normalized output for all four providers.
+
+**Notes:** Backwards-compatible — `getOpenAITools()` still exists for test/inspection use. Warnings are logged via `console.warn` when non-core tools drop. Core-tool failure throws at call site per FC plan invariant 3.
+
+**Commit:** (pending)
+
+---
+
 ## [Wiring Closure — Prompt WC-0] Closure baseline + gap re-confirmation - 2026-06-09
 
 **Files changed:** `PLANNING/WIRING_CLOSURE_BASELINE.md` (new), `PLANNING/LAMPREY_WIRING_CLOSURE_PLAN.md` (new)
@@ -19,7 +35,7 @@
 
 **Notes:** Baseline gate passes. WC-1 may proceed. No drift observed between plan draft and execution.
 
-**Commit:** (pending)
+**Commit:** 785840c
 
 ---
 

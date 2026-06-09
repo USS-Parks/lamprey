@@ -35,6 +35,8 @@ import {
   parseSelectQuery,
   searchDescriptors as searchDescriptorsByQuery
 } from './tool-search'
+import { normalizeToolsForProvider } from './providers/schema-normalizer'
+import type { ProviderId } from './providers/registry'
 
 // Types are duplicated between main and renderer the same way mcp-manager.ts
 // keeps its own McpTool/McpServerConfig — the two tsconfig roots can't reach
@@ -513,6 +515,37 @@ class ToolRegistry {
       }
     }
     return tools
+  }
+
+  /**
+   * WC-1 — Tools normalized for a specific provider.
+   *
+   * Wraps `getDescriptors()` + `normalizeToolsForProvider()` so the chat
+   * dispatch path gets a provider-adapted tool array. Core tools that fail
+   * normalization throw at the call site (caller surfaces the error to the
+   * user). Non-core tools that fail are dropped with a logged warning.
+   *
+   * This is the canonical path for chat.ts to build provider-bound tools.
+   * `getOpenAITools()` remains for callers that need the un-normalized array
+   * (tests, internal inspection).
+   */
+  getNormalizedToolsForProvider(provider: ProviderId): ChatCompletionTool[] {
+    const descriptors = this.getDescriptors()
+    const { tools, warnings } = normalizeToolsForProvider(
+      descriptors.map((d) => ({
+        name: d.name,
+        description: d.description,
+        inputSchema: d.inputSchema,
+        providerKind: d.providerKind
+      })),
+      provider
+    )
+    if (warnings.length > 0) {
+      for (const w of warnings) {
+        console.warn(`[tool-registry] ${w}`)
+      }
+    }
+    return tools as ChatCompletionTool[]
   }
 
   recordCallStart(
