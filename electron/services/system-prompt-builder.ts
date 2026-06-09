@@ -139,6 +139,24 @@ const ROLE_FRAGMENTS: Record<ContractRole, string> = {
     'The user is not a developer. Avoid jargon — no tsc, lint, PR, merge, diff, commit, or filename extensions like .ts unless the user used those terms first. Describe what the user will see, click, or be able to do, not the code underneath.'
 }
 
+// HY6 (Hygiene Phase) — one compact few-shot exemplar of an ideal tool-using
+// turn. Exemplars steer instruction-tuned models (DeepSeek/Qwen/Gemma) more
+// reliably than prose rules: this shows read-before-edit, smallest correct
+// change, name-what-changed (file:symbol:line), and verify-by-outcome in the
+// shape the bullets describe. Deliberately tiny — one turn, no <think> line so
+// it stays consistent for native-reasoning models that strip the think bullet.
+export const IDEAL_TURN_EXEMPLAR = [
+  '<example>',
+  'User: The login button does nothing on click in src/components/Login.tsx.',
+  'Assistant:',
+  '- shell_command: grep -n "onClick" src/components/Login.tsx  → the submit button has no onClick.',
+  '- apply_patch: attach onClick={handleSubmit} to the submit button.',
+  '- verify_workspace  → tsc clean.',
+  'Wired `onClick={handleSubmit}` on the submit button (src/components/Login.tsx:42); tsc passes. ' +
+    'The handler already existed — it just was not attached.',
+  '</example>'
+].join('\n')
+
 export function renderContract(): string {
   const lines: string[] = ['<contract>']
   for (const section of CONTRACT_SECTIONS) {
@@ -146,6 +164,9 @@ export function renderContract(): string {
     for (const b of section.bullets) lines.push(`- ${b}`)
     lines.push('')
   }
+  // HY6 — a worked example beats a bullet for instruction-tuned models.
+  lines.push(IDEAL_TURN_EXEMPLAR)
+  lines.push('')
   lines.push('</contract>')
   return lines.join('\n').trimEnd()
 }

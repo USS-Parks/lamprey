@@ -548,3 +548,28 @@ describe('HY4 — lazy skill bodies', () => {
     expect(lazy).toBeLessThan(eager)
   })
 })
+
+describe('HY6 — exemplar-based steering', () => {
+  it('embeds one ideal tool-using exemplar inside the contract', () => {
+    const out = renderContract()
+    expect(out).toContain('<example>')
+    expect(out).toContain('</example>')
+    expect(out).toContain('shell_command: grep')
+    expect(out).toContain('apply_patch')
+    expect(out).toContain('verify_workspace')
+    // exactly one exemplar
+    expect(out.split('<example>').length - 1).toBe(1)
+  })
+
+  it('keeps the exemplar inside <contract> and stays under the size guard', () => {
+    const out = renderContract()
+    expect(out.startsWith('<contract>')).toBe(true)
+    expect(out.endsWith('</contract>')).toBe(true)
+    const ex = out.indexOf('<example>')
+    const close = out.indexOf('</contract>')
+    expect(ex).toBeGreaterThan(0)
+    expect(ex).toBeLessThan(close)
+    // HY6 byte guard — exemplar is additive but the contract stays lean.
+    expect(out.length).toBeLessThan(3700)
+  })
+})
