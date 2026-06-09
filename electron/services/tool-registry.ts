@@ -679,7 +679,8 @@ toolRegistry.registerNative({
     properties: {
       content: { type: 'string', description: 'The fact to remember' }
     },
-    required: ['content']
+    required: ['content'],
+    additionalProperties: false
   },
   risks: ['write'],
   requiresApproval: false,
@@ -1056,6 +1057,7 @@ toolRegistry.registerNative({
       },
       options: {
         type: 'array',
+        description: '2-4 mutually-exclusive options for the user to pick from.',
         minItems: 2,
         maxItems: 4,
         items: {
@@ -1065,7 +1067,8 @@ toolRegistry.registerNative({
             description: { type: 'string', description: 'Brief explanation of this choice.' },
             preview: { type: 'string', description: 'Optional markdown preview when focused.' }
           },
-          required: ['label']
+          required: ['label'],
+          additionalProperties: false
         }
       },
       multiSelect: {
@@ -1077,7 +1080,8 @@ toolRegistry.registerNative({
         description: 'Timeout in milliseconds. Defaults to 30000.'
       }
     },
-    required: ['question', 'header', 'options']
+    required: ['question', 'header', 'options'],
+    additionalProperties: false
   },
   risks: [],
   requiresApproval: false,

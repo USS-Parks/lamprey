@@ -59,7 +59,8 @@ toolRegistry.registerNative(
           description: 'If true, opens the URL in a new browser tab. Default false.'
         }
       },
-      required: ['url']
+      required: ['url'],
+      additionalProperties: false
     },
     risks: ['network', 'read'],
     requiresApproval: false,

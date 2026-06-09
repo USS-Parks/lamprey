@@ -30,7 +30,8 @@ toolRegistry.registerNative(
           description: 'Optional override of the configured provider.'
         }
       },
-      required: ['symbol']
+      required: ['symbol'],
+      additionalProperties: false
     },
     risks: ['network', 'read'],
     requiresApproval: false,
@@ -62,7 +63,8 @@ toolRegistry.registerNative(
           description: 'Optional unit system. Defaults to metric.'
         }
       },
-      required: ['location']
+      required: ['location'],
+      additionalProperties: false
     },
     risks: ['network', 'read'],
     requiresApproval: false,
@@ -95,7 +97,8 @@ toolRegistry.registerNative(
             'What to return. Defaults to "next" (next scheduled event for the matched team).'
         }
       },
-      required: ['query']
+      required: ['query'],
+      additionalProperties: false
     },
     risks: ['network', 'read'],
     requiresApproval: false,

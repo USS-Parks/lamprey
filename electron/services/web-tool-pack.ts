@@ -40,7 +40,8 @@ toolRegistry.registerNative(
           description: 'Optional time-window filter for recency.'
         }
       },
-      required: ['query']
+      required: ['query'],
+      additionalProperties: false
     },
     risks: ['network', 'read'],
     requiresApproval: false,
@@ -69,7 +70,8 @@ toolRegistry.registerNative(
           description: 'Output format (default text). Markdown is currently rendered the same as text.'
         }
       },
-      required: ['url']
+      required: ['url'],
+      additionalProperties: false
     },
     risks: ['network', 'read'],
     requiresApproval: false,
@@ -98,7 +100,8 @@ toolRegistry.registerNative(
           description: 'Match case-sensitively. Default false.'
         }
       },
-      required: ['url', 'text']
+      required: ['url', 'text'],
+      additionalProperties: false
     },
     risks: ['read'],
     requiresApproval: false,
@@ -126,7 +129,8 @@ toolRegistry.registerNative(
           description: 'Number of results to return (default 5, max 10).'
         }
       },
-      required: ['query']
+      required: ['query'],
+      additionalProperties: false
     },
     risks: ['network', 'read'],
     requiresApproval: false,
@@ -152,7 +156,8 @@ toolRegistry.registerNative(
           type: 'string',
           description: 'IANA timezone identifier (e.g. "America/Los_Angeles"). Defaults to "UTC".'
         }
-      }
+      },
+      additionalProperties: false
     },
     risks: ['read'],
     requiresApproval: false,

@@ -60,7 +60,8 @@ toolRegistry.registerNative(
                 description: 'Optional explicit output-format requirements (free text).'
               }
             },
-            required: ['role', 'prompt', 'context']
+            required: ['role', 'prompt', 'context'],
+            additionalProperties: false
           }
         },
         timeoutMs: {
@@ -68,7 +69,8 @@ toolRegistry.registerNative(
           description: `Per-sub-agent timeout. Default ${MULTI_AGENT_DEFAULT_TIMEOUT_MS} ms.`
         }
       },
-      required: ['tasks']
+      required: ['tasks'],
+      additionalProperties: false
     },
     // Network because the sub-agents call out to the provider. No write,
     // destructive, or secret risks — sub-agents do not touch the workspace

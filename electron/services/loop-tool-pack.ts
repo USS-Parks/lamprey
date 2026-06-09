@@ -26,7 +26,8 @@ toolRegistry.registerNative(
           description: 'Short reason shown in the wake-up pill.'
         }
       },
-      required: ['delaySeconds', 'prompt']
+      required: ['delaySeconds', 'prompt'],
+      additionalProperties: false
     },
     risks: ['write'],
     requiresApproval: false,

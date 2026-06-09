@@ -70,7 +70,8 @@ toolRegistry.registerNative(
           description:
             'Optional terminal/PTY session id. When omitted, the most-recently-active session is used.'
         }
-      }
+      },
+      additionalProperties: false
     },
     risks: ['read'],
     requiresApproval: false,
@@ -91,7 +92,8 @@ toolRegistry.registerNative(
     providerId: 'internal',
     inputSchema: {
       type: 'object',
-      properties: {}
+      properties: {},
+      additionalProperties: false
     },
     risks: ['read'],
     requiresApproval: false,
@@ -137,7 +139,8 @@ toolRegistry.registerNative(
           description: 'Optional path the permission applies to (for path-scoped requests).'
         }
       },
-      required: ['scope', 'reason']
+      required: ['scope', 'reason'],
+      additionalProperties: false
     },
     // The handler IS the approval call, so this tool self-approves: the
     // dispatcher must not gate it, or we'd double-prompt — and a global "deny
@@ -179,7 +182,8 @@ toolRegistry.registerNative(
               text: { type: 'string', description: 'Step description.' },
               status: {
                 type: 'string',
-                enum: ['pending', 'in_progress', 'done']
+                enum: ['pending', 'in_progress', 'done'],
+                description: 'Step status: pending, in_progress, or done.'
               }
             },
             required: ['text']
@@ -190,7 +194,8 @@ toolRegistry.registerNative(
           description: 'When true, the existing plan is replaced wholesale by `steps`. Defaults to false.'
         }
       },
-      required: ['steps']
+      required: ['steps'],
+      additionalProperties: false
     },
     risks: ['write'],
     requiresApproval: false,
@@ -218,7 +223,8 @@ toolRegistry.registerNative(
           type: 'string',
           description: 'Optional goal id. When omitted, all goals for the conversation are returned.'
         }
-      }
+      },
+      additionalProperties: false
     },
     risks: ['read'],
     requiresApproval: false,
@@ -253,7 +259,8 @@ toolRegistry.registerNative(
           description: 'Optional ISO-formatted due date (free-form string; not validated).'
         }
       },
-      required: ['title']
+      required: ['title'],
+      additionalProperties: false
     },
     risks: ['write'],
     requiresApproval: false,
@@ -284,15 +291,17 @@ toolRegistry.registerNative(
       type: 'object',
       properties: {
         goal_id: { type: 'string', description: 'Id of the goal to update.' },
-        title: { type: 'string' },
-        description: { type: 'string' },
-        due_date: { type: 'string' },
+        title: { type: 'string', description: 'Optional new title for the goal.' },
+        description: { type: 'string', description: 'Optional new description for the goal.' },
+        due_date: { type: 'string', description: 'Optional new due date (ISO format).' },
         status: {
           type: 'string',
-          enum: ['open', 'in_progress', 'done', 'abandoned']
+          enum: ['open', 'in_progress', 'done', 'abandoned'],
+          description: 'Optional new status: open, in_progress, done, or abandoned.'
         }
       },
-      required: ['goal_id']
+      required: ['goal_id'],
+      additionalProperties: false
     },
     risks: ['write'],
     requiresApproval: false,

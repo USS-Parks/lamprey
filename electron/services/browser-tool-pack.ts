@@ -33,7 +33,8 @@ toolRegistry.registerNative(
           description: 'If true, opens in a new tab instead of reusing the active one. Default false.'
         }
       },
-      required: ['url']
+      required: ['url'],
+      additionalProperties: false
     },
     risks: ['network'],
     requiresApproval: false,
@@ -57,7 +58,8 @@ toolRegistry.registerNative(
         selector: { type: 'string', description: 'CSS selector for the element to click.' },
         tab_id: { type: 'string', description: 'Optional tab id. Defaults to the active tab.' }
       },
-      required: ['selector']
+      required: ['selector'],
+      additionalProperties: false
     },
     risks: ['destructive', 'write', 'network'],
     requiresApproval: true,
@@ -82,7 +84,8 @@ toolRegistry.registerNative(
         text: { type: 'string', description: 'The text to set as the element value.' },
         tab_id: { type: 'string', description: 'Optional tab id. Defaults to the active tab.' }
       },
-      required: ['selector', 'text']
+      required: ['selector', 'text'],
+      additionalProperties: false
     },
     risks: ['destructive', 'write', 'network'],
     requiresApproval: true,
@@ -110,7 +113,8 @@ toolRegistry.registerNative(
           description: 'If true, the search is case-sensitive. Default false.'
         }
       },
-      required: ['text']
+      required: ['text'],
+      additionalProperties: false
     },
     risks: ['read'],
     requiresApproval: false,
@@ -136,7 +140,8 @@ toolRegistry.registerNative(
           type: 'boolean',
           description: 'Reserved. Only false (the default) is supported.'
         }
-      }
+      },
+      additionalProperties: false
     },
     risks: ['read'],
     requiresApproval: false,
@@ -154,7 +159,7 @@ toolRegistry.registerNative(
       'Return a JSON object describing the active tab: {id, title, url, loading, canGoBack, canGoForward}. Returns "No active tab" if no tab is open.',
     providerKind: 'native',
     providerId: 'internal',
-    inputSchema: { type: 'object', properties: {} },
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
     risks: ['read'],
     requiresApproval: false,
     enabled: true
@@ -206,7 +211,8 @@ toolRegistry.registerNative(
             'For multi-match kinds (text/html/attr/value/links), return up to this many. Default 1, max 50.'
         }
       },
-      required: ['kind']
+      required: ['kind'],
+      additionalProperties: false
     },
     risks: ['read'],
     requiresApproval: false,

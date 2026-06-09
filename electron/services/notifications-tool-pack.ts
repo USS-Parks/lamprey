@@ -13,11 +13,12 @@ toolRegistry.registerNative(
     inputSchema: {
       type: 'object',
       properties: {
-        title: { type: 'string' },
-        body: { type: 'string' },
-        deepLink: { type: 'string' }
+        title: { type: 'string', description: 'Notification title.' },
+        body: { type: 'string', description: 'Notification body text.' },
+        deepLink: { type: 'string', description: 'Optional deep link, e.g. conversation:<id>.' }
       },
-      required: ['title', 'body']
+      required: ['title', 'body'],
+      additionalProperties: false
     },
     risks: ['write'],
     requiresApproval: false,
@@ -45,10 +46,11 @@ toolRegistry.registerNative(
     inputSchema: {
       type: 'object',
       properties: {
-        targetSessionId: { type: 'string' },
-        body: { type: 'string' }
+        targetSessionId: { type: 'string', description: 'Target conversation/session ID.' },
+        body: { type: 'string', description: 'Message body to send to the target session.' }
       },
-      required: ['targetSessionId', 'body']
+      required: ['targetSessionId', 'body'],
+      additionalProperties: false
     },
     risks: ['write'],
     requiresApproval: false,

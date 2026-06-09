@@ -47,7 +47,8 @@ toolRegistry.registerNative(
             'Optional render quality hint for gpt-image-1. Defaults to provider default.'
         }
       },
-      required: ['prompt']
+      required: ['prompt'],
+      additionalProperties: false
     },
     risks: ['network', 'write'],
     requiresApproval: false,
@@ -88,7 +89,8 @@ toolRegistry.registerNative(
           description: 'Output canvas size. Defaults to "1024x1024".'
         }
       },
-      required: ['prompt', 'image_path']
+      required: ['prompt', 'image_path'],
+      additionalProperties: false
     },
     risks: ['network', 'write', 'read'],
     requiresApproval: false,
@@ -125,7 +127,8 @@ toolRegistry.registerNative(
           description: 'Number of variations to produce. Default 1, max 4.'
         }
       },
-      required: ['image_path']
+      required: ['image_path'],
+      additionalProperties: false
     },
     risks: ['network', 'write', 'read'],
     requiresApproval: false,

@@ -40,7 +40,8 @@ toolRegistry.registerNative(
           description:
             'When true, include inferred format scripts. Defaults to false because format commands can rewrite files.'
         }
-      }
+      },
+      additionalProperties: false
     },
     // Inferred package scripts are still arbitrary process execution. Even
     // when selected conservatively, tests/checks can mutate files or hit the
