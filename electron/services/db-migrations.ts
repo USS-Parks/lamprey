@@ -156,6 +156,23 @@ export const MIGRATIONS: Migration[] = [
     up(db) {
       applyFailureLedgerSchema(db)
     }
+  },
+  {
+    version: 15,
+    description: 'PRJ-2 project model extension — slug, description, updated_at, last_opened_at',
+    up(db) {
+      const safeAdd = (table: string, ddl: string): void => {
+        try {
+          db.exec(`ALTER TABLE ${table} ADD COLUMN ${ddl};`)
+        } catch (err: any) {
+          if (!/duplicate column name/i.test(String(err?.message ?? err))) throw err
+        }
+      }
+      safeAdd('projects', "slug TEXT NOT NULL DEFAULT ''")
+      safeAdd('projects', 'description TEXT')
+      safeAdd('projects', 'updated_at INTEGER NOT NULL DEFAULT 0')
+      safeAdd('projects', 'last_opened_at INTEGER')
+    }
   }
 ]
 

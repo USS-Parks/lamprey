@@ -110,11 +110,15 @@ export interface Conversation {
 export interface Project {
   id: string
   name: string
+  slug: string
   path: string | null
+  description?: string | null
   pinned: boolean
   archived: boolean
   createdAt: number
+  updatedAt: number
   lastActivityAt: number
+  lastOpenedAt?: number | null
 }
 
 export interface Skill {

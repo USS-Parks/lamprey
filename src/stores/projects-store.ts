@@ -4,9 +4,12 @@ import { toast } from '@/stores/toast-store'
 
 interface ProjectsState {
   projects: Project[]
+  activeProjectId: string | null
   loading: boolean
+  isCreating: boolean
+  projectError: string | null
   loadProjects: () => Promise<void>
-  createProject: (name: string, path?: string | null) => Promise<Project | null>
+  createProject: (name: string, path?: string | null, description?: string | null) => Promise<Project | null>
   renameProject: (id: string, name: string) => Promise<void>
   pinProject: (id: string, pinned: boolean) => Promise<void>
   archiveProject: (id: string, archived: boolean) => Promise<void>
@@ -14,11 +17,17 @@ interface ProjectsState {
   openFolder: (id: string) => Promise<void>
   copyPath: (id: string) => Promise<void>
   assignConversation: (conversationId: string, projectId: string | null) => Promise<void>
+  selectProject: (id: string) => Promise<void>
+  updateProject: (id: string, patch: { name?: string | null; description?: string | null; path?: string | null }) => Promise<void>
+  clearProjectError: () => void
 }
 
 export const useProjectsStore = create<ProjectsState>((set, get) => ({
   projects: [],
+  activeProjectId: null,
   loading: false,
+  isCreating: false,
+  projectError: null,
 
   loadProjects: async () => {
     if (!window.api?.projects) return
@@ -31,9 +40,9 @@ export const useProjectsStore = create<ProjectsState>((set, get) => ({
     }
   },
 
-  createProject: async (name, path) => {
+  createProject: async (name, path, description) => {
     if (!window.api?.projects) return null
-    const res = await window.api.projects.create({ name, path: path ?? null })
+    const res = await window.api.projects.create({ name, path: path ?? null, description: description ?? null })
     if (res.success) {
       const project = res.data as Project
       set({ projects: [project, ...get().projects] })
@@ -98,5 +107,34 @@ export const useProjectsStore = create<ProjectsState>((set, get) => ({
     if (!window.api?.projects) return
     const res = await window.api.projects.assignConversation(conversationId, projectId)
     if (!res.success) toast.error(res.error || 'Assign failed')
-  }
+  },
+
+  selectProject: async (id) => {
+    if (!window.api?.projects) return
+    const res = await window.api.projects.select(id)
+    if (res.success) {
+      const updated = res.data as Project
+      set({
+        activeProjectId: id,
+        projects: get().projects.map((p) => (p.id === id ? updated : p))
+      })
+    } else {
+      toast.error(res.error || 'Select failed')
+    }
+  },
+
+  updateProject: async (id, patch) => {
+    if (!window.api?.projects) return
+    const res = await window.api.projects.update(id, patch)
+    if (res.success) {
+      const updated = res.data as Project
+      set({
+        projects: get().projects.map((p) => (p.id === id ? updated : p))
+      })
+    } else {
+      toast.error(res.error || 'Update failed')
+    }
+  },
+
+  clearProjectError: () => set({ projectError: null })
 }))

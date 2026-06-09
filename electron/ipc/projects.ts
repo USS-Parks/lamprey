@@ -23,7 +23,7 @@ export function registerProjectsHandlers(): void {
 
   ipcMain.handle(
     'projects:create',
-    async (_e, input: { name: string; path?: string | null }) => {
+    async (_e, input: { name: string; path?: string | null; description?: string | null }) => {
       try {
         if (!input?.name?.trim()) return { success: false, error: 'name required' }
         return { success: true, data: projects.createProject(input) }
@@ -113,6 +113,29 @@ export function registerProjectsHandlers(): void {
         return { success: true, data: projects.ensureProjectForPath(path, fallbackName) }
       } catch (err: any) {
         return { success: false, error: err?.message ?? 'ensure failed' }
+      }
+    }
+  )
+
+  ipcMain.handle('projects:select', async (_e, id: string) => {
+    try {
+      const p = projects.selectProject(id)
+      if (!p) return { success: false, error: 'Project not found' }
+      return { success: true, data: p }
+    } catch (err: any) {
+      return { success: false, error: err?.message ?? 'select failed' }
+    }
+  })
+
+  ipcMain.handle(
+    'projects:update',
+    async (_e, id: string, patch: projects.UpdateProjectInput) => {
+      try {
+        const p = projects.updateProject(id, patch)
+        if (!p) return { success: false, error: 'Project not found' }
+        return { success: true, data: p }
+      } catch (err: any) {
+        return { success: false, error: err?.message ?? 'update failed' }
       }
     }
   )

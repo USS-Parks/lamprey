@@ -177,6 +177,7 @@ interface UiState {
    *  Settings → MCP. */
   customizeOpen: boolean
   customizeInitialColumn: CustomizeColumnId | null
+  projectViewId: string | null
   memoryOpen: boolean
   composeDraft: string
   composeSeedToken: number
@@ -234,6 +235,8 @@ interface UiState {
   toggleSettings: () => void
   openCustomize: (column?: CustomizeColumnId) => void
   closeCustomize: () => void
+  openProjectView: (projectId: string) => void
+  closeProjectView: () => void
   openMemory: () => void
   closeMemory: () => void
   toggleMemory: () => void
@@ -267,6 +270,7 @@ export const useUiStore = create<UiState>((set, get) => ({
   settingsInitialTab: null,
   customizeOpen: false,
   customizeInitialColumn: null,
+  projectViewId: null,
   memoryOpen: false,
   composeDraft: '',
   composeSeedToken: 0,
@@ -307,6 +311,8 @@ export const useUiStore = create<UiState>((set, get) => ({
   openCustomize: (column?: CustomizeColumnId) =>
     set({ customizeOpen: true, customizeInitialColumn: column ?? null }),
   closeCustomize: () => set({ customizeOpen: false, customizeInitialColumn: null }),
+  openProjectView: (projectId: string) => set({ projectViewId: projectId }),
+  closeProjectView: () => set({ projectViewId: null }),
   openMemory: () => set({ memoryOpen: true }),
   closeMemory: () => set({ memoryOpen: false }),
   toggleMemory: () => set((s) => ({ memoryOpen: !s.memoryOpen })),

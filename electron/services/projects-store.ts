@@ -5,32 +5,44 @@ import { recordEvent, type EventType } from './event-log'
 export interface ProjectRow {
   id: string
   name: string
+  slug: string
   path: string | null
+  description: string | null
   pinned: number
   archived: number
   created_at: number
+  updated_at: number
   last_activity_at: number
+  last_opened_at: number | null
 }
 
 export interface Project {
   id: string
   name: string
+  slug: string
   path: string | null
+  description: string | null
   pinned: boolean
   archived: boolean
   createdAt: number
+  updatedAt: number
   lastActivityAt: number
+  lastOpenedAt: number | null
 }
 
 function rowToProject(row: ProjectRow): Project {
   return {
     id: row.id,
     name: row.name,
+    slug: row.slug,
     path: row.path,
+    description: row.description,
     pinned: row.pinned === 1,
     archived: row.archived === 1,
     createdAt: row.created_at,
-    lastActivityAt: row.last_activity_at
+    updatedAt: row.updated_at,
+    lastActivityAt: row.last_activity_at,
+    lastOpenedAt: row.last_opened_at
   }
 }
 
@@ -64,28 +76,44 @@ export function findProjectByPath(path: string): Project | null {
   return row ? rowToProject(row) : null
 }
 
-export function createProject(input: { name: string; path?: string | null }): Project {
+function slugify(name: string): string {
+  const slug = name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .replace(/-{2,}/g, '-')
+  return slug || 'project'
+}
+
+export function createProject(input: { name: string; path?: string | null; description?: string | null }): Project {
   const db = getDb()
   const id = randomUUID()
   const now = Date.now()
+  const slug = slugify(input.name)
   db.prepare(
-    'INSERT INTO projects (id, name, path, pinned, archived, created_at, last_activity_at) VALUES (?, ?, ?, 0, 0, ?, ?)'
-  ).run(id, input.name, input.path ?? null, now, now)
-  emitProjectEvent('project.created', id, { name: input.name, path: input.path ?? null })
+    'INSERT INTO projects (id, name, slug, path, description, pinned, archived, created_at, updated_at, last_activity_at) VALUES (?, ?, ?, ?, ?, 0, 0, ?, ?, ?)'
+  ).run(id, input.name, slug, input.path ?? null, input.description ?? null, now, now, now)
+  emitProjectEvent('project.created', id, { name: input.name, slug, path: input.path ?? null })
   return {
     id,
     name: input.name,
+    slug,
     path: input.path ?? null,
+    description: input.description ?? null,
     pinned: false,
     archived: false,
     createdAt: now,
-    lastActivityAt: now
+    updatedAt: now,
+    lastActivityAt: now,
+    lastOpenedAt: null
   }
 }
 
 export function renameProject(id: string, name: string): void {
   const db = getDb()
-  db.prepare('UPDATE projects SET name = ? WHERE id = ?').run(name, id)
+  const slug = slugify(name)
+  const now = Date.now()
+  db.prepare('UPDATE projects SET name = ?, slug = ?, updated_at = ? WHERE id = ?').run(name, slug, now, id)
   // Renames are noisy bookkeeping (the model can call them mid-turn) and
   // intentionally do NOT emit an event.
 }
@@ -112,6 +140,37 @@ export function deleteProject(id: string): void {
   emitProjectEvent('project.deleted', id, {
     detachedConversations: detachResult.changes
   })
+}
+
+export function selectProject(id: string): Project | null {
+  const db = getDb()
+  const now = Date.now()
+  db.prepare('UPDATE projects SET last_opened_at = ?, updated_at = ? WHERE id = ?').run(now, now, id)
+  return getProject(id)
+}
+
+export interface UpdateProjectInput {
+  name?: string | null
+  description?: string | null
+  path?: string | null
+}
+
+export function updateProject(id: string, patch: UpdateProjectInput): Project | null {
+  const existing = getProject(id)
+  if (!existing) return null
+
+  const db = getDb()
+  const now = Date.now()
+  const name = patch.name !== undefined ? (patch.name ?? existing.name) : existing.name
+  const description = patch.description !== undefined ? (patch.description ?? existing.description) : existing.description
+  const path = patch.path !== undefined ? (patch.path ?? existing.path) : existing.path
+  const slug = patch.name !== undefined ? slugify(name) : existing.slug
+
+  db.prepare(
+    'UPDATE projects SET name = ?, slug = ?, description = ?, path = ?, updated_at = ? WHERE id = ?'
+  ).run(name, slug, description, path, now, id)
+
+  return getProject(id)
 }
 
 function emitProjectEvent(

@@ -10,6 +10,7 @@ import type { Conversation, Project } from '@/lib/types'
 import { PopoverMenu } from '@/components/ui/PopoverMenu'
 import { ActivityDashboard } from '@/components/activity/ActivityDashboard'
 import { SessionsSidebar } from '@/components/layout/SessionsSidebar'
+import { NewProjectModal } from '@/components/projects/NewProjectModal'
 
 import newChatIcon from '@assets/Lamprey New Chat Icon.png'
 import searchIcon from '@assets/Lamprey Searching Icon.png'
@@ -279,6 +280,8 @@ interface ProjectSectionProps {
   onShowMore: () => void
   onShowLess: () => void
   activeConversationId: string | null
+  activeProjectId: string | null
+  onSelectProject: (id: string) => void
   onSelectConversation: (id: string) => void
   onDeleteConversation: (id: string, title: string) => void
   onRename: (p: Project) => void
@@ -298,6 +301,8 @@ function ProjectSection({
   onShowMore,
   onShowLess,
   activeConversationId,
+  activeProjectId,
+  onSelectProject,
   onSelectConversation,
   onDeleteConversation,
   onRename,
@@ -316,6 +321,7 @@ function ProjectSection({
   const [menuOpen, setMenuOpen] = useState(false)
   const menuAnchorRef = useRef<HTMLButtonElement>(null)
   const rowId = project ? `project-row-${project.id}` : 'project-row-unassigned'
+  const isActive = project ? activeProjectId === project.id : false
 
   const handleContextMenu = (e: React.MouseEvent) => {
     if (!project) return
@@ -323,16 +329,25 @@ function ProjectSection({
     setMenuOpen(true)
   }
 
+  const handleClick = () => {
+    if (project) onSelectProject(project.id)
+    onToggleExpanded()
+  }
+
   return (
     <div className="mb-2" data-project-id={project?.id}>
       <button
         ref={menuAnchorRef}
         id={rowId}
-        onClick={onToggleExpanded}
+        onClick={handleClick}
         onContextMenu={handleContextMenu}
         aria-expanded={expanded}
         aria-controls={`${rowId}-list`}
-        className="group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[15px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]"
+        className={`group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[15px] transition-colors hover:bg-[var(--bg-tertiary)] ${
+          isActive
+            ? 'text-[var(--text-primary)] bg-[var(--bg-tertiary)] font-semibold'
+            : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+        }`}
       >
         <span className="flex h-4 w-4 shrink-0 items-center justify-center text-[var(--text-muted)]">
           <Chevron direction={expanded ? 'down' : 'right'} />
@@ -343,7 +358,7 @@ function ProjectSection({
           aria-hidden
           className="icon-asset themed-variant-light h-[22px] w-[22px] shrink-0 object-contain"
         />
-        <span className="flex-1 truncate font-medium">{project?.name ?? 'Unassigned'}</span>
+        <span className="flex-1 truncate font-medium" title={project?.name}>{project?.name ?? 'Unassigned'}</span>
         {project?.pinned && (
           <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--accent)]">
             pin
@@ -471,6 +486,7 @@ export function Sidebar() {
   const [dragging, setDragging] = useState(false)
   const [filterVisible, setFilterVisible] = useState(false)
   const [sessionsVisible, setSessionsVisible] = useState(false)
+  const [newProjectOpen, setNewProjectOpen] = useState(false)
 
   const projects = useProjectsStore((s) => s.projects)
   const loadProjects = useProjectsStore((s) => s.loadProjects)
@@ -481,6 +497,8 @@ export function Sidebar() {
   const openFolder = useProjectsStore((s) => s.openFolder)
   const copyPath = useProjectsStore((s) => s.copyPath)
   const assignConversation = useProjectsStore((s) => s.assignConversation)
+  const activeProjectId = useProjectsStore((s) => s.activeProjectId)
+  const selectProject = useProjectsStore((s) => s.selectProject)
 
   const isProjectExpanded = useSidebarStore((s) => s.isProjectExpanded)
   const toggleProjectExpanded = useSidebarStore((s) => s.toggleProjectExpanded)
@@ -601,9 +619,7 @@ export function Sidebar() {
   }
 
   const handleAddProject = async () => {
-    const name = prompt('Project name')
-    if (!name?.trim()) return
-    await createProject(name.trim())
+    setNewProjectOpen(true)
   }
 
   const handleRename = async (project: Project) => {
@@ -709,6 +725,8 @@ export function Sidebar() {
             openFolder={(p) => openFolder(p.id)}
             copyPath={(p) => copyPath(p.id)}
             handleNewChatInProject={handleNewChatInProject}
+            activeProjectId={activeProjectId}
+            selectProject={(id) => void selectProject(id)}
             folderIcon={folderIcon}
             workIcon={workIcon}
             newChatIcon={newChatIcon}
@@ -823,6 +841,11 @@ export function Sidebar() {
         openFolder={(p) => openFolder(p.id)}
         copyPath={(p) => copyPath(p.id)}
         handleNewChatInProject={handleNewChatInProject}
+        activeProjectId={activeProjectId}
+        selectProject={(id) => {
+          void selectProject(id)
+          useUiStore.getState().openProjectView(id)
+        }}
         folderIcon={folderIcon}
         workIcon={workIcon}
         newChatIcon={newChatIcon}
@@ -841,6 +864,7 @@ export function Sidebar() {
         aria-orientation="vertical"
         className={`resize-handle-v resize-handle-v-right ${dragging ? 'dragging' : ''}`}
       />
+      <NewProjectModal open={newProjectOpen} onClose={() => setNewProjectOpen(false)} />
     </div>
   )
 }
@@ -881,6 +905,8 @@ interface SidebarBodyProps {
   openFolder: (p: Project) => void
   copyPath: (p: Project) => void
   handleNewChatInProject: (p: Project) => void
+  activeProjectId: string | null
+  selectProject: (id: string) => void
   folderIcon: string
   workIcon: string
   newChatIcon: string
@@ -925,6 +951,8 @@ function SidebarBody(props: SidebarBodyProps) {
     openFolder,
     copyPath,
     handleNewChatInProject,
+    activeProjectId,
+    selectProject,
     folderIcon,
     workIcon,
     newChatIcon,
@@ -1083,6 +1111,8 @@ function SidebarBody(props: SidebarBodyProps) {
               onShowMore={() => showMore(group.project!.id)}
               onShowLess={() => showLess(group.project!.id)}
               activeConversationId={activeConversationId}
+              activeProjectId={activeProjectId}
+              onSelectProject={selectProject}
               onSelectConversation={selectConversation}
               onDeleteConversation={handleDelete}
               onRename={handleRename}

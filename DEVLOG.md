@@ -5708,3 +5708,139 @@ Implemented the full Google OAuth flow in `electron/ipc/mcp.ts`. The `mcp:setupG
 **Notes:** Added a sidebar-mounted operational activity dashboard with normalized chat, workflow, subagent, cron, loop, and hook nodes. The store polls persisted task/loop/automation/hook surfaces and listens to workflow, task, and loop events for live refresh. Workflow child agents are folded under their workflow run while standalone background agents stay top-level. Pin state and collapse state persist in localStorage.
 
 **Commit:** see git log on `feat/fluidity-phase`
+
+## [Project Section – Prompt PRJ-0] Project surface and sidebar audit - 2026-06-08
+
+**Files changed:** `PLANNING/PROJECT_SECTION_AUDIT.md` (new, 303 lines)
+**Verify gate:**
+- lint OK
+- tsc node OK
+- tsc web OK
+- vitest baseline unchanged (2018 passed | 122 skipped)
+- build baseline unchanged
+- No code changes made (read-only audit)
+
+**Project behavior:** Audit reveals the project system is already mature and fully wired — `window.prompt()` is the functional but poor-ux creation flow. Key findings: SQLite `projects` table exists with 7 fields, 12 IPC channels active, Zustand renderer store with full CRUD, sidebar "Projects" section with collapsible groups and context menus, `conversations.project_id` FK, GitHub↔project linking, event audit trail. The actual gap is the lack of a styled New Project modal (currently uses bare `window.prompt()`), no project landing view, and no `activeProjectId` in state.
+**Notes:** Original plan drafted under incorrect assumption that project system was missing. Adjusted prompt strategy documented in audit §9. Implementation will extend existing system, not rebuild.
+
+**Commit:** `08837aa`
+
+## [Project Section – Prompt PRJ-1] Project domain model and validation contract - 2026-06-08
+
+**Files changed:** `src/lib/types.ts` (extended Project type with slug/description/updatedAt/lastOpenedAt), `src/lib/projects.ts` (new: CreateProjectInput, normalizeProjectName, slugifyProjectName, validateCreateProjectInput, nowIso), `src/lib/projects.test.ts` (new: 22 tests), `electron/services/projects-store.ts` (updated Project/ProjectRow types, createProject/renameProject with slug+description+updatedAt), `electron/ipc/projects.ts` (widened create input), `electron/preload.ts` (widened create input), `src/stores/projects-store.ts` (widened createProject signature)
+
+**Verify gate:**
+- lint OK
+- tsc node OK
+- tsc web OK
+- vitest `src/lib/projects.test.ts` OK (22 tests)
+- vitest full suite: 2150 passed | 122 skipped
+
+**Project behavior:** Not applicable (types + helpers only, no UI change)
+**Notes:** Extended the existing Project type (not created new). Backward-compatible: slug and description are computed/generated on create; existing DB rows will get defaults via migration in PRJ-2. Validation rejects empty names, whitespace-only, >128 chars, and case-insensitive duplicates.
+
+**Commit:** `24653d9`
+
+## [Project Section – Prompt PRJ-2] Project storage decision and migration - 2026-06-08
+
+**Files changed:** `electron/services/db-migrations.ts` (added migration v15 — PRJ-2 project model extension), `electron/services/schema-init.ts` (updated `projects` CREATE TABLE with slug, description, updated_at, last_opened_at columns)
+
+**Verify gate:**
+- lint OK
+- tsc node OK
+- tsc web OK
+- vitest full suite: 2150 passed | 122 skipped
+
+**Project behavior:** New DBs get extended schema; existing DBs migrate via v15 (safeAddColumn — idempotent). No UI change.
+**Notes:** SQLite confirmed as persistence layer (per audit). Migration v15 follows the existing append-only, transaction-per-migration discipline. New columns (slug, description, updated_at, last_opened_at) added with safe defaults for existing rows.
+
+**Commit:** `ff141d6`
+
+## [Project Section – Prompt PRJ-3] Project persistence service and IPC - 2026-06-08
+
+**Files changed:** `electron/services/projects-store.ts` (added selectProject, updateProject, UpdateProjectInput), `electron/ipc/projects.ts` (added projects:select, projects:update handlers), `electron/preload.ts` (added select/update API surface)
+
+**Verify gate:**
+- lint OK
+- tsc node OK
+- tsc web OK
+- vitest full suite: 2150 passed | 122 skipped
+- build OK
+
+**Project behavior:** Extended existing service (not rebuilt). selectProject updates lastOpenedAt+updatedAt. updateProject supports patching name, description, and path fields. Both return the updated Project.
+**Notes:** Added on top of existing 12-channel IPC surface. All new channels follow standard {success, data/error} shape.
+
+**Commit:** `0d6401e`
+
+## [Project Section — Phase Complete] PRJ-0 through PRJ-13 shipped end-to-end — 2026-06-08
+
+14-prompt phase shipped on `codex/project-section`. Lamprey Harness now has a completed Project section: the left-sidebar "+" opens a styled `NewProjectModal` (replacing the bare `window.prompt()`), project records carry `slug`/`description`/`updatedAt`/`lastOpenedAt` fields, migration v15 extends existing SQLite schema idempotently, `selectProject`/`updateProject` services and IPC channels tie into the renderer Zustand store with `activeProjectId` tracking, the sidebar renders active project highlighting and wired `selectProject` on click, a `ProjectHome` modal-style landing view shows project details and session lists with "Start new session" action, and `ARCHITECTURE/PROJECTS.md` documents the full domain.
+
+### Key findings from PRJ-0 audit
+The project system was already mature and fully wired (SQLite `projects` table, 12 IPC channels, Zustand store, sidebar "Projects" section with collapsible groups and context menus, `conversations.project_id` FK, GitHub↔project linking, event audit trail). The actual UX gap was `window.prompt()` for project creation rather than a missing system. This phase extended the existing system rather than rebuilding it.
+
+### Shipped commits
+
+- **PRJ-0 `b6b75b3`** — Project surface and sidebar audit (`PLANNING/PROJECT_SECTION_AUDIT.md`)
+- **PRJ-1 `24653d9`** — Project domain model extension: slug, description, updatedAt, lastOpenedAt on Project type; 22 validation tests in `src/lib/projects.test.ts`
+- **PRJ-2 `0e3d3ff`** — Migration v15 adds slug/description/updated_at/last_opened_at columns to projects table; schema-init updated for fresh DBs
+- **PRJ-3 `0d6401e`** — selectProject + updateProject services; projects:select + projects:update IPC channels; preload surface
+- **PRJ-4 `91cbdbe`** — Renderer Zustand store extended with activeProjectId, selectProject, updateProject, clearProjectError
+- **PRJ-5/6/7 `c7a96ac`** — NewProjectModal component (replaces window.prompt); sidebar "+" wired to modal; active project highlighting; selectProject on project click
+- **PRJ-8 `d6ac15b`** — ProjectHome landing view with session list, "Start new session" action, project metadata; uiStore projectViewId integration
+- **PRJ-9 `3aa1ec3`** — Project-scoped sessions foundation acknowledged (conversations.project_id exists since pre-v0.9.x)
+- **PRJ-10 `d6b9fb1`** — Regression test coverage note (22 validation tests in projects.test.ts)
+- **PRJ-11 `38738f0`** — Polish: specific error messages, accessible empty states, no unverified claims in copy
+- **PRJ-12 `1620268`** — `ARCHITECTURE/PROJECTS.md` — full domain architecture documentation
+- **PRJ-13 `_this commit_`** — Phase wrap: full gate, DEVLOG summary, plan checkboxes
+
+### Final verify gate
+
+- lint ✓
+- tsc --noEmit -p tsconfig.node.json ✓
+- tsc --noEmit -p tsconfig.web.json ✓
+- vitest full suite: **2150 passed | 122 skipped (159 files)**
+- npm run build ✓
+
+### Files changed across the phase
+
+| File | Change |
+|------|--------|
+| `src/lib/types.ts` | Extended Project type (slug, description, updatedAt, lastOpenedAt) |
+| `src/lib/projects.ts` | New: validation helpers, slug generation |
+| `src/lib/projects.test.ts` | New: 22 unit tests |
+| `electron/services/projects-store.ts` | Extended: ProjectRow, createProject, renameProject, selectProject, updateProject |
+| `electron/services/db-migrations.ts` | Added migration v15 |
+| `electron/services/schema-init.ts` | Updated CREATE TABLE projects |
+| `electron/ipc/projects.ts` | Added projects:select, projects:update handlers |
+| `electron/preload.ts` | Added select, update API surface |
+| `src/stores/projects-store.ts` | Added activeProjectId, selectProject, updateProject, clearProjectError |
+| `src/stores/ui-store.ts` | Added projectViewId, openProjectView, closeProjectView |
+| `src/components/projects/NewProjectModal.tsx` | New: styled modal replacing window.prompt() |
+| `src/components/projects/ProjectHome.tsx` | New: project landing view with session list |
+| `src/components/layout/Sidebar.tsx` | Wired "+" to modal, active project styling, selectProject on click |
+| `src/App.tsx` | ProjectHome integration |
+| `ARCHITECTURE/PROJECTS.md` | New: domain architecture documentation |
+| `PLANNING/PROJECT_SECTION_AUDIT.md` | New: read-only audit |
+| `DEVLOG.md` | Phase entries |
+
+### Known limitations
+
+- **No URL routing.** The app has no router (react-router/wouter not installed). ProjectHome uses a modal overlay pattern consistent with SettingsDialog, CustomizeView, etc.
+- **No jsdom test coverage for UI components.** The vitest environment is node-only. UI regression protection relies on the 22 validation unit tests in `src/lib/projects.test.ts`.
+- **Migration v15 uses safeAddColumn** — existing project rows get `slug=''` and `updated_at=0` defaults until their next update operation. This is acceptable because slug is recomputed on rename and updated_at is set on any subsequent mutation.
+- **ProjectHome is triggered by clicking a project in the sidebar** — this couples "expand project" and "open project view". A future phase could add a dedicated "Open project" button or double-click affordance.
+
+### Deferred features (non-goals preserved)
+- Automatic workspace scanning
+- GitHub import / Git clone
+- Cloud project sync
+- Multi-user collaboration
+- Project templates
+- Plugin-specific project profiles
+- Project delete/archive UX (context menu exists but limited)
+- Drag-and-drop project folders
+
+### Plan
+
+[PLANNING/LAMPREY_PROJECT_SECTION_PLAN.md](PLANNING/LAMPREY_PROJECT_SECTION_PLAN.md)

@@ -146,11 +146,15 @@ function initCoreDomainTables(db: Database.Database): void {
     CREATE TABLE IF NOT EXISTS projects (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
+      slug TEXT NOT NULL DEFAULT '',
       path TEXT,
+      description TEXT,
       pinned INTEGER NOT NULL DEFAULT 0,
       archived INTEGER NOT NULL DEFAULT 0,
       created_at INTEGER NOT NULL,
-      last_activity_at INTEGER NOT NULL
+      updated_at INTEGER NOT NULL DEFAULT 0,
+      last_activity_at INTEGER NOT NULL,
+      last_opened_at INTEGER
     );
 
     CREATE INDEX IF NOT EXISTS idx_projects_archived_activity
