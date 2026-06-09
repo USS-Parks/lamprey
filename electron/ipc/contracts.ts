@@ -9,6 +9,7 @@ import {
   waiveChangeContract,
   type ListChangeContractsFilter
 } from '../services/change-contract-store'
+import { setMessageProofStatus } from '../services/conversation-store'
 
 function asObject(raw: unknown): Record<string, unknown> {
   return raw && typeof raw === 'object' && !Array.isArray(raw)
@@ -129,4 +130,25 @@ export function registerContractHandlers(): void {
       }
     }
   )
+
+  // WC-5 — Flip a message's persisted proof_status. Used by the proof
+  // gate waiver flow so the inline banner does not return on refetch.
+  ipcMain.handle('messages:setProofStatus', async (_event, input: unknown) => {
+    try {
+      const r = asObject(input)
+      const messageId = asString(r.messageId)
+      if (!messageId) return { success: false, error: 'messageId is required' }
+      const raw = r.status
+      const status =
+        raw === 'trusted' || raw === 'untrusted' || raw === 'blocked' || raw === 'waived'
+          ? raw
+          : null
+      return { success: true, data: setMessageProofStatus(messageId, status) }
+    } catch (err: any) {
+      return {
+        success: false,
+        error: err?.message ?? 'messages:setProofStatus failed'
+      }
+    }
+  })
 }

@@ -386,6 +386,16 @@ const api = {
       ipcRenderer.invoke('contracts:active', conversationId, correlationId)
   },
 
+  // WC-5 — Flip a message's persisted proof_status. Used by the proof
+  // gate banner after a successful waiver so the banner does not return
+  // on conversation reload.
+  messages: {
+    setProofStatus: (input: {
+      messageId: string
+      status: 'trusted' | 'untrusted' | 'blocked' | 'waived'
+    }) => ipcRenderer.invoke('messages:setProofStatus', input)
+  },
+
   plan: {
     get: (conversationId: string) => ipcRenderer.invoke('plan:get', conversationId),
     update: (

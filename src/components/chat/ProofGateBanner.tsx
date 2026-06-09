@@ -3,18 +3,58 @@ import { toast } from '@/stores/toast-store'
 import { useUiStore } from '@/stores/ui-store'
 import type { ParsedProofGateNotice } from './proof-gate-notice'
 
-export function ProofGateBanner({ notice }: { notice: ParsedProofGateNotice }) {
+/**
+ * WC-5 — Proof gate banner state, derived from the persisted
+ * `messages.proof_status` column (WC-4) rather than parsed prose.
+ *
+ * 'untrusted' → render the warning + Waive button.
+ * 'blocked'   → render the warning, no waive (strict-mode reserved).
+ * 'waived'    → render a muted "waived" chip.
+ * 'trusted' / undefined → caller should not render this banner.
+ */
+export type ProofBannerState = 'untrusted' | 'blocked' | 'waived'
+
+interface ProofGateBannerProps {
+  notice: ParsedProofGateNotice
+  /** WC-5 — explicit state derived from the message's `proofStatus`.
+   *  When undefined the banner falls back to the legacy "notice text
+   *  present = untrusted" inference so pre-WC-4 rows still render. */
+  state?: ProofBannerState
+  /** WC-5 — message id, used to flip `messages.proof_status` to
+   *  `'waived'` after a successful waiver. Optional so the banner still
+   *  renders when called from contexts that don't yet thread it. */
+  messageId?: string
+}
+
+export function ProofGateBanner({ notice, state, messageId }: ProofGateBannerProps) {
   const setActiveTool = useUiStore((s) => s.setActiveTool)
   const [waiverOpen, setWaiverOpen] = useState(false)
   const [reason, setReason] = useState('')
   const [saving, setSaving] = useState(false)
+  // Hide locally after a successful waiver so the UI doesn't have to wait
+  // for the next message refetch. The persisted state is also updated via
+  // the messages:setProofStatus IPC so the next load reflects the change.
+  const [waivedLocally, setWaivedLocally] = useState(false)
 
+  const effectiveState: ProofBannerState = state ?? 'untrusted'
+
+  // useMemo must run unconditionally — keep this above the early return
+  // for the "waived" path so React's rules-of-hooks invariant holds.
   const receiptLabel = useMemo(() => {
     const pieces: string[] = []
     if (notice.failedReceiptIds.length > 0) pieces.push(`${notice.failedReceiptIds.length} failed`)
     if (notice.skippedReceiptIds.length > 0) pieces.push(`${notice.skippedReceiptIds.length} skipped`)
     return pieces.join(', ')
   }, [notice.failedReceiptIds.length, notice.skippedReceiptIds.length])
+
+  if (waivedLocally || effectiveState === 'waived') {
+    return (
+      <div className="mt-3 inline-flex items-center gap-1.5 rounded-md border border-[var(--panel-border)] bg-[var(--bg-tertiary)]/50 px-2 py-1 text-[11px] text-[var(--text-muted)]">
+        <span aria-hidden>✓</span>
+        <span>Proof gate waived</span>
+      </div>
+    )
+  }
 
   const submitWaiver = async () => {
     const trimmed = reason.trim()
@@ -27,7 +67,16 @@ export function ProofGateBanner({ notice }: { notice: ParsedProofGateNotice }) {
         waivedBy: 'user'
       })
       if (result?.success) {
+        // WC-5 — flip the message's persisted proof_status to 'waived' so
+        // the banner does not return on refetch / reload.
+        if (messageId) {
+          await window.api?.messages?.setProofStatus?.({
+            messageId,
+            status: 'waived'
+          })
+        }
         toast.success('Proof gate waived')
+        setWaivedLocally(true)
         setWaiverOpen(false)
         setReason('')
       } else {
@@ -38,11 +87,14 @@ export function ProofGateBanner({ notice }: { notice: ParsedProofGateNotice }) {
     }
   }
 
+  const headerLabel =
+    effectiveState === 'blocked' ? 'Blocked completion' : 'Untrusted completion'
+
   return (
     <div className="mt-3 rounded-md border border-[var(--warning)]/40 bg-[var(--warning)]/10 px-3 py-2 text-[12px] text-[var(--text-secondary)]">
       <div className="flex flex-wrap items-start gap-2">
         <div className="min-w-0 flex-1">
-          <div className="font-medium text-[var(--text-primary)]">Untrusted completion</div>
+          <div className="font-medium text-[var(--text-primary)]">{headerLabel}</div>
           <div className="mt-0.5 leading-snug">{notice.reason}</div>
           {(notice.contractId || receiptLabel) && (
             <div className="mt-1 font-mono text-[10px] text-[var(--text-muted)]">

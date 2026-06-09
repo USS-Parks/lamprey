@@ -519,3 +519,21 @@ If any baseline check fails, halt and report the exact failure. Do not start imp
 
 **Phase status:** Complete -- all 13 prompts shipped
 
+---
+
+## Correction Notes (2026-06-09)
+
+Subsequent cross-phase audit found four documented invariants that were scaffolded but advisory-only in v0.9.0. The Wiring Closure phase (WC-0 → WC-11, v0.9.1) closed each one:
+
+* **M2 implicit contract synthesis** was a documented intent (§4 M2 "for coding turns without an explicit plan, let the main process synthesize a minimal contract"), but `synthesizeImplicitChangeContract` had no production caller. **Closed by WC-3:** `ensureImplicitContractForFirstMutation()` at `electron/ipc/chat.ts:1149` runs inside `resolveSingleToolCall` whenever the descriptor is mutating and no active contract exists. Tests in `electron/ipc/chat-wc3-implicit-contract.test.ts`.
+
+* **M5 trust state persistence** was implied by §2 Invariant 5 ("mutating turns require fresh proof or an explicit human waiver") and §4 M5 ("emit an untrusted completion state"), but the gate result was only appended as inline notice text on the assistant message body — no structured trust field existed. **Closed by WC-4:** migration v16 added `messages.proof_status TEXT`. The chat write-through at `electron/ipc/chat.ts:935` persists `'trusted' | 'untrusted' | undefined` derived from the gate result.
+
+* **M6 banner state driven by persisted column.** The pre-WC banner parsed the inline notice text out of the message body. **Closed by WC-5:** `computeProofBannerState(proofStatus, hasLegacyNotice)` in `src/components/chat/proof-banner-state.ts:18` makes the column the source of truth (legacy notice retained as fallback). The waiver flow now flips `proof_status` to `'waived'` via `messages:setProofStatus`.
+
+* **M9 receipt citation in prose** was the strongest M-phase claim that was actually advisory: §4 M9 explicitly asked for `verify receipt prf_123: vitest 2140 passed, 0 failed` in the final answer. The pre-WC composer instructed the model to do this but did not enforce it. **Closed by WC-6:** `composeFinalResponse` now appends a deterministic `**Verification:**` footer that cites each receipt id, glyph, kind, command, metrics, and exit code, regardless of what the model writes.
+
+* **M10 CI integration** — the script existed but CI invoked an inline lint+tsc combo. **Closed by WC-7:** `.github/workflows/ci.yml:34` invokes `npm run verify:proof -- --no-tests`.
+
+See `PLANNING/LAMPREY_WIRING_CLOSURE_PLAN.md` for the full wiring closure roster.
+

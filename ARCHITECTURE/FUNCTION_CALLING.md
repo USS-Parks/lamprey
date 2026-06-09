@@ -22,13 +22,13 @@ All four providers (DeepSeek, Google, DashScope, OpenRouter) use OpenAI-compatib
 | File | Purpose |
 |------|---------|
 | `electron/services/providers/registry.ts` | `MODEL_CATALOG`, `chatStream()`, `chatOnce()`, provider baseURLs |
-| `electron/services/providers/schema-normalizer.ts` | `normalizeToolsForProvider()` — strips unsupported keywords, fail-fast on core tools |
-| `electron/services/providers/capability-tracker.ts` | Detects `supportsTools` mismatches, temporarily downgrades models |
-| `electron/services/tool-registry.ts` | `ToolRegistry` singleton, `getOpenAITools()`, all native tool registrations |
-| `electron/services/tool-schema-validator.ts` | `validateToolArguments()` — shared validation gate |
+| `electron/services/providers/schema-normalizer.ts` | `normalizeToolsForProvider()` — strips unsupported keywords, fail-fast on core tools. **Invoked from:** `electron/services/tool-registry.ts:530` (WC-1) |
+| `electron/services/providers/capability-tracker.ts` | Detects `supportsTools` mismatches, temporarily downgrades models. **Invoked from:** `electron/ipc/chat.ts:769` |
+| `electron/services/tool-registry.ts` | `ToolRegistry` singleton, `getOpenAITools()`, `getNormalizedToolsForProvider()`, `getNormalizedToolsForRole()`, all native tool registrations |
+| `electron/services/tool-schema-validator.ts` | `validateToolArguments()` — shared validation gate. **Invoked from:** `electron/ipc/chat.ts:1169` |
 | `electron/services/transcript-model.ts` | `ToolCallRequest`, `ToolResult`, per-provider serializers |
-| `electron/services/fallback-tool-parser.ts` | `extractBalancedJson()`, `parseFallbackToolCalls()`, `FALLBACK_TOOL_INSTRUCTION` |
-| `electron/services/role-tool-access.ts` | `filterToolsForRole()` — Planner/Reviewer/Coder tool allowlists |
+| `electron/services/fallback-tool-parser.ts` | `extractBalancedJson()`, `parseFallbackToolCalls()`, `FALLBACK_TOOL_INSTRUCTION`. **Invoked from:** `electron/ipc/chat.ts:803` |
+| `electron/services/role-tool-access.ts` | `filterToolsForRole()` — Planner/Reviewer/Coder tool allowlists. **Invoked from:** `electron/services/tool-registry.ts:541` (WC-2) |
 | `electron/services/system-prompt-builder.ts` | `PSEUDO_TAG_GUARD`, `buildSystemPrompt()`, `buildAgentSystemPrompt()` |
 | `electron/services/conversation-store.ts` | `saveMessage()` — sanitizer bypass for native tool calls |
 | `electron/ipc/chat.ts` | `runChatRound()` — main dispatch loop, fallback parsing integration |
@@ -101,6 +101,8 @@ validateToolArguments(
 4. **Ensures `type: "object"`** is present on every tool's parameters
 
 All four providers use the same normalizer logic (identical accepted subsets per FC-0 audit).
+
+**Invocation (WC-1, 2026-06-09):** The normalizer is reached through `toolRegistry.getNormalizedToolsForProvider(provider)` (and the role-aware variant `getNormalizedToolsForRole(role, provider)`) at `electron/services/tool-registry.ts:518/541`. The chat dispatch at `electron/ipc/chat.ts:467` calls the role-aware getter with `role: 'coder'` so every outgoing tool list is normalized for the active provider before reaching `chatStream` / the API. Tests in `electron/services/tool-registry.test.ts` (`WC-1 schema normalizer wiring` block) assert the path is hot.
 
 **Core tools** (fail-fast on incompatibility):
 `workspace_context`, `view_image`, `shell_command`, `apply_patch`, `verify_workspace`, `shell_list`, `shell_monitor`, `shell_stop`, `shell_output`
@@ -210,6 +212,8 @@ The `FALLBACK_TOOL_INSTRUCTION` constant is appended to the system prompt for fa
 | **Reviewer** | Read-only inspection + proof receipts + diff tools |
 
 MCP tools follow the same role-based filtering when exposed to model tool lists.
+
+**Invocation (WC-2, 2026-06-09):** The role filter is reached through `toolRegistry.getNormalizedToolsForRole(role, provider)` at `electron/services/tool-registry.ts:541`. The chat dispatch at `electron/ipc/chat.ts:467` calls it with `role: 'coder'` because single-mode and the multi-mode Coder are the only stages currently receiving tools (Planner uses `chatOnce` without tools, Reviewer uses `subAgentRunner` without tools per FC_AUDIT §4). Planner and Reviewer subsets verifiably exclude `apply_patch` and `shell_command` — see `electron/services/tool-registry.test.ts` (`WC-2 role-aware tool filtering wiring` block).
 
 ---
 

@@ -62,6 +62,7 @@ function initCoreDomainTables(db: Database.Database): void {
       content TEXT NOT NULL,
       model TEXT,
       tool_call_id TEXT,
+      proof_status TEXT,
       created_at INTEGER NOT NULL
     );
 

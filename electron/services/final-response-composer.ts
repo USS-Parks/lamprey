@@ -265,6 +265,84 @@ export function buildComposerPrompt(summary: RunSummary): { system: string; user
   }
 }
 
+/**
+ * WC-6 — Format a deterministic verification footer that quotes the receipt
+ * IDs and parsed metrics tied to the current turn. Appended to the model's
+ * composer reply when at least one proof receipt exists, so the user always
+ * sees the proof IDs that back the claim (M9 promise) — even if the model
+ * forgets to inline them in prose.
+ *
+ * Format:
+ *   ---
+ *   **Verification:**
+ *   - receipt prf_abc123 ✓ verify: vitest 142 passed, 0 failed (exit 0)
+ *   - receipt prf_def456 ✗ verify: build failed (exit 1)
+ *
+ * Returns the empty string when receipts is empty so callers can blindly
+ * append the result.
+ */
+export function formatVerificationFooter(
+  receipts: RunSummaryProofReceipt[]
+): string {
+  if (!receipts || receipts.length === 0) return ''
+  const lines: string[] = ['', '---', '**Verification:**']
+  for (const receipt of receipts.slice(0, 20)) {
+    const glyph =
+      receipt.status === 'pass' || receipt.status === 'passed' || receipt.status === 'done'
+        ? '✓'
+        : receipt.status === 'skipped'
+          ? '○'
+          : '✗'
+    const exit =
+      typeof receipt.exitCode === 'number' ? ` (exit ${receipt.exitCode})` : ''
+    const metrics = formatReceiptMetricsForCitation(receipt.parsedMetrics)
+    const tail = metrics ? `: ${metrics}` : ''
+    lines.push(
+      `- receipt ${receipt.id} ${glyph} ${receipt.kind} \`${receipt.command}\`${tail}${exit}`
+    )
+  }
+  return lines.join('\n')
+}
+
+/**
+ * WC-6 — Render the most useful subset of parsed metrics in one short line,
+ * favoring counts the user can verify at a glance (vitest pass/fail, tsc
+ * errors, eslint counts, build duration). Unknown shapes are stringified
+ * compactly to JSON. Returns undefined when no metrics exist.
+ */
+export function formatReceiptMetricsForCitation(
+  metrics: Record<string, unknown> | undefined
+): string | undefined {
+  if (!metrics || Object.keys(metrics).length === 0) return undefined
+  const pieces: string[] = []
+  const passed = pickNumber(metrics, ['passed', 'pass', 'tests_passed', 'passedCount'])
+  const failed = pickNumber(metrics, ['failed', 'fail', 'tests_failed', 'failedCount'])
+  const skipped = pickNumber(metrics, ['skipped', 'skip'])
+  const errors = pickNumber(metrics, ['errors', 'errorCount'])
+  const warnings = pickNumber(metrics, ['warnings', 'warningCount'])
+  if (typeof passed === 'number') pieces.push(`${passed} passed`)
+  if (typeof failed === 'number') pieces.push(`${failed} failed`)
+  if (typeof skipped === 'number') pieces.push(`${skipped} skipped`)
+  if (typeof errors === 'number') pieces.push(`${errors} errors`)
+  if (typeof warnings === 'number') pieces.push(`${warnings} warnings`)
+  if (pieces.length > 0) return pieces.join(', ')
+  // No known fields — fall back to compact JSON, capped so the footer stays
+  // legible.
+  const compact = JSON.stringify(metrics)
+  return compact.length > 120 ? compact.slice(0, 117) + '...' : compact
+}
+
+function pickNumber(
+  source: Record<string, unknown>,
+  keys: string[]
+): number | undefined {
+  for (const k of keys) {
+    const v = source[k]
+    if (typeof v === 'number' && Number.isFinite(v)) return v
+  }
+  return undefined
+}
+
 export async function composeFinalResponse({
   summary,
   model,
@@ -280,8 +358,16 @@ export async function composeFinalResponse({
     model,
     signal
   )
+  // WC-6 — Append a deterministic verification footer when proof receipts
+  // exist. The model's reply is preserved exactly; we only add a
+  // ``---\n**Verification:**\n…`` block so the user always sees the
+  // receipt IDs and metrics that back the claim, even if the model
+  // forgets to cite them in prose. M9 promised this; the composer
+  // previously trusted the model to follow the citation instruction.
+  const body = reply.content.trim()
+  const footer = formatVerificationFooter(summary.proofReceipts)
   return {
-    content: reply.content.trim(),
+    content: footer ? `${body}\n${footer}` : body,
     // Reasoning trimmed at the chatOnce boundary already (see registry.ts);
     // pass through as-is so R6 can fold it into the cumulative trail.
     reasoning: reply.reasoning

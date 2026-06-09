@@ -14,6 +14,7 @@ import { SeedContextChip, parseSeedContext } from './SeedContextChip'
 import { useChatStore } from '@/stores/chat-store'
 import { ProofGateBanner } from './ProofGateBanner'
 import { parseProofGateNotice } from './proof-gate-notice'
+import { computeProofBannerState } from './proof-banner-state'
 
 interface MessageBubbleProps {
   message: Message
@@ -85,6 +86,13 @@ export function MessageBubble({ message, attachedPlanner }: MessageBubbleProps) 
   }
   const proofGate = !isUser ? parseProofGateNotice(body) : null
   if (proofGate) body = proofGate.body
+  // WC-5 — the proof gate banner is driven by the persisted
+  // `messages.proof_status` column (WC-4). See `computeProofBannerState`
+  // for the precedence rules; the helper is unit-tested in
+  // `proof-banner-state.test.ts`.
+  const proofBannerState = !isUser
+    ? computeProofBannerState(message.proofStatus, proofGate !== null)
+    : null
 
   const handleRemember = async () => {
     if (saving) return
@@ -129,7 +137,23 @@ export function MessageBubble({ message, attachedPlanner }: MessageBubbleProps) 
           <>
             {reasoning && <ReasoningBlock content={reasoning} />}
             <MarkdownRenderer content={body} sourceMessageId={message.id} />
-            {proofGate && <ProofGateBanner notice={proofGate} />}
+            {proofBannerState && (
+              <ProofGateBanner
+                notice={
+                  proofGate ?? {
+                    body,
+                    reason:
+                      proofBannerState === 'blocked'
+                        ? 'Strict proof policy blocked this completion.'
+                        : 'Proof was required but no trusted verification was found.',
+                    failedReceiptIds: [],
+                    skippedReceiptIds: []
+                  }
+                }
+                state={proofBannerState}
+                messageId={message.id}
+              />
+            )}
             {/* R7 — "Show pipeline trace ▾" toggle. Reveals the attached
                 Planner row (stage='planner', hidden in the main thread per
                 Invariant §2.9) as an inline collapsed panel with its own

@@ -857,3 +857,18 @@ Verify:
 
 **End of Plan.**
 
+---
+
+## Correction Notes (2026-06-09)
+
+This phase shipped 2026-06-08 (FC-0 → FC-16). Subsequent audit (`PLANNING/FC_AUDIT.md` follow-up + 2026-06-09 cross-phase audit) found two pieces of scaffolding documented as live but never invoked from production code, plus one inaccuracy in this plan's own prompt table.
+
+**FC-1B tool list correction.** §3 row FC-1B describes the "first batch" of four core tools as `shell_command, apply_patch, read_file, write_file`. The actual commit `5d4baf4` hardened `shell_command, apply_patch, workspace_context, view_image`. There are no `read_file` / `write_file` tools in the registry — the plan named the wrong tools at draft time. FC-1C's coverage test caught the equivalent of the gap by exercising every registered tool's schema, so the practical contract held.
+
+**Closures shipped by the Wiring Closure phase (WC-0 → WC-11, v0.9.1).** Two FC invariants were dead code until v0.9.1:
+
+* §2 Invariants 3 + 4 (`normalizeToolsForProvider`) — exported but never invoked in production. **Closed by WC-1:** `toolRegistry.getNormalizedToolsForProvider(provider)` + `getNormalizedToolsForRole(role, provider)` added to `electron/services/tool-registry.ts:518/541`, called from `electron/ipc/chat.ts:467` with role `'coder'`. Tests in `electron/services/tool-registry.test.ts` (`WC-1` block).
+* §2 Invariant 9 + §3 FC-8 (`filterToolsForRole`) — same shape. **Closed by WC-2:** the role-aware getter above also calls `filterToolsForRole(descriptors, role)`. Planner / Reviewer subsets verifiably exclude `apply_patch` and `shell_command`.
+
+See `PLANNING/LAMPREY_WIRING_CLOSURE_PLAN.md` for the full wiring closure roster.
+

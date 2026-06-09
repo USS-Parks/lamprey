@@ -35,6 +35,9 @@ import {
   parseSelectQuery,
   searchDescriptors as searchDescriptorsByQuery
 } from './tool-search'
+import { normalizeToolsForProvider } from './providers/schema-normalizer'
+import { filterToolsForRole, type PipelineRole } from './role-tool-access'
+import type { ProviderId } from './providers/registry'
 
 // Types are duplicated between main and renderer the same way mcp-manager.ts
 // keeps its own McpTool/McpServerConfig — the two tsconfig roots can't reach
@@ -513,6 +516,65 @@ class ToolRegistry {
       }
     }
     return tools
+  }
+
+  /**
+   * WC-1 — Tools normalized for a specific provider.
+   *
+   * Wraps `getDescriptors()` + `normalizeToolsForProvider()` so the chat
+   * dispatch path gets a provider-adapted tool array. Core tools that fail
+   * normalization throw at the call site (caller surfaces the error to the
+   * user). Non-core tools that fail are dropped with a logged warning.
+   *
+   * This is the canonical path for chat.ts to build provider-bound tools.
+   * `getOpenAITools()` remains for callers that need the un-normalized array
+   * (tests, internal inspection).
+   */
+  getNormalizedToolsForProvider(provider: ProviderId): ChatCompletionTool[] {
+    return this.normalizeDescriptors(this.getDescriptors(), provider)
+  }
+
+  /**
+   * WC-2 — Role-aware tool list normalized for a specific provider.
+   *
+   * Filters descriptors via `filterToolsForRole(role)` before normalizing.
+   * This is the canonical path for the agent pipeline — Planner gets a
+   * read-only subset, Reviewer gets inspection tools, Coder gets the full
+   * set (gated by plan mode + permissions at dispatch).
+   *
+   * The chat dispatch (`electron/ipc/chat.ts`) calls this with `role: 'coder'`
+   * because single-mode and the multi-mode Coder are the only stages that
+   * currently receive tools. Planner and Reviewer use `chatOnce` /
+   * `subAgentRunner` paths that ignore the `tools` parameter today, but
+   * filtering by role here keeps the wire ready for future stage upgrades.
+   */
+  getNormalizedToolsForRole(
+    role: PipelineRole,
+    provider: ProviderId
+  ): ChatCompletionTool[] {
+    const descriptors = filterToolsForRole(this.getDescriptors(), role)
+    return this.normalizeDescriptors(descriptors, provider)
+  }
+
+  private normalizeDescriptors(
+    descriptors: LampreyToolDescriptor[],
+    provider: ProviderId
+  ): ChatCompletionTool[] {
+    const { tools, warnings } = normalizeToolsForProvider(
+      descriptors.map((d) => ({
+        name: d.name,
+        description: d.description,
+        inputSchema: d.inputSchema,
+        providerKind: d.providerKind
+      })),
+      provider
+    )
+    if (warnings.length > 0) {
+      for (const w of warnings) {
+        console.warn(`[tool-registry] ${w}`)
+      }
+    }
+    return tools as ChatCompletionTool[]
   }
 
   recordCallStart(

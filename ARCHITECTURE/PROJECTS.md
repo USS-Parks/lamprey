@@ -151,6 +151,18 @@ Define a template schema, add a `template_id` or `template` field to the `projec
 - Do not claim Git import, cloud sync, or automatic workspace indexing — these are not implemented.
 - All user-facing copy in this phase references verified code paths.
 
+## Regression Coverage
+
+The original PRJ defect was a bare `window.prompt('Project name')` handler in the sidebar (cited in `PLANNING/PROJECT_SECTION_AUDIT.md` §1). PRJ-5/6/7 replaced it with a styled `NewProjectModal`, but the PRJ-10 regression test only covered the validation helpers, not the wiring chain. **WC-8 (2026-06-09)** added `src/components/layout/Sidebar.project-flow.test.ts` — a source-reading wiring-contract test that asserts:
+
+1. `Sidebar.tsx` does NOT call `window.prompt(` to collect a project name (locks the original defect).
+2. `NewProjectModal` is imported and rendered.
+3. The "+" click handler sets `newProjectOpen` to `true`.
+4. The "+" button has `aria-label="New project"`.
+5. The modal has dialog/aria-modal roles, autofocus, ESC-to-close, validation, `role="alert"` errors, and disabled Create on empty name.
+
+Vitest runs node-only in this repo (per `vitest.config.ts:14`) so a full component-render test would require infra changes outside any single phase's scope. The source-reading pattern catches the original defect class deterministically.
+
 ## Related Files
 
 | File | Role |
@@ -158,6 +170,7 @@ Define a template schema, add a `template_id` or `template` field to the `projec
 | `src/lib/types.ts:110-121` | Renderer Project type |
 | `src/lib/projects.ts` | Validation helpers, slug generation |
 | `src/lib/projects.test.ts` | 22 unit tests for validation/slug |
+| `src/components/layout/Sidebar.project-flow.test.ts` | WC-8 PRJ-10 regression test — 13 wiring assertions including the negative `window.prompt(` check that locks the original defect |
 | `electron/services/projects-store.ts` | Main-process CRUD + touch/ensure |
 | `electron/ipc/projects.ts` | 14 IPC channel handlers |
 | `electron/preload.ts:702-720` | API surface for renderer |

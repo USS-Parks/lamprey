@@ -40,6 +40,8 @@ Contracts are created from Plan mode goals when present, or synthesized as `impl
 
 **Service:** `electron/services/change-contract-store.ts`
 
+**Implicit contract synthesis (WC-3, 2026-06-09):** `ensureImplicitContractForFirstMutation()` at `electron/ipc/chat.ts:1149` runs inside `resolveSingleToolCall` at `electron/ipc/chat.ts:1244` before the plan-mode gate, whenever `descriptor && isMutatingDescriptor(descriptor)` and a correlation id is set. The helper checks `listChangeContracts({ status: 'active' })` for an existing contract on the (conversationId, correlationId) pair and only synthesizes via `synthesizeImplicitChangeContract` when none exists. Per-correlation cache prevents repeat queries within a turn. Tests in `electron/ipc/chat-wc3-implicit-contract.test.ts`.
+
 ### 3. Proof Gate
 
 Before a mutating coding turn can finish as trusted, the proof gate checks:
@@ -55,7 +57,9 @@ If proof is missing:
 
 **Service:** `electron/services/proof-gate.ts`
 
-**UI:** `src/components/chat/ProofGateBanner.tsx` — inline `Trusted`/`Blocked`/`Untrusted` banner on affected turns.
+**Persisted trust state (WC-4, 2026-06-09):** Migration v16 added `messages.proof_status TEXT` (`electron/services/db-migrations.ts:178`). The chat write-through at `electron/ipc/chat.ts:935` derives `'trusted' | 'untrusted' | undefined` from `gate.status === 'not_required'` (→ undefined) vs `gate.trusted` (→ 'trusted'/'untrusted') and passes it to `saveMessage`. The column is the source of truth for trust state — UI surfaces no longer parse inline notice text to know whether a turn is trusted.
+
+**UI:** `src/components/chat/ProofGateBanner.tsx` — inline `Untrusted`/`Blocked` warning banner with waive button, plus a muted "Proof gate waived" chip for `'waived'`. **WC-5 (2026-06-09):** the banner state is computed by `computeProofBannerState(proofStatus, hasLegacyNotice)` at `src/components/chat/proof-banner-state.ts:18` (invoked from `MessageBubble.tsx:88`) — the persisted `messages.proof_status` column wins over legacy inline notice text. On successful waiver, `window.api.messages.setProofStatus({ messageId, status: 'waived' })` flips the column via the new `messages:setProofStatus` IPC at `electron/ipc/contracts.ts:135`.
 
 ### 4. Waivers
 
@@ -105,6 +109,8 @@ The After Action panel in the right sidebar shows:
 
 Final assistant answers cite receipt IDs and parsed metrics. If no receipt exists, the answer must say proof is missing rather than inventing counts.
 
+**Deterministic citation (WC-6, 2026-06-09):** `composeFinalResponse` at `electron/services/final-response-composer.ts:357` appends a `---\n**Verification:**\n…` footer to the model's reply whenever proof receipts exist for the turn. Each line cites the receipt id (`prf_…`), glyph (✓/○/✗), kind, command in backticks, parsed metrics (passed/failed/skipped/errors/warnings), and exit code via `formatVerificationFooter()` / `formatReceiptMetricsForCitation()`. The model's reply is preserved exactly — the footer is additive and guarantees receipt ids reach the user regardless of model behavior. Tests in `electron/services/final-response-composer.test.ts` (`WC-6` blocks).
+
 ### 8. Failure Ledger (`failure_ledger`)
 
 Durable storage for proof failures:
@@ -147,8 +153,9 @@ Each recommendation names the specific evidence behind it. No automatic policy m
 
 - `npm run verify:proof` — lint, tsc, test, and smoke checks (when build output exists)
 - `npm run verify:all` — build then full proof gate with required smokes
+- `npm run verify:proof -- --no-tests` — CI static-gate mode (skips vitest because the sibling CI `test` job runs it under coverage)
 - Optional hook templates in `scripts/hooks/pre-commit` and `scripts/hooks/pre-push`
-- CI uses canonical proof steps
+- **WC-7 (2026-06-09):** `.github/workflows/ci.yml:34` invokes `npm run verify:proof -- --no-tests` as the "Proof policy static gate" step so CI exercises the canonical M10 gate path rather than an inline lint+tsc combo. Script composition drift surfaces as a CI failure.
 
 ## Data Flow
 
@@ -171,6 +178,7 @@ User prompt → Plan/Contract created
 | 12 | M1 | Proof receipt and artifact tables |
 | 13 | M2 | Change contracts table |
 | 14 | M11 | Failure ledger table |
+| 16 | WC-4 | `messages.proof_status` — persisted proof gate trust state |
 
 ## Limitations
 

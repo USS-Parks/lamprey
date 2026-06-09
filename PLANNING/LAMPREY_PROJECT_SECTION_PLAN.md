@@ -884,5 +884,19 @@ CREATE INDEX IF NOT EXISTS idx\_conversations\_project\_id ON conversations(proj
 |11|Project deletion/archive may become tempting during implementation.|Keep first phase narrow and reliable.|All prompts|
 |12|A project may be confused with a local workspace folder.|Docs and UI must distinguish current behavior from future workspace binding.|PRJ-11, PRJ-12|
 
+---
 
+## Correction Notes (2026-06-09)
 
+This phase shipped, but the cross-phase audit found that PRJ-10's regression test (`src/lib/projects.test.ts`) only exercised the validation helpers — it would NOT have failed against the original `window.prompt()`-based "+" handler that motivated the entire phase. The two post-merge fixups (`8f33b60`, `29cd818`) confirmed that the verify gate had blind spots.
+
+**Closed by WC-8 (2026-06-09):** `src/components/layout/Sidebar.project-flow.test.ts` adds 13 source-reading wiring-contract assertions:
+
+1. `Sidebar.tsx` does NOT call `window.prompt(` to collect a project name (locks the original defect).
+2. `NewProjectModal` is imported.
+3. The "+" click handler sets `newProjectOpen` to `true`.
+4. `<NewProjectModal />` is rendered in the sidebar tree.
+5. The "+" button has `aria-label="New project"`.
+6-13. The modal has dialog/aria-modal roles, autofocus, ESC-to-close, validation, role="alert" errors, and disabled Create on empty name.
+
+Vitest runs node-only in this repo (no jsdom/RTL per `vitest.config.ts:14`); source-reading is the pragmatic pattern. See `PLANNING/LAMPREY_WIRING_CLOSURE_PLAN.md` for the full wiring closure roster.

@@ -170,6 +170,25 @@ describe.skipIf(!HAS_NATIVE_SQLITE)('db-migrations', () => {
     expect(db.pragma('user_version', { simple: true })).toBe(0)
   })
 
+  it('WC-4 — migration v16 adds messages.proof_status as nullable TEXT (idempotent)', () => {
+    // The real registry includes v16 from this prompt. After runMigrations:
+    //   1. messages.proof_status column exists
+    //   2. inserting a row with NULL proof_status succeeds
+    //   3. running the migration again is a no-op (idempotency)
+    runMigrations(db)
+    const cols = db
+      .prepare('PRAGMA table_info(messages)')
+      .all() as Array<{ name: string; type: string; notnull: number }>
+    const proofStatusCol = cols.find((c) => c.name === 'proof_status')
+    expect(proofStatusCol, 'messages.proof_status must exist').toBeDefined()
+    expect(proofStatusCol?.type).toBe('TEXT')
+    expect(proofStatusCol?.notnull).toBe(0)
+
+    // Idempotency — second run does not throw.
+    const second = runMigrations(db)
+    expect(second.applied).toEqual([])
+  })
+
   it('stops applying after a failure and reports the partial result via thrown error', () => {
     const order: number[] = []
     withMigrations(

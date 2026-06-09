@@ -30,8 +30,13 @@ jobs:
       - name: Install dependencies
         run: npm ci --ignore-scripts
 
+      # WC-7 — verify:proof is the canonical M10 proof policy gate. In CI
+      # we use --no-tests because the sibling `test` job runs vitest under
+      # coverage; this job's responsibility is the lint + tsc + script
+      # composition check, plus surfacing any drift between the script
+      # and the canonical gate semantics.
       - name: Proof policy static gate
-        run: npm run lint && npx tsc --noEmit -p tsconfig.node.json && npx tsc --noEmit -p tsconfig.web.json
+        run: npm run verify:proof -- --no-tests
 
   test:
     runs-on: ubuntu-latest
