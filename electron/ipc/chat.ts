@@ -58,8 +58,13 @@ import {
 } from '../services/tool-result-spill'
 import {
   setProofRigor,
-  isProofRigorActive,
-  resolveProofRigor
+  resolveProofRigor,
+  // CR-5 (Cogency Restore Phase, 2026-06-09) — gate the proof machinery on
+  // rigor AND mutation_attempted so multi-dispatch turns that don't actually
+  // mutate stop tripping the "Untrusted completion" pill.
+  shouldEngageProofGate,
+  markMutationAttempted,
+  setRigorRequiresMutation
 } from '../services/proof-rigor'
 import {
   partitionToolCallWindows,
@@ -566,6 +571,16 @@ export function registerChatHandlers(): void {
           content
         })
       )
+      // CR-5 — honor the optional `rigorRequiresMutation` setting (default
+      // true). When true (the CR-5 fix), the proof gate further requires a
+      // mutating tool to have been attempted before engaging — so multi-
+      // dispatch turns that don't actually edit anything no longer trip the
+      // "Untrusted completion" pill. Flip to false to restore pre-CR-5
+      // behavior (rigor signal alone fires the gate).
+      {
+        const rrm = (settingsRaw as { rigorRequiresMutation?: boolean } | null)?.rigorRequiresMutation
+        setRigorRequiresMutation(rrm !== false)
+      }
 
       if (dispatch.kind === 'multi') {
         // P11 review-P1: the Coder must execute with ITS OWN model's
@@ -1081,7 +1096,10 @@ export async function runChatRound(
             // HY5 (Split) — only run the proof gate + append its notice on
             // rigor turns. Non-rigor turns skip the receipts scan and keep a
             // clean reply; proofStatus stays undefined (banner shows nothing).
-            const gate = isProofRigorActive(conversationId)
+            // CR-5 — additionally require mutation_attempted (gated by
+            // `settings.rigorRequiresMutation`, default true). Multi-dispatch
+            // pure-question turns no longer trip the gate.
+            const gate = shouldEngageProofGate(conversationId)
               ? evaluateProofGate({
                   conversationId,
                   correlationId,
@@ -1540,13 +1558,24 @@ async function resolveSingleToolCall(
   // evaluate against. Best-effort, cached per (conversation, correlation).
   // Plan-mode-authored contracts are detected by listChangeContracts and
   // preserve their authored shape.
+  // CR-5 — record that this turn attempted a mutation as soon as we see a
+  // mutating descriptor. Done BEFORE the implicit-contract guard so the proof
+  // gate predicate at the end of the round sees the flag. Plan-mode mutating
+  // descriptors are blocked just below; this assignment is harmless if the
+  // mutation never actually executes — what we're recording is the *attempt*.
+  if (descriptor && isMutatingDescriptor(descriptor)) {
+    markMutationAttempted(conversationId)
+  }
   // HY5 (Split) — only synthesize the implicit change contract on rigor turns;
   // the proof gate that consumes it is likewise rigor-gated above.
+  // CR-5 — uses the combined shouldEngageProofGate predicate so plan-mode
+  // turns (where mutations are blocked) and pure-question multi-dispatch
+  // turns don't synthesize a contract they'll never need.
   if (
     correlationId &&
     descriptor &&
     isMutatingDescriptor(descriptor) &&
-    isProofRigorActive(conversationId)
+    shouldEngageProofGate(conversationId)
   ) {
     ensureImplicitContractForFirstMutation({
       conversationId,
