@@ -549,7 +549,7 @@ export function registerChatHandlers(): void {
       // calls `routeAgentMode(content)` to decide single vs multi per
       // turn based on the user's prompt shape. The decision's
       // `routeReason` is logged for UI surfacing.
-      const dispatch = resolveAgentDispatch(settingsRaw, content)
+      const dispatch = resolveAgentDispatch(settingsRaw, content, conversationId)
       if (dispatch.routeReason) {
         console.info(`[chat] auto-routed to ${dispatch.kind}: ${dispatch.routeReason}`)
       }

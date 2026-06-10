@@ -122,11 +122,12 @@ describe('routeAgentMode — implicit signals', () => {
 })
 
 describe('routeAgentMode — return shape', () => {
-  it('always returns the three required fields', () => {
+  it('always returns the four required fields (CR-3 added matchedRule)', () => {
     const r = routeAgentMode('test')
     expect(r).toHaveProperty('mode')
     expect(r).toHaveProperty('reason')
     expect(r).toHaveProperty('cleanedText')
+    expect(r).toHaveProperty('matchedRule')
   })
 
   it('reason is never empty', () => {
@@ -137,9 +138,113 @@ describe('routeAgentMode — return shape', () => {
 
   it('handles empty and null-ish input gracefully', () => {
     expect(routeAgentMode('').mode).toBe('single')
+    expect(routeAgentMode('').matchedRule).toBe('default_single')
     // @ts-expect-error — testing runtime robustness
     expect(routeAgentMode(undefined).mode).toBe('single')
     // @ts-expect-error — testing runtime robustness
     expect(routeAgentMode(null).mode).toBe('single')
   })
+})
+
+// CR-3 (Cogency Restore Phase, 2026-06-09) — explicit per-rule matchedRule
+// assertions. Each rule path in routeAgentMode must name itself; silent
+// fallthroughs are caught by the LL_SMOKE_PLAYBOOK ask assertions below.
+describe('CR-3 routeAgentMode — matchedRule per rule', () => {
+  it('explicit_flag', () => {
+    expect(routeAgentMode('do this --multi').matchedRule).toBe('explicit_flag')
+    expect(routeAgentMode('do this --single').matchedRule).toBe('explicit_flag')
+  })
+
+  it('long_prompt', () => {
+    expect(routeAgentMode('word '.repeat(200)).matchedRule).toBe('long_prompt')
+  })
+
+  it('phase_phrase', () => {
+    expect(routeAgentMode('STS the new error-boundary phase').matchedRule).toBe('phase_phrase')
+    expect(routeAgentMode('Show me the P-SPR for adding telemetry').matchedRule).toBe('phase_phrase')
+    expect(routeAgentMode('Run this stem to stern').matchedRule).toBe('phase_phrase')
+  })
+
+  it('build_from_scratch', () => {
+    expect(routeAgentMode('Build me a full game').matchedRule).toBe('build_from_scratch')
+  })
+
+  it('multi_file_phrase', () => {
+    expect(routeAgentMode('Refactor the chat store to use Zustand 5 slices across every consuming component').matchedRule).toBe('multi_file_phrase')
+  })
+
+  it('sequential_steps', () => {
+    expect(routeAgentMode('First do A and then B. After that, do C.').matchedRule).toBe('sequential_steps')
+  })
+
+  it('deliverable_count', () => {
+    expect(
+      routeAgentMode('Please do these:\n- add a button\n- add a tooltip\n- add an icon').matchedRule
+    ).toBe('deliverable_count')
+  })
+
+  it('default_single', () => {
+    expect(routeAgentMode('What does the keychain module do?').matchedRule).toBe('default_single')
+  })
+})
+
+// CR-3 — locks the LL_SMOKE_PLAYBOOK asks to their expected (route,
+// matchedRule) pair. v0.11.0 playbook observed asks 2/3/4/5 going multi at
+// runtime even though the router says single; that discrepancy lives ABOVE
+// the router (the chat layer's agentMode resolution). These assertions
+// confirm the router itself is correct, so CR-4 can focus on the dispatch
+// layer rather than tuning regexes that are already right.
+describe('CR-3 LL_SMOKE_PLAYBOOK route lock', () => {
+  const asks: Array<{ ask: string; prompt: string; mode: 'single' | 'multi'; rule: string }> = [
+    {
+      ask: 'Ask 2 — rename in a specific file',
+      prompt: 'Rename runChatRound to dispatchSingleAgentTurn in electron/ipc/chat.ts',
+      mode: 'single',
+      rule: 'default_single'
+    },
+    {
+      ask: 'Ask 3 — typo fix in README',
+      prompt: "Fix the typo 'Lampshde' in the README",
+      mode: 'single',
+      rule: 'default_single'
+    },
+    {
+      ask: 'Ask 4 — diagnostic question',
+      prompt: 'Why is the build failing?',
+      mode: 'single',
+      rule: 'default_single'
+    },
+    {
+      ask: 'Ask 5 — single-feature build',
+      prompt: 'Add a button to the chat header that exports the transcript as markdown',
+      mode: 'single',
+      rule: 'default_single'
+    },
+    {
+      ask: 'Ask 6 — multi-file refactor phrase',
+      prompt: 'Refactor the chat store to use Zustand 5 slices across every consuming component',
+      mode: 'multi',
+      rule: 'multi_file_phrase'
+    },
+    {
+      ask: 'Ask 7 — STS phase',
+      prompt: 'STS the new error-boundary phase',
+      mode: 'multi',
+      rule: 'phase_phrase'
+    },
+    {
+      ask: 'Ask 8 — P-SPR phase',
+      prompt: 'Show me the P-SPR for adding telemetry',
+      mode: 'multi',
+      rule: 'phase_phrase'
+    }
+  ]
+
+  for (const { ask, prompt, mode, rule } of asks) {
+    it(`${ask} → ${mode} via ${rule}`, () => {
+      const r = routeAgentMode(prompt)
+      expect(r.mode).toBe(mode)
+      expect(r.matchedRule).toBe(rule)
+    })
+  }
 })
