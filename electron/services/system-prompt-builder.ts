@@ -16,7 +16,7 @@ export type ContractRole =
   | 'non_technical_user'
 
 interface ContractSection {
-  key: 'how_you_work'
+  key: 'how_you_work' | 'project_conventions'
   heading: string
   bullets: string[]
 }
@@ -55,6 +55,23 @@ const CONTRACT_SECTIONS: ContractSection[] = [
       'Name what you changed by file and symbol, and what you verified by command and outcome. Flag anything skipped, unresolved, or uncertain.',
       'Do not restate the user back to them. Do not paste raw terminal or log output unless asked.',
       'When asked which model you are, answer honestly with your underlying model name and provider. Lamprey is the harness, not the model.'
+    ]
+  },
+  // CR-1 (Cogency Restore Phase, 2026-06-09) — project-specific planning vocabulary.
+  // L2's contract collapse cut these as "redundant prose," but the LL_SMOKE_PLAYBOOK
+  // confirmed Asks 7 + 8 that the Planner hallucinates these terms (e.g. "STS = State
+  // Transition System?", "P-SPR = Plan for Specifying and Performing?"). Bullets are
+  // load-bearing despite their brevity. F13 fifth bullet (revision 3) — Asks 6 + 8
+  // v0.11.1 showed Coder treats vocab clarifications as build directives.
+  {
+    key: 'project_conventions',
+    heading: 'Project conventions',
+    bullets: [
+      'STS / Stem to Stern: user approved a P-SPR; run every prompt end to end with verify + commit. Do not ask mid-run.',
+      'P-SPR: Plan + Sequential Prompt Roster (a PLANNING/*.md file defining one phase). "Show me the P-SPR" = produce one, stop.',
+      'Bucket: run `pwsh scripts/bucket.ps1`. The full ship pipeline. Do not do the steps manually.',
+      'Unsure of project shorthand? Ask once; do not grep for it as a filename.',
+      'When the user clarifies a project term, consume it as vocabulary. Do not scaffold a system named that term unless asked.'
     ]
   }
 ]
@@ -124,6 +141,12 @@ export function buildComposerSystemPrompt(): string {
 // pinned by tests: coding → apply_patch + verify, review → SHIP/CHANGES +
 // file:line, frontend → browser_screenshot + typecheck, non_technical_user
 // → jargon + tsc.
+// CR-8 (Cogency Restore Phase, 2026-06-09) — three additional Coder rules
+// landed in CODER_OPERATING_PRINCIPLES below (the multi-agent Coder sub-agent
+// excerpt). The single-agent coding fragment stays L4-slim because the
+// broader contract's "Make the smallest correct change" + "Treat tool output
+// as primary evidence" bullets already cover the same intent in the
+// single-agent flow.
 const ROLE_FRAGMENTS: Record<ContractRole, string> = {
   coding:
     'You are writing code. Read files before you edit them and use apply_patch for the edits. Make the smallest correct change. After edits, run verify_workspace and report what passed.',
@@ -157,6 +180,24 @@ export const IDEAL_TURN_EXEMPLAR = [
   '</example>'
 ].join('\n')
 
+// CR-7 (Cogency Restore Phase, 2026-06-09) — one compact terse exemplar for
+// the Reviewer stage. The LL_SMOKE_PLAYBOOK v0.11.1 re-run showed Reviewer
+// outputs are 15-22 lines and follow a 4-section enumerated template
+// ("Checked failure modes / Files consulted / Unchecked gaps / Verdict") in
+// 4 / 4 evaluated turns. L6 cut the reviewer-fragment bytes 11,016 → 697
+// but the model defaults to the verbose review template from training
+// inertia. This terse exemplar shows: cite by file:line, raise at most one
+// concrete concern, end with verdict on its own line. ≤ 300 bytes per
+// CR-7 envelope-byte guard test.
+export const IDEAL_REVIEWER_EXEMPLAR = [
+  '<example>',
+  'Reviewer:',
+  'Reviewed: src/parser.ts:48 changed the off-by-one in tokenize(); src/parser.test.ts added two coverage cases; tsc + vitest clean per receipt v_03.',
+  "One concern: tokenize() now drops the trailing newline — confirm the caller doesn't rely on it.",
+  'CHANGES',
+  '</example>'
+].join('\n')
+
 export function renderContract(): string {
   const lines: string[] = ['<contract>']
   for (const section of CONTRACT_SECTIONS) {
@@ -166,6 +207,11 @@ export function renderContract(): string {
   }
   // HY6 — a worked example beats a bullet for instruction-tuned models.
   lines.push(IDEAL_TURN_EXEMPLAR)
+  lines.push('')
+  // CR-7 — terse Reviewer-stage exemplar. Steers the Reviewer away from the
+  // 4-section enumerated template observed in the v0.11.1 playbook re-run
+  // back toward the shape the L4-slim review fragment describes.
+  lines.push(IDEAL_REVIEWER_EXEMPLAR)
   lines.push('')
   lines.push('</contract>')
   return lines.join('\n').trimEnd()
@@ -363,14 +409,24 @@ function slimIdentityHead(modelId?: string): string {
   )
 }
 
-// L5 — three-line coder operating excerpt. Read → smallest change → verify.
+// L5 — coder operating excerpt. Read → smallest change → verify.
 // Applied only to the `coder` role; the others get just the role prompt
 // (planner doesn't edit, reviewer doesn't edit, coworker is user-facing,
 // reader/verifier are pure-text stages).
+// CR-8 (Cogency Restore Phase, 2026-06-09) — three additional rules (shell
+// syntax adapt after one failure, no shell-based file editing, F13 smallest
+// correct fix). Each is a bullet so it composes cleanly with the L5 head.
 const CODER_OPERATING_PRINCIPLES =
   '- Read the file you intend to change before changing it.\n' +
   '- Make the smallest correct change. Use apply_patch for code edits.\n' +
-  '- After edits, run verify_workspace and report what passed.'
+  '- After edits, run verify_workspace and report what passed.\n' +
+  '- If a shell command fails with a syntax error, switch to the host shell native syntax before retrying. Pivot after one failure, do not repeat the same shape three times.\n' +
+  '- Never edit files via shell pipelines (Set-Content, sed, awk, [System.IO.File]::Write). If apply_patch fails, re-read with -Encoding utf8 and retry; if it still fails, ask the user — do not fall back to shell-based editing.\n' +
+  '- Default to the smallest correct fix. When the user authorizes a new thing, build only what the literal request names — do not scaffold parallel architectures, test suites, or supplementary docs unless explicitly asked.\n' +
+  // CR-9 (Cogency Restore Phase, 2026-06-09) — exploration budget. Ask 5 v0.11.0
+  // ran 15 rounds of zero-match searches before giving up; Ask 6 v0.11.1 ran
+  // 54 tool calls before stalling. Escalate before looping.
+  '- If three consecutive searches return zero matches on the user named entities, escalate to the user via ask_user_question. Do not loop into a fourth search.'
 
 export function buildAgentSystemPrompt(
   role: keyof typeof AGENT_ROLE_PROMPTS,

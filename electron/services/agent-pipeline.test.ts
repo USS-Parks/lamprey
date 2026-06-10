@@ -852,6 +852,48 @@ describe('resolveAgentDispatch — chat:send dispatch decision', () => {
     const r = resolveAgentDispatch({ agentMode: 'auto', agentRoster: validRoster })
     expect(r.kind).toBe('single')
   })
+
+  // CR-4 (Cogency Restore Phase, 2026-06-09) — locks the LL_SMOKE_PLAYBOOK
+  // asks to the resolved dispatch under agentMode='auto'. The router
+  // (agent-router.ts) already routes these correctly per CR-3 telemetry; the
+  // observed v0.11.0/v0.11.1 multi-routing in the user's playbook runs was
+  // because the user's settings.agentMode was NOT 'auto' (likely 'multi').
+  // No rule tuning was needed — but lock the auto-mode behavior here so a
+  // future regression on the heuristic is caught.
+  describe('CR-4 LL_SMOKE_PLAYBOOK dispatch (auto mode)', () => {
+    const asks: Array<{ ask: string; prompt: string; kind: 'single' | 'multi' }> = [
+      { ask: 'Ask 2', prompt: 'Rename runChatRound to dispatchSingleAgentTurn in electron/ipc/chat.ts', kind: 'single' },
+      { ask: 'Ask 3', prompt: "Fix the typo 'Lampshde' in the README", kind: 'single' },
+      { ask: 'Ask 4', prompt: 'Why is the build failing?', kind: 'single' },
+      { ask: 'Ask 5', prompt: 'Add a button to the chat header that exports the transcript as markdown', kind: 'single' },
+      { ask: 'Ask 6', prompt: 'Refactor the chat store to use Zustand 5 slices across every consuming component', kind: 'multi' },
+      { ask: 'Ask 7', prompt: 'STS the new error-boundary phase', kind: 'multi' },
+      { ask: 'Ask 8', prompt: 'Show me the P-SPR for adding telemetry', kind: 'multi' }
+    ]
+    for (const { ask, prompt, kind } of asks) {
+      it(`${ask} → ${kind} under agentMode=auto`, () => {
+        const r = resolveAgentDispatch(
+          { agentMode: 'auto', agentRoster: validRoster },
+          prompt
+        )
+        expect(r.kind).toBe(kind)
+      })
+    }
+  })
+
+  // CR-4 — pins the dispatch-layer observation: agentMode='multi' BYPASSES
+  // the router entirely. The user's playbook runs went multi because of this
+  // bypass, not because of a router miss. If a future change wires the
+  // router into the explicit-multi path, this test breaks and forces a
+  // deliberate decision.
+  it('CR-4: agentMode=multi BYPASSES routeAgentMode (user-visible playbook root cause)', () => {
+    const shortAskThatRouterWouldSingle = 'Fix this typo'
+    const r = resolveAgentDispatch(
+      { agentMode: 'multi', agentRoster: validRoster },
+      shortAskThatRouterWouldSingle
+    )
+    expect(r.kind).toBe('multi')
+  })
 })
 
 describe('runAgentPipeline — coexistence with multi_agent_run', () => {

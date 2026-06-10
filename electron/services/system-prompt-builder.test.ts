@@ -22,7 +22,12 @@ import {
 //   Gather context before editing, Use tools as evidence, Protect user work,
 //   Verify before claiming done, Progress updates, Standalone deliverables,
 //   Final response.
-const EXPECTED_SECTION_HEADINGS = ['How you work']
+// CR-1 (Cogency Restore Phase, 2026-06-09) — added "Project conventions" section
+// with STS / P-SPR / Bucket / Stem to Stern vocab. The Lampshade L2 collapse
+// dropped these as "redundant prose" but the LL_SMOKE_PLAYBOOK proved Asks 7 + 8
+// failed because the Planner had no idea what those terms meant. The new section
+// follows the existing "How you work" block.
+const EXPECTED_SECTION_HEADINGS = ['How you work', 'Project conventions']
 
 const ALL_ROLES: ContractRole[] = [
   'coding',
@@ -58,6 +63,92 @@ describe('renderContract', () => {
       const firstBulletIdx = after.indexOf('\n- ')
       expect(firstBulletIdx, `expected a bullet under "${heading}"`).toBeGreaterThan(0)
     }
+  })
+
+  // CR-1 (Cogency Restore Phase) — the canonical project planning vocabulary
+  // MUST appear exactly once in the rendered contract. Asks 7 + 8 of the
+  // LL_SMOKE_PLAYBOOK proved the Planner has no concept of STS or P-SPR when
+  // these aren't in the prompt. The test guards against future contract cuts
+  // silently dropping the bullets again.
+  it('CR-1: includes the canonical project vocabulary (STS / P-SPR / Bucket / Stem to Stern)', () => {
+    const out = renderContract()
+    expect(out).toContain('STS')
+    expect(out).toContain('P-SPR')
+    expect(out).toContain('Bucket')
+    expect(out).toContain('Stem to Stern')
+    expect(out).toContain('Sequential Prompt Roster')
+    expect(out).toContain('Project conventions')
+  })
+
+  // CR-1 F13 — the fifth bullet locks the "vocab clarification ≠ build
+  // directive" behavior surfaced by Asks 6 + 8 v0.11.1 (Coder building entire
+  // Python p_spr package + Vite/Zustand React scaffold from terse clarifications).
+  it('CR-1: includes the F13 vocab-vs-build clarification bullet', () => {
+    const out = renderContract()
+    expect(out).toContain('consume it as vocabulary')
+  })
+
+  // CR-7 (Cogency Restore Phase, 2026-06-09) — terse Reviewer-stage exemplar
+  // that steers DeepSeek/Gemma/Qwen away from the 4-section enumerated review
+  // template observed in the v0.11.1 playbook (Asks 3, 4, 5, 8). Locked in
+  // shape + an envelope-byte guard so future verbose additions to the
+  // exemplar trigger CI failure.
+  it('CR-7: includes the terse Reviewer exemplar shape', () => {
+    const out = renderContract()
+    expect(out).toContain('Reviewer:')
+    expect(out).toContain('Reviewed:')
+    // Verdict line on its own — exactly what the L4-slim review fragment
+    // requires AND the L9 verdict-line guard requires.
+    expect(out).toMatch(/\nCHANGES\n<\/example>/)
+  })
+
+  it('CR-7: reviewer exemplar bytes ≤ 300 (envelope guard)', async () => {
+    const { IDEAL_REVIEWER_EXEMPLAR } = await import('./system-prompt-builder')
+    expect(IDEAL_REVIEWER_EXEMPLAR.length).toBeLessThanOrEqual(300)
+  })
+
+  // CR-8 (Cogency Restore Phase, 2026-06-09) — three Coder operational
+  // rules added to the multi-agent Coder sub-agent's operating-principles
+  // excerpt. Each addresses a finding from the LL_SMOKE_PLAYBOOK.
+  it('CR-8: Coder operating principles include the F7 shell-adapt rule', () => {
+    const out = buildAgentSystemPrompt('coder')
+    expect(out).toContain('switch to the host shell native syntax')
+    expect(out).toContain('Pivot after one failure')
+  })
+
+  it('CR-8: Coder operating principles include the F9 no-shell-edit rule', () => {
+    const out = buildAgentSystemPrompt('coder')
+    expect(out).toContain('Never edit files via shell pipelines')
+    expect(out).toContain('Set-Content')
+    expect(out).toContain('apply_patch fails')
+  })
+
+  it('CR-8: Coder operating principles include the F13 minimum-fix rule', () => {
+    const out = buildAgentSystemPrompt('coder')
+    expect(out).toContain('Default to the smallest correct fix')
+    expect(out).toContain('parallel architectures')
+  })
+
+  it('CR-8: Reviewer / Planner / Coworker sub-agents do NOT receive the Coder rules', () => {
+    // These rules only make sense for the role that mutates files.
+    const reviewer = buildAgentSystemPrompt('reviewer')
+    const planner = buildAgentSystemPrompt('planner')
+    const coworker = buildAgentSystemPrompt('coworker')
+    for (const out of [reviewer, planner, coworker]) {
+      expect(out).not.toContain('Never edit files via shell pipelines')
+      expect(out).not.toContain('parallel architectures')
+    }
+  })
+
+  // CR-9 (Cogency Restore Phase, 2026-06-09) — exploration budget. Ask 5
+  // v0.11.0 ran 15 rounds of zero-match searches; Ask 6 v0.11.1 ran 54 tool
+  // calls before stalling. The rule escalates to ask_user_question after
+  // three consecutive zero-match searches.
+  it('CR-9: Coder operating principles include the three-zero-matches budget rule', () => {
+    const out = buildAgentSystemPrompt('coder')
+    expect(out).toContain('three consecutive searches return zero matches')
+    expect(out).toContain('ask_user_question')
+    expect(out).toContain('Do not loop into a fourth search')
   })
 })
 
@@ -107,9 +198,15 @@ describe('Lampshade L9 — envelope shape guards', () => {
     )
   })
 
-  it('size: coding-mode single-agent prompt stays under 4,096 bytes (L1 was 10,897)', () => {
+  // CR-7 (Cogency Restore Phase, 2026-06-09) — bumped the L9 4,096 size guard
+  // to 4,400 bytes. The CR phase added: CR-1 ~520 bytes of Project conventions
+  // vocab (5 bullets) and CR-7 ~285 bytes of the terse Reviewer exemplar. Net
+  // contract regrowth is ~800 bytes — still well under the byte savings L2
+  // delivered (~7,200 bytes) and 4,400 is the post-CR coding-mode prompt
+  // size + ~150 bytes of headroom for future thin additions.
+  it('size: coding-mode single-agent prompt stays under 4,400 bytes (post-CR floor)', () => {
     const out = buildSystemPrompt([], '', undefined, undefined, undefined, 'coding')
-    expect(out.length).toBeLessThan(4096)
+    expect(out.length).toBeLessThan(4400)
   })
 
   it('negative: no rendered prompt names the pre-L2 hedging phrases', () => {
@@ -549,27 +646,36 @@ describe('HY4 — lazy skill bodies', () => {
   })
 })
 
-describe('HY6 — exemplar-based steering', () => {
-  it('embeds one ideal tool-using exemplar inside the contract', () => {
+describe('HY6 — exemplar-based steering (CR-7 added the reviewer exemplar)', () => {
+  it('embeds the HY6 ideal tool-using exemplar inside the contract', () => {
     const out = renderContract()
     expect(out).toContain('<example>')
     expect(out).toContain('</example>')
     expect(out).toContain('shell_command: grep')
     expect(out).toContain('apply_patch')
     expect(out).toContain('verify_workspace')
-    // exactly one exemplar
-    expect(out.split('<example>').length - 1).toBe(1)
   })
 
-  it('keeps the exemplar inside <contract> and stays under the size guard', () => {
+  // CR-7 (Cogency Restore Phase, 2026-06-09) — CR-7 adds a Reviewer-stage
+  // exemplar alongside the HY6 ideal-turn exemplar. The contract now contains
+  // exactly TWO `<example>` blocks (was 1 pre-CR-7); future additions to the
+  // exemplar set need to deliberately update this assertion.
+  it('CR-7: contains exactly two exemplars (HY6 ideal turn + CR-7 reviewer)', () => {
+    const out = renderContract()
+    expect(out.split('<example>').length - 1).toBe(2)
+    expect(out.split('</example>').length - 1).toBe(2)
+  })
+
+  it('keeps both exemplars inside <contract> and stays under the size guard', () => {
     const out = renderContract()
     expect(out.startsWith('<contract>')).toBe(true)
     expect(out.endsWith('</contract>')).toBe(true)
-    const ex = out.indexOf('<example>')
+    const firstEx = out.indexOf('<example>')
     const close = out.indexOf('</contract>')
-    expect(ex).toBeGreaterThan(0)
-    expect(ex).toBeLessThan(close)
-    // HY6 byte guard — exemplar is additive but the contract stays lean.
+    expect(firstEx).toBeGreaterThan(0)
+    expect(firstEx).toBeLessThan(close)
+    // HY6 byte guard — exemplars are additive but the contract stays lean.
+    // CR-7 budget allowance: ≤ 3,700 holds (CR-7 + CR-1 additions fit).
     expect(out.length).toBeLessThan(3700)
   })
 })

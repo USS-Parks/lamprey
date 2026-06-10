@@ -23,11 +23,29 @@ export interface RouteDecision {
   mode: 'single' | 'multi'
   /** Short human-readable explanation, suitable for a chat metadata chip. */
   reason: string
+  /** CR-3 (Cogency Restore Phase, 2026-06-09) — machine-readable rule id that
+   *  selected the route. Used by router-telemetry to attribute decisions, and
+   *  by the agent-router.test.ts assertions so a future regression on a
+   *  specific rule is caught with a precise failure message. */
+  matchedRule: RouterMatchedRule
   /** The user message with any explicit `--single` / `--multi` flag removed
    *  (so the model never sees the flag, only the substance). When the input
    *  had no flag, this is the original text unchanged. */
   cleanedText: string
 }
+
+/** CR-3 — exhaustive set of rule ids `routeAgentMode` can return. Every code
+ *  path in the function names exactly one of these so silent fallthroughs
+ *  cannot occur. Future router tuning (CR-4) extends this union. */
+export type RouterMatchedRule =
+  | 'explicit_flag'
+  | 'long_prompt'
+  | 'phase_phrase'
+  | 'build_from_scratch'
+  | 'multi_file_phrase'
+  | 'sequential_steps'
+  | 'deliverable_count'
+  | 'default_single'
 
 /** Hard upper bound on prompt length that always promotes to multi. */
 const LONG_PROMPT_BYTES = 800
@@ -91,6 +109,7 @@ export function routeAgentMode(userText: string): RouteDecision {
     return {
       mode: which,
       reason: `explicit --${which} flag in the prompt`,
+      matchedRule: 'explicit_flag',
       cleanedText
     }
   }
@@ -105,6 +124,7 @@ export function routeAgentMode(userText: string): RouteDecision {
     return {
       mode: 'multi',
       reason: `long prompt (${original.length} chars > ${LONG_PROMPT_BYTES})`,
+      matchedRule: 'long_prompt',
       cleanedText: original
     }
   }
@@ -115,6 +135,7 @@ export function routeAgentMode(userText: string): RouteDecision {
     return {
       mode: 'multi',
       reason: `phase phrase matched: "${phase[1]}"`,
+      matchedRule: 'phase_phrase',
       cleanedText: original
     }
   }
@@ -124,6 +145,7 @@ export function routeAgentMode(userText: string): RouteDecision {
     return {
       mode: 'multi',
       reason: 'build-from-scratch phrase (build/create/scaffold + full/app/system/etc)',
+      matchedRule: 'build_from_scratch',
       cleanedText: original
     }
   }
@@ -133,6 +155,7 @@ export function routeAgentMode(userText: string): RouteDecision {
     return {
       mode: 'multi',
       reason: 'multi-file phrase (refactor/audit/rewrite + across/entire/all)',
+      matchedRule: 'multi_file_phrase',
       cleanedText: original
     }
   }
@@ -143,6 +166,7 @@ export function routeAgentMode(userText: string): RouteDecision {
     return {
       mode: 'multi',
       reason: `sequential-step markers (${seq.length} ≥ ${MIN_SEQUENTIAL_HITS})`,
+      matchedRule: 'sequential_steps',
       cleanedText: original
     }
   }
@@ -160,6 +184,7 @@ export function routeAgentMode(userText: string): RouteDecision {
     return {
       mode: 'multi',
       reason: `${deliverables} deliverables (bullets/commas ≥ ${MIN_DELIVERABLE_ITEMS})`,
+      matchedRule: 'deliverable_count',
       cleanedText: original
     }
   }
@@ -168,6 +193,7 @@ export function routeAgentMode(userText: string): RouteDecision {
   return {
     mode: 'single',
     reason: 'short, single-deliverable ask',
+    matchedRule: 'default_single',
     cleanedText: original
   }
 }

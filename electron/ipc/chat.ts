@@ -30,6 +30,13 @@ import {
 } from '../services/async-event-bridge'
 import { buildSystemPrompt } from '../services/system-prompt-builder'
 import { resolveAgentDispatch, runAgentPipeline } from '../services/agent-pipeline'
+// CR-2 (Cogency Restore Phase, 2026-06-09) — abort-safe rollback + stall
+// detection wrapper. Surfaces a `role:'system'` message naming modified
+// paths when the pipeline bails after Coder mutations land.
+import {
+  withPipelineSafety,
+  newSystemMessageId
+} from '../services/agent-pipeline-safety'
 import { readAgentsMd } from '../services/agents-md-loader'
 import { fireHooks } from '../services/hooks-runner'
 import { mcpManager } from '../services/mcp-manager'
@@ -51,8 +58,13 @@ import {
 } from '../services/tool-result-spill'
 import {
   setProofRigor,
-  isProofRigorActive,
-  resolveProofRigor
+  resolveProofRigor,
+  // CR-5 (Cogency Restore Phase, 2026-06-09) — gate the proof machinery on
+  // rigor AND mutation_attempted so multi-dispatch turns that don't actually
+  // mutate stop tripping the "Untrusted completion" pill.
+  shouldEngageProofGate,
+  markMutationAttempted,
+  setRigorRequiresMutation
 } from '../services/proof-rigor'
 import {
   partitionToolCallWindows,
@@ -542,7 +554,7 @@ export function registerChatHandlers(): void {
       // calls `routeAgentMode(content)` to decide single vs multi per
       // turn based on the user's prompt shape. The decision's
       // `routeReason` is logged for UI surfacing.
-      const dispatch = resolveAgentDispatch(settingsRaw, content)
+      const dispatch = resolveAgentDispatch(settingsRaw, content, conversationId)
       if (dispatch.routeReason) {
         console.info(`[chat] auto-routed to ${dispatch.kind}: ${dispatch.routeReason}`)
       }
@@ -559,6 +571,16 @@ export function registerChatHandlers(): void {
           content
         })
       )
+      // CR-5 — honor the optional `rigorRequiresMutation` setting (default
+      // true). When true (the CR-5 fix), the proof gate further requires a
+      // mutating tool to have been attempted before engaging — so multi-
+      // dispatch turns that don't actually edit anything no longer trip the
+      // "Untrusted completion" pill. Flip to false to restore pre-CR-5
+      // behavior (rigor signal alone fires the gate).
+      {
+        const rrm = (settingsRaw as { rigorRequiresMutation?: boolean } | null)?.rigorRequiresMutation
+        setRigorRequiresMutation(rrm !== false)
+      }
 
       if (dispatch.kind === 'multi') {
         // P11 review-P1: the Coder must execute with ITS OWN model's
@@ -606,43 +628,78 @@ export function registerChatHandlers(): void {
             ? priorWithoutLatestUser
             : priorWithoutLatestUser.slice(0, lastUserIdx)
 
-        await runAgentPipeline({
+        // CR-2 — wrap the multi-agent dispatch in withPipelineSafety so that
+        // if the pipeline bails after Coder mutations land (F2: stage threw,
+        // F15: stage stalled with no error), the user sees a synthesised
+        // system message naming the modified paths. The wrapper is a no-op
+        // on the happy path (composer completes cleanly).
+        const stageInactivityMs =
+          typeof (settingsRaw as { stageInactivityMs?: number } | null)?.stageInactivityMs === 'number'
+            ? Math.max(0, (settingsRaw as { stageInactivityMs: number }).stageInactivityMs)
+            : 0
+        await withPipelineSafety({
           conversationId,
-          correlationId,
-          roster: coderRoster,
-          userContent: content,
-          systemPrompt: coderSystemPrompt,
-          priorMessages: priorTrimmed,
-          tools: tools.length > 0 ? tools : undefined,
           workspacePath,
-          signal: abortController.signal,
-          subAgentRunner: async (subMessages, modelId, subSignal) => {
-            // chatOnce takes (messages, modelId, signal); sub-agents are
-            // one-shot reasoning calls — per-model temperature/topP from
-            // modelConfig doesn't apply here. R3: return the object form
-            // so Planner + Reviewer reasoning flows through forkAgent →
-            // SubAgentResult.reasoning → the saved Planner / Reviewer row.
-            const result = await chatOnce(subMessages, modelId, subSignal, {
-              correlationId,
-              conversationId,
-              purpose: 'sub-agent'
-            })
-            return { output: result.content, reasoning: result.reasoning }
+          stageInactivityMs,
+          persistSystemMessage: (payload) => {
+            try {
+              const msg = convStore.saveMessage({
+                id: newSystemMessageId(),
+                conversationId: payload.conversationId,
+                role: 'system',
+                content: payload.text,
+                model: 'lamprey-safety-net',
+                stage: 'system'
+              })
+              emitChatEvent('chat:done', { conversationId, message: msg })
+            } catch (err) {
+              console.error('[chat] CR-2 persistSystemMessage failed:', err)
+            }
           },
-          coderRunner: async ({ messages, model: coderModel, tools: coderTools, signal: coderSignal }) =>
-            runChatRound(
+          runPipeline: async ({ reachedStage, watchdog }) => {
+            await runAgentPipeline({
               conversationId,
-              coderModel,
-              messages,
-              coderTools,
+              correlationId,
+              roster: coderRoster,
+              userContent: content,
+              systemPrompt: coderSystemPrompt,
+              priorMessages: priorTrimmed,
+              tools: tools.length > 0 ? tools : undefined,
               workspacePath,
-              coderSignal,
-              0,
-              coderModelParams,
-              agentic.composer,
-              /* suppressDoneEvent */ true,
-              correlationId
-            )
+              signal: abortController.signal,
+              subAgentRunner: async (subMessages, modelId, subSignal) => {
+                const result = await chatOnce(subMessages, modelId, subSignal, {
+                  correlationId,
+                  conversationId,
+                  purpose: 'sub-agent'
+                })
+                return { output: result.content, reasoning: result.reasoning }
+              },
+              coderRunner: async ({ messages, model: coderModel, tools: coderTools, signal: coderSignal }) => {
+                reachedStage('coder')
+                watchdog.armStage('coder')
+                const out = await runChatRound(
+                  conversationId,
+                  coderModel,
+                  messages,
+                  coderTools,
+                  workspacePath,
+                  coderSignal,
+                  0,
+                  coderModelParams,
+                  agentic.composer,
+                  /* suppressDoneEvent */ true,
+                  correlationId
+                )
+                reachedStage('reviewer')
+                watchdog.armStage('reviewer')
+                return out
+              }
+            })
+            // runAgentPipeline returns void; if we got here without throwing
+            // the composer/reviewer chain ran to completion.
+            reachedStage('composer')
+          }
         })
       } else {
         if (dispatch.reason) {
@@ -1039,7 +1096,10 @@ export async function runChatRound(
             // HY5 (Split) — only run the proof gate + append its notice on
             // rigor turns. Non-rigor turns skip the receipts scan and keep a
             // clean reply; proofStatus stays undefined (banner shows nothing).
-            const gate = isProofRigorActive(conversationId)
+            // CR-5 — additionally require mutation_attempted (gated by
+            // `settings.rigorRequiresMutation`, default true). Multi-dispatch
+            // pure-question turns no longer trip the gate.
+            const gate = shouldEngageProofGate(conversationId)
               ? evaluateProofGate({
                   conversationId,
                   correlationId,
@@ -1498,13 +1558,24 @@ async function resolveSingleToolCall(
   // evaluate against. Best-effort, cached per (conversation, correlation).
   // Plan-mode-authored contracts are detected by listChangeContracts and
   // preserve their authored shape.
+  // CR-5 — record that this turn attempted a mutation as soon as we see a
+  // mutating descriptor. Done BEFORE the implicit-contract guard so the proof
+  // gate predicate at the end of the round sees the flag. Plan-mode mutating
+  // descriptors are blocked just below; this assignment is harmless if the
+  // mutation never actually executes — what we're recording is the *attempt*.
+  if (descriptor && isMutatingDescriptor(descriptor)) {
+    markMutationAttempted(conversationId)
+  }
   // HY5 (Split) — only synthesize the implicit change contract on rigor turns;
   // the proof gate that consumes it is likewise rigor-gated above.
+  // CR-5 — uses the combined shouldEngageProofGate predicate so plan-mode
+  // turns (where mutations are blocked) and pure-question multi-dispatch
+  // turns don't synthesize a contract they'll never need.
   if (
     correlationId &&
     descriptor &&
     isMutatingDescriptor(descriptor) &&
-    isProofRigorActive(conversationId)
+    shouldEngageProofGate(conversationId)
   ) {
     ensureImplicitContractForFirstMutation({
       conversationId,

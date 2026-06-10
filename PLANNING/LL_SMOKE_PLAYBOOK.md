@@ -169,3 +169,76 @@ If 2+ asks fail their primary cogency signal, the Lampshade phase has regressed 
 4. A copy of the offending reply
 
 The next phase can then read those notes to decide whether the fix is a router rule, a prompt rule, or a sanitizer rule.
+
+
+---
+
+## v0.12.0 pass criteria (CR-10, 2026-06-09)
+
+The Cogency Restore Phase (CR-0 through CR-12) lands on `claude/cogency-restore` from
+`v0.11.1`. The post-CR build adjusts which signals each Ask is graded on. Pre-v0.12.0
+expectations above stay intact for diff against v0.11.0 / v0.11.1 runs; this block
+adds the v0.12.0-specific bars.
+
+### Per-ask v0.12.0 expectations
+
+**Ask 2 — One-line edit (`Rename runChatRound to dispatchSingleAgentTurn ...`)**
+- Route: SINGLE under `agentMode='auto'` (CR-3 lock confirms heuristic is correct).
+- If observed multi: user's settings are `agentMode='multi'` — that pin bypasses the
+  router per CR-4 docs; not a router regression.
+- Coder: ≤ 2 read tools, then `apply_patch` with file + symbols named.
+
+**Ask 3 — Typo fix (`Fix the typo 'Lampshde' in the README`)**
+- Route: SINGLE under `agentMode='auto'`.
+- L2 zero-matches behavior: state "no matches found in scope X" and ask scope. CR-1
+  bullet ("Unsure of project shorthand? Ask once") reinforces.
+
+**Ask 4 — Build investigation (`Why is the build failing?`)**
+- Route: SINGLE.
+- Workspace_context tool call → ask clarifying questions if no project found.
+- **CR-7 scope-creep half no-op verification:** model should NOT volunteer optimization
+  fixes for unrelated warnings. v0.11.1 + CR-7 together fully suppress this pattern.
+
+**Ask 5 — Feature build (`Add a button to the chat header ...`)**
+- Route: SINGLE.
+- **CR-9 exploration budget:** Coder should escalate to `ask_user_question` after 3
+  zero-match searches. v0.11.0/v0.11.1 ran 14-15 rounds; v0.12.0 target ≤ 5 rounds.
+
+**Ask 6 — Cross-file refactor (`Refactor the chat store to use Zustand 5 slices ...`)**
+- Route: MULTI via `multi_file_phrase` rule.
+- **F13 lock from CR-1 + CR-8:** if scope expands beyond the literal request, Coder
+  should ask before scaffolding parallel architecture. v0.11.1 silently scaffolded
+  full Vite + 6 components; v0.12.0 target: confirms before building > 1 file from
+  the clarification.
+- **F15 stall safety net from CR-2:** if stage stalls after mutations, abort-safe
+  rollback synthesizes a `role:'system'` message naming modified paths.
+
+**Ask 7 — Phase ship (`STS the new error-boundary phase`)**
+- Route: MULTI via `phase_phrase` rule.
+- **CR-1 vocab restoration:** Planner recognizes STS as project shorthand for
+  Stem-to-Stern (v0.11.0/v0.11.1 hallucinated "State Transition System").
+- **CR-2 abort-safe rollback:** if Coder mutations land + a stage throws, system
+  message names modified paths. v0.11.0 silently left 7 files broken on disk.
+
+**Ask 8 — Plan draft (`Show me the P-SPR for adding telemetry`)**
+- Route: MULTI via `phase_phrase` rule.
+- **CR-1 vocab restoration:** Planner recognizes P-SPR as Plan + Sequential Prompt
+  Roster. Produces a roster, asks for approval. Does NOT scaffold a Python p_spr/
+  package.
+- **CR-7 scope-creep half no-op verification:** model does not volunteer a side doc.
+
+### v0.12.0 phase pass criteria
+
+≥ 6 of 7 asks (2–8) hit primary signal cleanly. Ask 7 (abort-safe rollback) is
+non-negotiable per the P-SPR §4.
+
+### What CR-6 and CR-7 partial no-ops imply for the playbook
+
+Per revision 3 of `PLANNING/LAMPREY_COGENCY_RESTORE_PLAN.md`:
+- **CR-6 no-op**: F5 (verdict-line) already resolved by v0.11.1. Continue grading
+  verdict-line presence in re-run; expect 100% first-try hits.
+- **CR-7 reviewer half**: executed — terse exemplar added to `renderContract()`. Watch
+  for Reviewer outputs ≤ 12 lines AND no 5-section enumerated template.
+- **CR-7 scope-creep half no-op**: F12 already resolved by v0.11.1. Continue confirming
+  no volunteer fixes for unasked content (Ask 4 specifically).
+

@@ -24,6 +24,22 @@ import { trace } from './debug-trace'
 // L8 (Lampshade Phase, 2026-06-09) — resolveAgentDispatch consults the
 // per-turn routing heuristic when agentMode === 'auto'.
 import { routeAgentMode } from './agent-router'
+// CR-3 (Cogency Restore Phase, 2026-06-09) — record per-turn router
+// decisions in an in-memory ring buffer so the /debug surface can show
+// matched rules. Also lets us label non-auto dispatches with an explicit
+// non-router rule string for completeness.
+import { recordRouterDecision } from './router-telemetry'
+// CR-2 (Cogency Restore Phase, 2026-06-09) — abort-safe rollback + stall
+// detection. The pipeline wraps in try/finally; the helper synthesises a
+// user-visible system message when the run bails after the Coder mutated
+// files but before the Composer wrote a reply.
+import {
+  MutationTracker,
+  StageInactivityWatchdog,
+  evaluateClosure,
+  type PipelineStage,
+  type TerminationReason
+} from './agent-pipeline-safety'
 
 // T3 — Per-stage wall-clock budgets. The MAX_TOOL_ROUNDS cap (chat.ts:204)
 // protects against infinite loops but not against 50 rounds × 60s thinking-
@@ -185,7 +201,10 @@ export function resolveAgentDispatch(
   settingsRaw: Record<string, unknown> | null,
   // L8 — userText is only consulted when agentMode === 'auto'. Pass an
   // empty string for explicit 'single' / 'multi' modes (no allocation).
-  userText: string = ''
+  userText: string = '',
+  // CR-3 — when present, attached to the router-telemetry entry so the
+  // /debug view can correlate decisions back to a conversation.
+  conversationId?: string
 ): AgentDispatchDecision {
   if (!settingsRaw) return { kind: 'single' }
   const agentMode = settingsRaw.agentMode
@@ -193,6 +212,14 @@ export function resolveAgentDispatch(
   // L8 — 'auto' mode delegates to the per-turn heuristic.
   if (agentMode === 'auto') {
     const decision = routeAgentMode(userText)
+    // CR-3 — record the heuristic's matched rule for diagnostics.
+    recordRouterDecision({
+      promptText: userText,
+      route: decision.mode,
+      matchedRule: decision.matchedRule,
+      reason: decision.reason,
+      conversationId
+    })
     if (decision.mode === 'single') {
       return { kind: 'single', routeReason: decision.reason }
     }
@@ -208,14 +235,41 @@ export function resolveAgentDispatch(
     return { kind: 'multi', roster: validation.value, routeReason: decision.reason }
   }
 
-  if (agentMode !== 'multi') return { kind: 'single' }
+  // CR-3 — explicit single/multi modes get a synthetic telemetry entry so the
+  // /debug view never shows a turn with no decision (which would look like
+  // routing skipped the layer entirely). The matchedRule names the user's
+  // settings, not the heuristic.
+  if (agentMode !== 'multi') {
+    recordRouterDecision({
+      promptText: userText,
+      route: 'single',
+      matchedRule: 'default_single',
+      reason: 'agentMode=single (settings-pinned)',
+      conversationId
+    })
+    return { kind: 'single' }
+  }
   const validation = validateRoster(settingsRaw.agentRoster)
   if (!validation.ok || !validation.value) {
+    recordRouterDecision({
+      promptText: userText,
+      route: 'single',
+      matchedRule: 'default_single',
+      reason: `agentMode=multi but ${validation.error ?? 'roster invalid'} — degraded to single`,
+      conversationId
+    })
     return {
       kind: 'single',
       reason: validation.error ?? 'roster validation failed'
     }
   }
+  recordRouterDecision({
+    promptText: userText,
+    route: 'multi',
+    matchedRule: 'explicit_flag',
+    reason: 'agentMode=multi (settings-pinned)',
+    conversationId
+  })
   return { kind: 'multi', roster: validation.value }
 }
 

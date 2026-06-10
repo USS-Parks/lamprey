@@ -66,8 +66,11 @@ export interface MessageRow {
 
 /** Allowed values for `MessageRow.stage`. Kept as a string union so
  *  callers can pass `undefined` to mean "not a multi-agent row".
- *  Coder rows intentionally stay NULL — see database.ts R1 migration. */
-export type MessageStage = 'planner' | 'reviewer' | 'composer'
+ *  Coder rows intentionally stay NULL — see database.ts R1 migration.
+ *  CR-2 (Cogency Restore Phase) — added 'system' for harness-synthesised
+ *  rows (abort-safe rollback message naming modified paths when the
+ *  multi-agent pipeline bails after Coder mutations). */
+export type MessageStage = 'planner' | 'reviewer' | 'composer' | 'system'
 
 /** WC-4 — Allowed values for `MessageRow.proof_status`. NULL on the row
  *  means "not applicable" (use the absence rather than a sentinel string). */

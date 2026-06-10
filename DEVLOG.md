@@ -1,3 +1,90 @@
+## [Cogency Restore Phase — Complete] CR-0 through CR-12 shipped end-to-end — 2026-06-09, v0.12.0
+
+Phase complete. 13 prompts (CR-0 through CR-12) shipped on `claude/cogency-restore` (cut from `61a8119` = `origin/main` at v0.11.1). Closes eight regressions surfaced by the L9 LL_SMOKE_PLAYBOOK run against v0.11.0 and v0.11.1 plus three new findings (F13, F14, F15) discovered during the v0.11.1 re-run.
+
+**Per-prompt commit SHAs:**
+- `05dccf7` — P-SPR (revision 3) landed
+- `d50e17c` — CR-0 baseline measurement
+- `f8ba8a9` — CR-1 Project conventions block (STS / P-SPR / Bucket / Stem to Stern / F13 vocab-vs-build)
+- `0509dad` — CR-2 abort-safe rollback + stall detection for multi-agent pipeline
+- `b4d728d` — CR-3 structured `RouterDecision` + in-memory telemetry ring buffer
+- `da1b2c3` — CR-4 LL_SMOKE_PLAYBOOK dispatch lock + `agentMode` bypass documentation
+- `644e0aa` — CR-5 scope proof gate to mutation-attempting rigor turns
+- `6a31959` — CR-6 DEVLOG no-op note (v0.11.1 resolved verdict-line behavior)
+- `0219793` — CR-7 reviewer exemplar + tightened CR-1 bullets (size guard 4400)
+- `b46f34d` — CR-8 shell-adapt + no-shell-edit + minimum-fix rules
+- `e648dc1` — CR-9 exploration budget (escalate after 3 zero-match searches)
+- `00decb3` — CR-10 v0.12.0 pass criteria for LL_SMOKE_PLAYBOOK
+- `e4a38d1` — CR-11 post-CR snapshot + manual re-run protocol
+- `(this commit)` — CR-12 phase wrap (version bump, README, CLAUDE.md, DEVLOG)
+
+**Findings closed:**
+- **F1** (project vocabulary missing) — CR-1: Project conventions block in `renderContract()` with 5 bullets (~520 bytes)
+- **F2** (silent abort after destructive mutation) — CR-2: `withPipelineSafety` wrapper at `chat.ts` multi-dispatch site synthesises `role:'system'` message naming modified paths when pipeline bails post-mutation
+- **F3** (router over-promotes) — CR-3 + CR-4: instrumented + locked. Heuristic is correct; v0.11.0/v0.11.1 multi-routing was `agentMode='multi'` bypassing the router
+- **F4** (proof gate fires on no-mutation turns) — CR-5: `shouldEngageProofGate` requires `rigor && mutation_attempted`; plan-mode + pure-question multi-dispatch turns stay clean
+- **F5** (Reviewer verdict-line intermittent) — CR-6 no-op: 4/4 first-try hits in v0.11.1 re-run; downstream symptom of Reviewer Packet bug
+- **F6** (Reviewer essay-shape) — CR-7 reviewer-exemplar half: `IDEAL_REVIEWER_EXEMPLAR` in `renderContract()` shows desired terse shape
+- **F7** (Coder shell-syntax loop) — CR-8: bullet to switch syntax after one failure
+- **F9** (PowerShell UTF-8 corruption) — CR-8: bullet to never edit files via shell pipelines
+- **F10** → renamed F14 (Coder exploration unboundedness) — CR-9: escalate after 3 consecutive zero-match searches
+- **F12** (scope creep at composer wrap-up) — CR-7 scope-creep half no-op: Asks 4 + 5 v0.11.1 both asked clarification without volunteer fixes; downstream symptom of Reviewer Packet bug
+- **F13** (NEW — Coder over-interprets vocab clarification as build directive) — CR-1 5th bullet + CR-8 3rd bullet
+- **F14** (NEW — Coder exploration loop unboundedness) — CR-9 (same fix as F10)
+- **F15** (NEW — multi-agent pipeline stalls mid-mutation without erroring) — CR-2: `StageInactivityWatchdog` mechanism + 5-scenario integration test pass; opt-in via `settings.stageInactivityMs > 0`
+
+**Findings deferred (explicitly per §3 of P-SPR):**
+- F8 `apply_patch` reliability — needs dedicated patch-tool phase
+- AskUserQuestion 4-option cap — tool envelope, not cogency
+- 5+ invisible assistant turns per multi-agent run — UX phase
+
+**Byte deltas:**
+- `renderContract()`: 2,560 → **3,401** bytes (+841 vs ≤ 600 budget; reconciled in `PLANNING/CR_AFTER.md` §1 — within 11.7% of L2's 7,200-byte savings)
+- L9 coding-mode prompt guard: `< 4,096` → `< 4,400` (CR-7)
+- `IDEAL_REVIEWER_EXEMPLAR`: 281 bytes (≤ 300 guard)
+- Coder operating principles excerpt: ~280 → ~870 bytes (CR-8 + CR-9 additions)
+
+**New optional settings (all safe defaults preserve pre-CR behavior where prudent):**
+- `rigorRequiresMutation: boolean` — default `true` (the CR-5 fix). Flip to `false` for v0.11.0/v0.11.1 behavior.
+- `stageInactivityMs: number` — default `0` (off). Bump to a positive ms value to opt into F15 stall detection.
+- `routerTelemetry: 'on' | 'off'` — default `'on'` for this phase so users can diagnose mis-routes via /debug.
+
+**Honest gaps (acknowledged):**
+- CR-2 stall watchdog `kick()` is armed at stage boundaries but does NOT yet trigger on inside-stage tool-result events. A stage actually making progress could stall the timer if `stageInactivityMs > 0`. The mechanism + 16 unit tests + 5 integration scenarios all pass; the inside-stage kick wiring is a follow-up.
+- Router telemetry ring buffer has no /debug UI yet (IPC exposed, surface TBD).
+- CR-11 live re-run results land after first user install of v0.12.0 (the protocol in `PLANNING/CR_AFTER.md` §3 documents what to record).
+
+**Final gate (CR-12):**
+- `npx tsc --noEmit -p tsconfig.node.json` — clean
+- `npx tsc --noEmit -p tsconfig.web.json` — clean
+- `npx vitest run` — **2,332 passed / 123 skipped** (was 2,265 pre-CR, +67 new passing tests)
+- `npm run verify:proof -- --no-tests` — exits 0
+
+`package.json` bumped to **v0.12.0**. CLAUDE.md Current State updated with the CR phase summary + reference-only list. README.md "Download v0.12.0" + "New in v0.12.0" paragraph + Roadmap top entry updated.
+
+See `PLANNING/LAMPREY_COGENCY_RESTORE_PLAN.md` (revision 3 final), `PLANNING/CR_BASELINE.md`, `PLANNING/CR_AFTER.md`, and `PLANNING/LL_SMOKE_PLAYBOOK.md` §"v0.12.0 pass criteria" for the manual re-run protocol.
+
+---
+
+## [Cogency Restore Phase — CR-6] No-op confirmed by v0.11.1 — 2026-06-09
+
+CR-6 (Reviewer verdict-line rule restored) lands as a **no-op** per the revision 3 gate of `PLANNING/LAMPREY_COGENCY_RESTORE_PLAN.md`.
+
+Empirical resolution: the LL_SMOKE_PLAYBOOK v0.11.1 re-run (Asks 3, 4, 5, 8 — Ask 6 stalled per F15 and is excluded from the sample) recorded **4 / 4 first-try verdict-line hits**:
+
+- Ask 3 (`CHANGES`) — verdict line on its own line, no validation re-prompt observed
+- Ask 4 (`SHIP`) — first `SHIP` verdict in the playbook
+- Ask 5 (`CHANGES`) — verdict line on its own line
+- Ask 8 (`CHANGES`) — verdict line on its own line
+
+The verdict-line miss pattern in v0.11.0 was a downstream symptom of the Reviewer Packet bug (`d28cf7c fix(pipeline): forward coder reply to reviewer via inverted builderNarrative API`), not a contract regression. The Reviewer Packet Hotfix gave the Reviewer real Coder output to grade; the verdict-line rule that was already present in `ROLE_FRAGMENTS.review` (L4 slim) now fires correctly on first try.
+
+No contract change required. No commit beyond this DEVLOG entry.
+
+Continuing with CR-7 (reviewer-exemplar half executes; scope-creep half is also a revision 3 no-op).
+
+---
+
 ## [Reviewer Packet Hotfix] v0.11.1 — 2026-06-09
 
 Single-defect hotfix shipped on `claude/determined-kapitsa-7494f6`. v0.11.0 → **v0.11.1** patch release. Closes a load-bearing wiring defect in the M7 reviewer evidence packet that was surfacing as "every multi-agent turn returns `CHANGES`, even for casual knowledge questions."
