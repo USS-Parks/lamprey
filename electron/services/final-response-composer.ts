@@ -167,6 +167,60 @@ export function shouldComposeFinalResponse(round: number): boolean {
   return round > 0
 }
 
+export type AgenticComposerMode = 'auto' | 'always' | 'never'
+
+export interface AgenticCodingConfig {
+  mode: boolean
+  skills: string[]
+  composer: AgenticComposerMode
+}
+
+export const DEFAULT_AGENTIC_SKILLS = ['plan', 'context', 'verify'] as const
+
+/**
+ * Resolve the agentic-coding config from raw settings.json content.
+ *
+ * SP-2 (Sweet Spot Phase, 2026-06-10) — the composer is now PART OF agentic
+ * coding mode rather than a free-floating default: when `agenticCodingMode`
+ * is off (the default), `composer` resolves to `'never'` regardless of the
+ * stored `agenticCodingComposer` value. Before this change the composer ran a
+ * second model pass over the model's final reply on EVERY tool-using turn
+ * (E3 in SP_BASELINE.md) — the Opus 4.5-era product never rewrote the model's
+ * answer. Turning agentic coding mode on restores the configured behavior
+ * ('auto' default: compose when at least one tool round ran).
+ */
+export function loadAgenticCodingConfig(
+  raw: Record<string, unknown> | null
+): AgenticCodingConfig {
+  const off: AgenticCodingConfig = {
+    mode: false,
+    skills: [...DEFAULT_AGENTIC_SKILLS],
+    composer: 'never'
+  }
+  if (!raw) return off
+  const mode = raw.agenticCodingMode === true
+  const rawSkills = Array.isArray(raw.agenticCodingSkills)
+    ? (raw.agenticCodingSkills as unknown[]).filter((s): s is string => typeof s === 'string')
+    : [...DEFAULT_AGENTIC_SKILLS]
+  if (!mode) return { ...off, skills: rawSkills }
+  const composerRaw = raw.agenticCodingComposer
+  const composer: AgenticComposerMode =
+    composerRaw === 'always' || composerRaw === 'never' ? composerRaw : 'auto'
+  return { mode, skills: rawSkills, composer }
+}
+
+/**
+ * Composer gate honoring agentic coding settings. 'auto' composes only when
+ * at least one tool round ran; 'always' composes on pure-chat turns too;
+ * 'never' skips entirely. With agentic coding mode off,
+ * `loadAgenticCodingConfig` already pins the mode to 'never' (SP-2).
+ */
+export function resolveComposerGate(mode: AgenticComposerMode, round: number): boolean {
+  if (mode === 'never') return false
+  if (mode === 'always') return true
+  return shouldComposeFinalResponse(round)
+}
+
 export function summarizeRun(
   messages: RunSummaryMessage[],
   planSnapshot: PlanSnapshot | null | undefined,

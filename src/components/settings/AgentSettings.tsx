@@ -40,10 +40,10 @@ export function AgentSettings() {
   }, [models.length, loadModels])
 
   useEffect(() => {
-    // L8 (Lampshade Phase, 2026-06-09) — `'auto'` is the new default. New
-    // installs without `settings.agentMode` will get auto. Existing rows
-    // with `'single'` or `'multi'` pass through unchanged.
-    hydrate(settings.agentMode || 'auto', settings.agentRoster)
+    // SP-1 (Sweet Spot Phase, 2026-06-10) — `'single'` is the era default,
+    // matching DEFAULT_APP_SETTINGS. Rows with an explicit 'auto' or 'multi'
+    // pass through unchanged.
+    hydrate(settings.agentMode || 'single', settings.agentRoster)
   }, [settings.agentMode, settings.agentRoster, hydrate])
 
   const persistMode = async (next: AgentMode) => {

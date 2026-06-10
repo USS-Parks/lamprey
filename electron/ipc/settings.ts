@@ -16,40 +16,14 @@ import {
   type WebSearchProviderId
 } from '../services/web-search-adapters'
 import { recordEvent } from '../services/event-log'
+// SP-1 — single source of truth for defaults. The hand-maintained literal that
+// used to live here drifted from the renderer copy (D1, SP_BASELINE.md §1);
+// `default-app-settings.test.ts` now locks the renderer literal against this.
+import { DEFAULT_APP_SETTINGS } from '../services/default-app-settings'
 
 const getSettingsPath = () => join(app.getPath('userData'), 'settings.json')
 
-const defaultSettings = {
-  theme: 'dark' as const,
-  themePreset: 'arcgis-blue' as const,
-  themeMode: 'dark' as 'light' | 'dark',
-  fontSize: 14,
-  defaultModel: 'deepseek-v4-pro',
-  sidebarCollapsed: false,
-  artifactPanelWidth: 420,
-  minimizeToTray: false,
-  autoCheckUpdates: true,
-  aiGeneratedTitles: false,
-  modelConfig: {} as Record<string, unknown>,
-  customModels: [] as unknown[],
-  agentRoster: {
-    planner: 'deepseek-v4-pro',
-    coder: 'deepseek-v4-flash',
-    reviewer: 'deepseek-v4-pro',
-    coworker: 'qwen3-coder-plus'
-  } as Record<string, string>,
-  agentMode: 'single' as 'single' | 'multi',
-  // Prompt 14: agentic coding mode. Off by default; existing settings.json
-  // files migrate cleanly via the readSettings shallow-merge below.
-  agenticCodingMode: false,
-  agenticCodingSkills: ['plan', 'context', 'verify'] as string[],
-  agenticCodingComposer: 'auto' as 'auto' | 'always' | 'never',
-  // Snip Phase K9: master switch + verbose dashboard log. snipEnabled
-  // is on by default so the layer lights up on first launch.
-  snipEnabled: true,
-  snipVerbose: false,
-  safeSeedLength: 8192
-}
+const defaultSettings = DEFAULT_APP_SETTINGS
 
 function readSettings() {
   const settingsPath = getSettingsPath()

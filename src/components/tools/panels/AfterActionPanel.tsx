@@ -24,6 +24,19 @@ interface IpcEnvelope<T> {
   error?: string
 }
 
+// SP-8 — mirror of RouterDecisionTelemetryEntry (electron/services/
+// router-telemetry.ts). Session-scoped ring buffer; only populated when
+// agentMode is 'auto'.
+interface RouterDecisionItem {
+  promptHash: string
+  promptLength: number
+  route: 'single' | 'multi'
+  matchedRule: string
+  reason: string
+  timestamp: number
+  conversationId?: string
+}
+
 function formatTime(ts: number): string {
   return new Date(ts).toLocaleTimeString([], {
     hour: 'numeric',
@@ -178,6 +191,7 @@ export function AfterActionPanel(): React.ReactElement {
   const conversationId = useChatStore((s) => s.activeConversationId)
   const [report, setReport] = useState<AfterActionReport | null>(null)
   const [recs, setRecs] = useState<HarnessRecItem[]>([])
+  const [routerDecisions, setRouterDecisions] = useState<RouterDecisionItem[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -207,6 +221,16 @@ export function AfterActionPanel(): React.ReactElement {
         )) as IpcEnvelope<HarnessRecItem[]>
         if (recsResult.success && recsResult.data) {
           setRecs(recsResult.data)
+        }
+      } catch { /* best-effort */ }
+
+      // SP-8 — recent auto-router decisions for this conversation (D6).
+      try {
+        const routerResult = (await window.api.afterAction.routerTelemetry(
+          conversationId
+        )) as IpcEnvelope<RouterDecisionItem[]>
+        if (routerResult.success && routerResult.data) {
+          setRouterDecisions(routerResult.data)
         }
       } catch { /* best-effort */ }
     } finally {
@@ -362,6 +386,43 @@ export function AfterActionPanel(): React.ReactElement {
                 </ul>
               )}
             </section>
+
+            {routerDecisions.length > 0 && (
+              <section>
+                <div className="mb-1 font-mono text-[10px] uppercase tracking-wider text-[var(--text-muted)]">
+                  Routing
+                </div>
+                <ul className="overflow-hidden rounded-md border border-[var(--panel-border)] bg-[var(--bg-primary)]">
+                  {routerDecisions.slice(-12).map((d) => (
+                    <li
+                      key={`${d.promptHash}-${d.timestamp}`}
+                      className="border-b border-[var(--panel-border)] px-3 py-2 last:border-b-0"
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-[10px] text-[var(--text-muted)]">
+                          {formatTime(d.timestamp)}
+                        </span>
+                        <span
+                          className={`shrink-0 rounded px-1 font-mono text-[10px] ${
+                            d.route === 'multi'
+                              ? 'bg-purple-500/15 text-purple-400'
+                              : 'bg-[var(--bg-tertiary)]/60 text-[var(--text-secondary)]'
+                          }`}
+                        >
+                          {d.route}
+                        </span>
+                        <span className="truncate font-mono text-[10px] text-[var(--text-muted)]">
+                          {d.matchedRule}
+                        </span>
+                      </div>
+                      <div className="mt-0.5 text-[12px] leading-snug text-[var(--text-secondary)]">
+                        {d.reason}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
 
             {recs.length > 0 && (
               <section>

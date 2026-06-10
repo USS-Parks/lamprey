@@ -13,7 +13,15 @@
 
 import { app } from 'electron'
 import { join } from 'path'
-import { mkdirSync, writeFileSync, readFileSync, existsSync } from 'fs'
+import {
+  mkdirSync,
+  writeFileSync,
+  readFileSync,
+  existsSync,
+  readdirSync,
+  statSync,
+  unlinkSync
+} from 'fs'
 import { randomUUID } from 'crypto'
 
 /** Results longer than this (characters) are spilled. 0 / disabled = never. */
@@ -75,6 +83,95 @@ export function maybeSpillToolResult(
   const dir = opts.dir ?? spillDir()
   writeFileSync(join(dir, `${ref}.txt`), full, 'utf8')
   return { result: formatSpillPreview(full, ref), spilled: true, ref, chars: full.length }
+}
+
+// ---------------------------------------------------------------------------
+// SP-6 (Sweet Spot Phase, 2026-06-10) — spill garbage collection (D3).
+//
+// HY3 shipped the spill valve with no deletion path at all: every spilled
+// result accumulated in userData/tool-results/ forever (zero unlink call
+// sites repo-wide before this change). The GC runs at app startup: delete
+// files older than SPILL_MAX_AGE_MS, then — if the directory still exceeds
+// SPILL_MAX_TOTAL_BYTES — delete oldest-first until it fits. Refs the model
+// might still hold for *recent* turns survive; a ref that was GC'd resolves
+// to the existing "tool result not found (it may have expired)" reply, which
+// the model already handles.
+// ---------------------------------------------------------------------------
+
+/** Spill files older than this are deleted at startup (7 days). */
+export const SPILL_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000
+/** After the age sweep, the directory is trimmed oldest-first to this cap. */
+export const SPILL_MAX_TOTAL_BYTES = 256 * 1024 * 1024
+
+export interface SpillGcOutcome {
+  scanned: number
+  deletedByAge: number
+  deletedBySize: number
+  remainingBytes: number
+}
+
+/**
+ * Sweep the spill directory. Best-effort: unreadable/undeletable entries are
+ * skipped, never thrown — GC must not be able to break app startup.
+ */
+export function gcSpillDir(
+  opts: { dir?: string; maxAgeMs?: number; maxTotalBytes?: number; now?: number } = {}
+): SpillGcOutcome {
+  const dir = opts.dir ?? spillDir()
+  const maxAgeMs = opts.maxAgeMs ?? SPILL_MAX_AGE_MS
+  const maxTotalBytes = opts.maxTotalBytes ?? SPILL_MAX_TOTAL_BYTES
+  const now = opts.now ?? Date.now()
+
+  let entries: { path: string; mtimeMs: number; size: number }[]
+  try {
+    entries = readdirSync(dir)
+      .filter((name) => name.endsWith('.txt'))
+      .flatMap((name) => {
+        try {
+          const path = join(dir, name)
+          const st = statSync(path)
+          return st.isFile() ? [{ path, mtimeMs: st.mtimeMs, size: st.size }] : []
+        } catch {
+          return []
+        }
+      })
+  } catch {
+    return { scanned: 0, deletedByAge: 0, deletedBySize: 0, remainingBytes: 0 }
+  }
+
+  const scanned = entries.length
+  let deletedByAge = 0
+  const survivors: typeof entries = []
+  for (const entry of entries) {
+    if (now - entry.mtimeMs > maxAgeMs) {
+      try {
+        unlinkSync(entry.path)
+        deletedByAge++
+      } catch {
+        survivors.push(entry)
+      }
+    } else {
+      survivors.push(entry)
+    }
+  }
+
+  let remainingBytes = survivors.reduce((sum, e) => sum + e.size, 0)
+  let deletedBySize = 0
+  if (remainingBytes > maxTotalBytes) {
+    survivors.sort((a, b) => a.mtimeMs - b.mtimeMs) // oldest first
+    for (const entry of survivors) {
+      if (remainingBytes <= maxTotalBytes) break
+      try {
+        unlinkSync(entry.path)
+        remainingBytes -= entry.size
+        deletedBySize++
+      } catch {
+        // skip — undeletable file stays counted
+      }
+    }
+  }
+
+  return { scanned, deletedByAge, deletedBySize, remainingBytes }
 }
 
 /**

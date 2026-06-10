@@ -1,11 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { mkdtempSync, rmSync } from 'fs'
+import { mkdtempSync, rmSync, writeFileSync, utimesSync, existsSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import {
   formatSpillPreview,
   maybeSpillToolResult,
   readSpilledResult,
+  gcSpillDir,
   DEFAULT_SPILL_THRESHOLD
 } from './tool-result-spill'
 
@@ -76,5 +77,69 @@ describe('readSpilledResult safety', () => {
   it('reports a missing ref cleanly', () => {
     const r = JSON.parse(readSpilledResult('deadbeef-0000', 0, 10, dir))
     expect(r.error).toContain('not found')
+  })
+})
+
+// SP-6 (Sweet Spot Phase, 2026-06-10) — spill GC (D3). HY3 had zero deletion
+// call sites; gcSpillDir ages out 7-day-old files and trims the directory
+// oldest-first to the size cap.
+describe('SP-6 gcSpillDir', () => {
+  const DAY = 24 * 60 * 60 * 1000
+
+  function writeSpill(name: string, content: string, ageMs: number, now: number): string {
+    const path = join(dir, `${name}.txt`)
+    writeFileSync(path, content, 'utf8')
+    const mtime = new Date(now - ageMs)
+    utimesSync(path, mtime, mtime)
+    return path
+  }
+
+  it('deletes files older than maxAgeMs, keeps younger ones', () => {
+    const now = Date.now()
+    const old = writeSpill('old', 'stale', 8 * DAY, now)
+    const fresh = writeSpill('fresh', 'recent', 1 * DAY, now)
+    const out = gcSpillDir({ dir, now })
+    expect(out.scanned).toBe(2)
+    expect(out.deletedByAge).toBe(1)
+    expect(existsSync(old)).toBe(false)
+    expect(existsSync(fresh)).toBe(true)
+  })
+
+  it('trims oldest-first to the size cap after the age sweep', () => {
+    const now = Date.now()
+    const oldest = writeSpill('a', 'x'.repeat(1000), 3 * DAY, now)
+    const middle = writeSpill('b', 'x'.repeat(1000), 2 * DAY, now)
+    const newest = writeSpill('c', 'x'.repeat(1000), 1 * DAY, now)
+    // Cap fits two files: the oldest must go, in mtime order.
+    const out = gcSpillDir({ dir, now, maxTotalBytes: 2200 })
+    expect(out.deletedByAge).toBe(0)
+    expect(out.deletedBySize).toBe(1)
+    expect(existsSync(oldest)).toBe(false)
+    expect(existsSync(middle)).toBe(true)
+    expect(existsSync(newest)).toBe(true)
+    expect(out.remainingBytes).toBeLessThanOrEqual(2200)
+  })
+
+  it('a GCd ref resolves to the standard expired-result reply', () => {
+    const now = Date.now()
+    const full = 'y'.repeat(DEFAULT_SPILL_THRESHOLD + 500)
+    const spilled = maybeSpillToolResult(full, { dir })
+    expect(spilled.spilled).toBe(true)
+    gcSpillDir({ dir, now: now + 30 * DAY })
+    const readBack = JSON.parse(readSpilledResult(spilled.ref!, 0, 100, dir))
+    expect(readBack.error).toContain('not found')
+  })
+
+  it('missing directory is a clean no-op', () => {
+    const out = gcSpillDir({ dir: join(dir, 'does-not-exist'), now: Date.now() })
+    expect(out).toEqual({ scanned: 0, deletedByAge: 0, deletedBySize: 0, remainingBytes: 0 })
+  })
+
+  it('ignores non-.txt entries', () => {
+    const now = Date.now()
+    writeFileSync(join(dir, 'README.md'), 'not a spill file', 'utf8')
+    const out = gcSpillDir({ dir, now })
+    expect(out.scanned).toBe(0)
+    expect(existsSync(join(dir, 'README.md'))).toBe(true)
   })
 })

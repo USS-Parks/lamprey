@@ -242,3 +242,54 @@ Per revision 3 of `PLANNING/LAMPREY_COGENCY_RESTORE_PLAN.md`:
 - **CR-7 scope-creep half no-op**: F12 already resolved by v0.11.1. Continue confirming
   no volunteer fixes for unasked content (Ask 4 specifically).
 
+
+---
+
+## v0.13.0 pass criteria (SP-10, Sweet Spot Phase, 2026-06-10)
+
+The Sweet Spot Phase (SP-0 … SP-12) realigns the DEFAULT experience to the
+Claude Code / Opus 4.5 era: `agentMode: 'single'`, `proofGate: 'off'`,
+`toolSurface: 'full'`, composer gated behind `agenticCodingMode`. That changes
+how this playbook is graded.
+
+### Two grading configurations
+
+**Configuration A — fresh defaults (the era contract).** Default settings,
+nothing pinned. ALL EIGHT asks dispatch single-agent (the router never runs
+when `agentMode` is `'single'`). Grade every ask on the era contract:
+
+- [ ] No pipeline banner, no stage chips, no "Show pipeline trace" toggle
+- [ ] No "Untrusted completion" / proof pill on ANY ask (proofGate off)
+- [ ] The reply is the model's own final text — no composer voice, no
+      `**Verification:**` footer (composer requires agenticCodingMode ON)
+- [ ] The model receives its FULL tool catalog (no `tool_search` round-trips
+      in the tool log)
+- [ ] Asks 1–5 cogency checks from the original playbook apply unchanged
+- [ ] Asks 6–8 still produce useful single-agent work (a refactor plan +
+      edits; STS/P-SPR vocabulary still resolves via the CR-1 contract block)
+
+**Configuration B — router exercise (pin `agentMode: 'auto'`).** Set
+`agentMode: 'auto'` in Settings → Agents first. Asks 2–8 then grade exactly
+per the v0.12.0 block above (routes, matched rules, CR-4 locks unchanged —
+the router heuristic itself did not change in SP). The After action panel's
+new **Routing** section (SP-8) shows each decision's matched rule directly;
+use it instead of console logs.
+
+### SP defect-fix spot checks (any configuration)
+
+- [ ] **D4:** mutating turn, then "audit this module" with no edits → no
+      proof pill on the second turn even with `proofGate: 'rigor'` pinned
+- [ ] **D5:** force a pre-stream failure (e.g. select a model with no API
+      key) → the transcript shows a system notice, never a silent dead turn
+- [ ] **D2:** with `stageInactivityMs: 30000` + agentMode 'multi', a Coder
+      actively streaming for > 30s does NOT trip the stall message
+- [ ] **D3:** after a large-result turn, `userData/tool-results/` is swept
+      at next launch (files > 7 days old removed)
+- [ ] **E5:** pipeline banner (Configuration B) reads "Planning / Writing
+      code / Reviewing" — never raw `planner` / `coder` / `reviewer` ids
+
+### Phase pass criteria
+
+Configuration A: 8/8 asks satisfy the era contract (the four global checks).
+Configuration B: same ≥ 6 of 7 bar as v0.12.0 on Asks 2–8. Defect spot
+checks: 5/5.

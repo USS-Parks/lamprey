@@ -64,12 +64,21 @@ import {
   // mutate stop tripping the "Untrusted completion" pill.
   shouldEngageProofGate,
   markMutationAttempted,
+  // SP-3 — the mutation flag is per-turn; cleared at turn start (D4).
+  clearMutationAttempted,
   setRigorRequiresMutation
 } from '../services/proof-rigor'
 import {
   partitionToolCallWindows,
   type ProviderToolCall
 } from '../services/tool-call-windowing'
+// SP-4 — ghost-reply guard (D5): persist a system notice when a turn fails
+// before any visible reply row landed.
+import {
+  turnEndedGhosted,
+  isUserAbortError,
+  buildGhostReplyNotice
+} from '../services/ghost-reply-guard'
 import { permissionsService, descriptorNeedsApproval } from '../services/permissions-store'
 import { inferPhaseFromDescriptor, type AgentRunPhase } from '../services/agent-run-phase'
 import { getActiveWorkspace } from '../services/workspace-state'
@@ -91,8 +100,10 @@ import {
 import {
   composeFinalResponse,
   concatReasoningTrail,
-  shouldComposeFinalResponse,
-  summarizeRun
+  loadAgenticCodingConfig,
+  resolveComposerGate,
+  summarizeRun,
+  type AgenticComposerMode
 } from '../services/final-response-composer'
 import { evaluateProofGate, proofGateNotice } from '../services/proof-gate'
 import { listProofReceipts } from '../services/proof-receipts'
@@ -108,14 +119,6 @@ interface ModelParams {
   temperature?: number
   topP?: number
   maxTokens?: number | null
-}
-
-type AgenticComposerMode = 'auto' | 'always' | 'never'
-
-interface AgenticCodingConfig {
-  mode: boolean
-  skills: string[]
-  composer: AgenticComposerMode
 }
 
 function readSettingsJson(): Record<string, unknown> | null {
@@ -151,24 +154,10 @@ function loadModelConfig(
   }
 }
 
-const DEFAULT_AGENTIC_SKILLS = ['plan', 'context', 'verify'] as const
-
-function loadAgenticCodingConfig(raw: Record<string, unknown> | null): AgenticCodingConfig {
-  const off: AgenticCodingConfig = {
-    mode: false,
-    skills: [...DEFAULT_AGENTIC_SKILLS],
-    composer: 'auto'
-  }
-  if (!raw) return off
-  const mode = raw.agenticCodingMode === true
-  const rawSkills = Array.isArray(raw.agenticCodingSkills)
-    ? (raw.agenticCodingSkills as unknown[]).filter((s): s is string => typeof s === 'string')
-    : [...DEFAULT_AGENTIC_SKILLS]
-  const composerRaw = raw.agenticCodingComposer
-  const composer: AgenticComposerMode =
-    composerRaw === 'always' || composerRaw === 'never' ? composerRaw : 'auto'
-  return { mode, skills: rawSkills, composer }
-}
+// SP-2 — loadAgenticCodingConfig + resolveComposerGate moved to
+// `../services/final-response-composer` (pure, testable) and the composer is
+// now gated on agenticCodingMode being ON. Default turns keep the model's own
+// final reply, like the Opus 4.5-era product.
 
 // Idempotent union: preserves order of `base`, then appends ids from `extra`
 // that aren't already present. Used to merge auto-activated agentic skills
@@ -183,15 +172,6 @@ export function mergeAgenticSkillIds(base: string[], extra: string[]): string[] 
     }
   }
   return out
-}
-
-// Composer gate honoring agentic coding settings. 'auto' keeps the
-// pre-Prompt-14 behavior (compose only when at least one tool round ran);
-// 'always' composes on pure-chat turns too; 'never' skips entirely.
-export function resolveComposerGate(mode: AgenticComposerMode, round: number): boolean {
-  if (mode === 'never') return false
-  if (mode === 'always') return true
-  return shouldComposeFinalResponse(round)
 }
 
 // A chat turn's runtime context. `chat:send` opens the entry, `chat:cancel`
@@ -473,10 +453,11 @@ export function registerChatHandlers(): void {
         }[]
       }
 
-      // HY4 — lazy skill bodies follow the tool-surface mode: lazy (default)
-      // injects name+description stubs; 'full' injects full bodies as before.
+      // HY4 — lazy skill bodies follow the tool-surface mode: 'lazy' (opt-in)
+      // injects name+description stubs; 'full' (the SP-1 era default) injects
+      // full bodies as before.
       const lazySkillBodies =
-        ((settingsRaw as { toolSurface?: string } | null)?.toolSurface ?? 'lazy') !== 'full'
+        ((settingsRaw as { toolSurface?: string } | null)?.toolSurface ?? 'full') !== 'full'
 
       const { params: modelParams, systemPromptOverride } = loadModelConfig(settingsRaw, model)
       const activeWorkspace = getActiveWorkspace()
@@ -517,10 +498,11 @@ export function registerChatHandlers(): void {
       // is unrestricted) but the call site is now the explicit source of
       // truth for which role receives this tools array.
       const activeProvider = getProviderForModel(model)
-      // HY2 — lazy model tool-surface. Default `'lazy'`: send the always-on
-      // core set + `tool_search`; the model unlocks the rest on demand (state
-      // in tool-unlock-state.ts). `'full'` or a downgraded conversation gets
-      // the entire normalized catalog, byte-for-byte the pre-Hygiene path.
+      // HY2 — model tool-surface. `'full'` (the SP-1 era default) sends the
+      // entire normalized catalog every turn, like the Opus 4.5-era product.
+      // `'lazy'` (opt-in for MCP-heavy setups) sends the always-on core set +
+      // `tool_search`; the model unlocks the rest on demand (state in
+      // tool-unlock-state.ts).
       const tools: ChatCompletionTool[] =
         buildDispatchTools(conversationId, activeProvider, settingsRaw)
 
@@ -563,6 +545,11 @@ export function registerChatHandlers(): void {
       // HY5 (Split) — decide whether the heavyweight proof machinery (change
       // contracts + proof-gate trust notice) engages this turn. L8 routing is
       // unchanged above; this only scopes the proof flow to rigor turns.
+      //
+      // SP-3 — clear the per-turn mutation flag FIRST. Without this a
+      // mutating turn armed the gate for every later rigor turn in the same
+      // conversation (D4): the flag's contract is "attempted on THIS turn".
+      clearMutationAttempted(conversationId)
       setProofRigor(
         conversationId,
         resolveProofRigor({
@@ -689,7 +676,14 @@ export function registerChatHandlers(): void {
                   coderModelParams,
                   agentic.composer,
                   /* suppressDoneEvent */ true,
-                  correlationId
+                  correlationId,
+                  [],
+                  Date.now(),
+                  // SP-5 (D2) — in-stage progress resets the stall timer. Before
+                  // this, kick() was only reachable from armStage(), so a Coder
+                  // actively streaming chunks or finishing tool calls still
+                  // tripped the watchdog after stageInactivityMs.
+                  () => watchdog.kick()
                 )
                 reachedStage('reviewer')
                 watchdog.armStage('reviewer')
@@ -750,6 +744,29 @@ export function registerChatHandlers(): void {
         })
       } catch (e) {
         console.error('[chat] chat.error event failed:', e)
+      }
+      // SP-4 — ghost-reply guard (D5). If the failure landed BEFORE any
+      // visible reply row (pre-stream throw, instant stream failure with no
+      // partial, multi-agent bail with zero mutations), persist a
+      // `role:'system'` notice so the transcript never ends on an unanswered
+      // user message. User-initiated cancels are not ghosts — skip those.
+      try {
+        if (!isUserAbortError(err)) {
+          const rows = convStore.getMessages(conversationId)
+          if (turnEndedGhosted(rows)) {
+            const notice = convStore.saveMessage({
+              id: randomUUID(),
+              conversationId,
+              role: 'system',
+              content: buildGhostReplyNotice(err?.message),
+              model: 'lamprey-safety-net',
+              stage: 'system'
+            })
+            emitChatEvent('chat:done', { conversationId, message: notice })
+          }
+        }
+      } catch (guardErr) {
+        console.error('[chat] SP-4 ghost-reply guard failed:', guardErr)
       }
       return { success: false, error: err.message }
     }
@@ -820,17 +837,18 @@ export function registerChatHandlers(): void {
 export type RunChatRoundResult = { message: unknown } | null
 
 /**
- * HY2 — Build the tool array handed to the model for a turn. `'lazy'` (default)
+ * HY2 — Build the tool array handed to the model for a turn. `'full'` (the
+ * SP-1 era default, also used when unset or downgraded) returns the entire
+ * normalized catalog, identical to the pre-Hygiene dispatch. `'lazy'` (opt-in)
  * returns the core set + `tool_search` + any tools already unlocked for this
- * conversation; `'full'` (or a downgraded conversation) returns the entire
- * normalized catalog, identical to the pre-Hygiene dispatch.
+ * conversation.
  */
 function buildDispatchTools(
   conversationId: string,
   provider: ProviderId,
   settingsRaw: unknown
 ): ChatCompletionTool[] {
-  const mode = (settingsRaw as { toolSurface?: string } | undefined)?.toolSurface ?? 'lazy'
+  const mode = (settingsRaw as { toolSurface?: string } | undefined)?.toolSurface ?? 'full'
   if (mode === 'lazy' && !isSurfaceDowngraded(conversationId)) {
     activateLazySurface(conversationId)
     return toolRegistry.getModelToolSurface(provider, {
@@ -871,7 +889,9 @@ export async function runChatRound(
   signal: AbortSignal,
   round: number,
   params?: ModelParams,
-  composerMode: AgenticComposerMode = 'auto',
+  // SP-2 — defensive default 'never': both call sites pass agentic.composer
+  // explicitly; an unwired future caller must opt INTO composition.
+  composerMode: AgenticComposerMode = 'never',
   suppressDoneEvent: boolean = false,
   correlationId?: string,
   /** Reasoning Audit Phase R6 — cumulative reasoning trail. Pre-existing
@@ -881,7 +901,13 @@ export async function runChatRound(
    *  `reasoning` column via concatReasoningTrail(). Defaults to [] at
    *  the top-level call so callers don't need to pass it. */
   roundReasonings: string[] = [],
-  turnStartedAt: number = Date.now()
+  turnStartedAt: number = Date.now(),
+  /** SP-5 (Sweet Spot Phase, 2026-06-10) — in-stage activity signal for the
+   *  CR-2 StageInactivityWatchdog (D2). Called on every stream chunk,
+   *  reasoning chunk, and completed tool call so a PROGRESSING stage keeps
+   *  resetting the stall timer. The multi-agent coderRunner passes
+   *  `() => watchdog.kick()`; single-mode passes nothing (no watchdog). */
+  onActivity?: () => void
 ): Promise<RunChatRoundResult> {
   trace('runChatRound.enter', {
     conversationId,
@@ -922,9 +948,11 @@ export async function runChatRound(
       effectiveTools,
       {
         onChunk: (chunk) => {
+          onActivity?.() // SP-5 — streaming text is progress; kick the watchdog
           emitChatEvent('chat:chunk', { conversationId, content: chunk })
         },
         onReasoning: (chunk) => {
+          onActivity?.() // SP-5 — reasoning chunks are progress too
           emitChatEvent('chat:reasoning', { conversationId, content: chunk })
         },
         onVitals: (v) => {
@@ -1217,6 +1245,7 @@ export async function runChatRound(
                 ? spillSettings.toolResultSpillBytes
                 : DEFAULT_SPILL_THRESHOLD
           for (const r of resolved) {
+            onActivity?.() // SP-5 — each completed tool call is progress
             // Persist the FULL result — the UI shows it in full.
             convStore.saveMessage({
               id: randomUUID(),
@@ -1257,7 +1286,8 @@ export async function runChatRound(
               suppressDoneEvent,
               correlationId,
               nextRoundReasonings,
-              turnStartedAt
+              turnStartedAt,
+              onActivity // SP-5 — thread the watchdog kick through recursion
             )
             resolve(next)
           } catch (err) {

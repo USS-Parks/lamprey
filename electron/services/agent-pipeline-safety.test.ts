@@ -6,7 +6,7 @@ import {
   withPipelineSafety,
   type SystemMessagePayload
 } from './agent-pipeline-safety'
-import { mkdtempSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, writeFileSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { execFileSync } from 'node:child_process'
@@ -368,5 +368,90 @@ describe('CR-2 withPipelineSafety — 5 acceptance scenarios', () => {
 
     expect(result.stalled).toBe(true)
     expect(persisted).toHaveLength(0)
+  })
+})
+
+// SP-5 (Sweet Spot Phase, 2026-06-10) — D2 regression locks. The watchdog
+// class always supported kick(), but nothing outside armStage() ever called
+// it: a Coder stage actively streaming chunks or completing tool calls still
+// tripped the stall timer. chat.ts now threads `() => watchdog.kick()` into
+// runChatRound as the onActivity callback (stream chunk, reasoning chunk,
+// completed tool call).
+describe('SP-5 StageInactivityWatchdog — kick() resets the stall timer', () => {
+  it('a progressing stage (regular kicks) never fires', () => {
+    vi.useFakeTimers()
+    try {
+      const onStall = vi.fn()
+      const dog = new StageInactivityWatchdog(1_000, onStall)
+      dog.armStage('coder')
+      // Simulate steady progress: a kick every 600ms for 10 cycles — total
+      // elapsed 6s, far past the 1s threshold, but never 1s WITHOUT activity.
+      for (let i = 0; i < 10; i++) {
+        vi.advanceTimersByTime(600)
+        dog.kick()
+      }
+      expect(onStall).not.toHaveBeenCalled()
+      expect(dog.hasFired()).toBe(false)
+      dog.disarm()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('a silent stage fires exactly once after the inactivity window', () => {
+    vi.useFakeTimers()
+    try {
+      const onStall = vi.fn()
+      const dog = new StageInactivityWatchdog(1_000, onStall)
+      dog.armStage('coder')
+      vi.advanceTimersByTime(1_001)
+      expect(onStall).toHaveBeenCalledTimes(1)
+      expect(onStall).toHaveBeenCalledWith('coder')
+      // Further time and kicks must not re-fire.
+      dog.kick()
+      vi.advanceTimersByTime(5_000)
+      expect(onStall).toHaveBeenCalledTimes(1)
+      dog.disarm()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('progress then silence: fires only after the silent window', () => {
+    vi.useFakeTimers()
+    try {
+      const onStall = vi.fn()
+      const dog = new StageInactivityWatchdog(1_000, onStall)
+      dog.armStage('coder')
+      vi.advanceTimersByTime(900)
+      dog.kick() // activity at t=900
+      vi.advanceTimersByTime(900) // t=1800 — only 900ms since last kick
+      expect(onStall).not.toHaveBeenCalled()
+      vi.advanceTimersByTime(200) // t=2000 — 1100ms since last kick
+      expect(onStall).toHaveBeenCalledTimes(1)
+      dog.disarm()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
+
+// SP-5 wiring-contract lock (WC-8 source-reading pattern): chat.ts must pass
+// the watchdog kick into runChatRound, and runChatRound must signal activity
+// from its stream + tool paths. Catches a silent unwire at review time.
+describe('SP-5 chat.ts wiring contract (source-reading)', () => {
+  const chatSource = readFileSync(join(__dirname, '..', 'ipc', 'chat.ts'), 'utf-8')
+
+  it('coderRunner passes () => watchdog.kick() to runChatRound', () => {
+    expect(chatSource).toMatch(/\(\)\s*=>\s*watchdog\.kick\(\)/)
+  })
+
+  it('runChatRound signals activity on chunks and tool completions', () => {
+    const activityCalls = chatSource.match(/onActivity\?\.\(\)/g) ?? []
+    expect(activityCalls.length).toBeGreaterThanOrEqual(3)
+  })
+
+  it('recursion threads onActivity through to the next round', () => {
+    expect(chatSource).toMatch(/turnStartedAt,\s*\n\s*onActivity/)
   })
 })

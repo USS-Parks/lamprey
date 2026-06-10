@@ -16,16 +16,24 @@ const defaultSettings: AppSettings = {
   aiGeneratedTitles: false,
   modelConfig: {},
   customModels: [],
-  // L8 (Lampshade Phase, 2026-06-09) — `'auto'` is the new default. The
-  // chat dispatch path resolves it per-turn via `routeAgentMode` in
-  // `electron/services/agent-router.ts`.
-  agentMode: 'auto',
+  // SP-1 (Sweet Spot Phase, 2026-06-10) — `'single'` is the era default: the
+  // Opus 4.5-era product never auto-fanned a turn into a pipeline. 'auto'
+  // (L8's router) and 'multi' remain one click away in Settings → Agents.
+  // NOTE: this literal is a copy of DEFAULT_APP_SETTINGS in
+  // `electron/services/default-app-settings.ts` (tsconfig project boundaries
+  // forbid a cross-import). `default-app-settings.test.ts` locks the two
+  // together — change a default there first.
+  agentMode: 'single',
   agentRoster: {
     planner: 'deepseek-v4-pro',
     coder: 'deepseek-v4-flash',
     reviewer: 'deepseek-v4-pro',
     coworker: 'qwen3-coder-plus'
   },
+  // SP-1 era defaults — full tool surface, proof machinery off. 'lazy' and
+  // 'rigor'/'always' remain opt-in power settings (HY2/HY5).
+  toolSurface: 'full',
+  proofGate: 'off',
   agenticCodingMode: false,
   agenticCodingSkills: ['plan', 'context', 'verify'],
   agenticCodingComposer: 'auto',

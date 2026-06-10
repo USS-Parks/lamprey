@@ -7,11 +7,13 @@
 // single-agent turn that machinery added boilerplate to the reply and cost a
 // receipts scan for no benefit; now it engages only on RIGOR turns.
 //
-// A turn is rigor when ANY of:
+// With `proofGate: 'rigor'`, a turn is rigor when ANY of:
 //   * the user asked for it (audit / verify / prove / review / validate / …),
 //   * the turn dispatched multi-agent (the pipeline implies rigor), or
 //   * settings pin `proofGate: 'always'`.
-// Default (`proofGate: 'rigor'`, or unset) means rigor turns only.
+// SP-1 (Sweet Spot Phase, 2026-06-10): the default — `'off'`, and unset
+// resolves to off — never engages the proof machinery. The era product had no
+// proof gate; `'rigor'` and `'always'` are the opt-in power modes.
 //
 // CR-5 (Cogency Restore Phase, 2026-06-09) — gates the proof machinery on
 // `rigor && mutation_attempted`. The LL_SMOKE_PLAYBOOK confirmed F4: on
@@ -60,6 +62,16 @@ export function hasMutationAttempted(conversationId: string): boolean {
   return mutationAttemptedConversations.has(conversationId)
 }
 
+/** SP-3 (Sweet Spot Phase, 2026-06-10) — reset the mutation flag at TURN
+ *  start. The flag is per-turn by contract ("attempted on this turn"), but
+ *  nothing ever cleared it (D4 in SP_BASELINE.md): one mutating turn armed
+ *  the proof gate for every later rigor-keyword turn in the same
+ *  conversation. chat.ts calls this alongside setProofRigor when a turn
+ *  begins. */
+export function clearMutationAttempted(conversationId: string): void {
+  mutationAttemptedConversations.delete(conversationId)
+}
+
 /** CR-5 — toggle whether `shouldEngageProofGate` requires mutation_attempted in
  *  addition to rigor. Default true (the CR-5 fix). Set false to restore the
  *  v0.11.0/v0.11.1 behavior. Wired to `settings.rigorRequiresMutation`. */
@@ -87,15 +99,19 @@ export function shouldEngageProofGate(conversationId: string): boolean {
   return isProofRigorActive(conversationId) && hasMutationAttempted(conversationId)
 }
 
-/** Resolve the effective rigor decision for a turn. */
+/** Resolve the effective rigor decision for a turn. SP-1: unset resolves to
+ *  `'off'` (the era default) — only an explicit `'rigor'` or `'always'`
+ *  engages the machinery. */
 export function resolveProofRigor(input: {
   proofGateMode?: string
   dispatchKind?: 'single' | 'multi'
   content: string
 }): boolean {
   if (input.proofGateMode === 'always') return true
-  if (input.proofGateMode === 'off') return false
-  return input.dispatchKind === 'multi' || isRigorRequest(input.content)
+  if (input.proofGateMode === 'rigor') {
+    return input.dispatchKind === 'multi' || isRigorRequest(input.content)
+  }
+  return false
 }
 
 export function __resetProofRigorForTesting(): void {

@@ -1105,7 +1105,10 @@ const api = {
   },
 
   afterAction: {
-    get: (conversationId: string) => ipcRenderer.invoke('after-action:get', conversationId)
+    get: (conversationId: string) => ipcRenderer.invoke('after-action:get', conversationId),
+    // SP-8 — recent auto-router decisions (session-scoped ring buffer, D6).
+    routerTelemetry: (conversationId?: string) =>
+      ipcRenderer.invoke('after-action:routerTelemetry', conversationId)
   },
 
   harnessRecs: {

@@ -5,6 +5,16 @@ import type { AgentRunPhase } from '@/lib/types'
 
 const ROLE_ORDER: Array<'planner' | 'coder' | 'reviewer'> = ['planner', 'coder', 'reviewer']
 
+// SP-7 (Sweet Spot Phase, 2026-06-10) — user-facing labels for the pipeline
+// stages. The raw role ids ('planner'/'coder'/'reviewer') are harness
+// internals; the banner shows what each stage is DOING, matching the
+// plain-English voice of PHASE_LABEL below.
+const ROLE_LABEL: Record<(typeof ROLE_ORDER)[number], string> = {
+  planner: 'Planning',
+  coder: 'Writing code',
+  reviewer: 'Reviewing'
+}
+
 // Plain-English mapping shown in the pill. Mirrored from main-side intent —
 // the labels are user-facing, not technical names. Keep the wording short
 // (fits inside the pill) and present-progressive ("Reading", "Editing") so
@@ -84,8 +94,8 @@ export function AgentRunBanner() {
             return (
               <div key={role} className="flex items-center gap-1.5">
                 <span className={`inline-block h-2 w-2 rounded-full ${dotClass}`} aria-hidden />
-                <span className="font-mono text-[var(--text-secondary)]">
-                  {role}
+                <span className="text-[var(--text-secondary)]">
+                  {ROLE_LABEL[role]}
                   {entry?.model && (
                     <span className="ml-1 text-[var(--text-muted)]">· {entry.model}</span>
                   )}
