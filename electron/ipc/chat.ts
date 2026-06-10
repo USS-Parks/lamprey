@@ -91,8 +91,10 @@ import {
 import {
   composeFinalResponse,
   concatReasoningTrail,
-  shouldComposeFinalResponse,
-  summarizeRun
+  loadAgenticCodingConfig,
+  resolveComposerGate,
+  summarizeRun,
+  type AgenticComposerMode
 } from '../services/final-response-composer'
 import { evaluateProofGate, proofGateNotice } from '../services/proof-gate'
 import { listProofReceipts } from '../services/proof-receipts'
@@ -108,14 +110,6 @@ interface ModelParams {
   temperature?: number
   topP?: number
   maxTokens?: number | null
-}
-
-type AgenticComposerMode = 'auto' | 'always' | 'never'
-
-interface AgenticCodingConfig {
-  mode: boolean
-  skills: string[]
-  composer: AgenticComposerMode
 }
 
 function readSettingsJson(): Record<string, unknown> | null {
@@ -151,24 +145,10 @@ function loadModelConfig(
   }
 }
 
-const DEFAULT_AGENTIC_SKILLS = ['plan', 'context', 'verify'] as const
-
-function loadAgenticCodingConfig(raw: Record<string, unknown> | null): AgenticCodingConfig {
-  const off: AgenticCodingConfig = {
-    mode: false,
-    skills: [...DEFAULT_AGENTIC_SKILLS],
-    composer: 'auto'
-  }
-  if (!raw) return off
-  const mode = raw.agenticCodingMode === true
-  const rawSkills = Array.isArray(raw.agenticCodingSkills)
-    ? (raw.agenticCodingSkills as unknown[]).filter((s): s is string => typeof s === 'string')
-    : [...DEFAULT_AGENTIC_SKILLS]
-  const composerRaw = raw.agenticCodingComposer
-  const composer: AgenticComposerMode =
-    composerRaw === 'always' || composerRaw === 'never' ? composerRaw : 'auto'
-  return { mode, skills: rawSkills, composer }
-}
+// SP-2 — loadAgenticCodingConfig + resolveComposerGate moved to
+// `../services/final-response-composer` (pure, testable) and the composer is
+// now gated on agenticCodingMode being ON. Default turns keep the model's own
+// final reply, like the Opus 4.5-era product.
 
 // Idempotent union: preserves order of `base`, then appends ids from `extra`
 // that aren't already present. Used to merge auto-activated agentic skills
@@ -183,15 +163,6 @@ export function mergeAgenticSkillIds(base: string[], extra: string[]): string[] 
     }
   }
   return out
-}
-
-// Composer gate honoring agentic coding settings. 'auto' keeps the
-// pre-Prompt-14 behavior (compose only when at least one tool round ran);
-// 'always' composes on pure-chat turns too; 'never' skips entirely.
-export function resolveComposerGate(mode: AgenticComposerMode, round: number): boolean {
-  if (mode === 'never') return false
-  if (mode === 'always') return true
-  return shouldComposeFinalResponse(round)
 }
 
 // A chat turn's runtime context. `chat:send` opens the entry, `chat:cancel`
@@ -874,7 +845,9 @@ export async function runChatRound(
   signal: AbortSignal,
   round: number,
   params?: ModelParams,
-  composerMode: AgenticComposerMode = 'auto',
+  // SP-2 — defensive default 'never': both call sites pass agentic.composer
+  // explicitly; an unwired future caller must opt INTO composition.
+  composerMode: AgenticComposerMode = 'never',
   suppressDoneEvent: boolean = false,
   correlationId?: string,
   /** Reasoning Audit Phase R6 — cumulative reasoning trail. Pre-existing

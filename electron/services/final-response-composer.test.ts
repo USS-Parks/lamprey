@@ -8,6 +8,8 @@ import {
   concatReasoningTrail,
   formatReceiptMetricsForCitation,
   formatVerificationFooter,
+  loadAgenticCodingConfig,
+  resolveComposerGate,
   shouldComposeFinalResponse,
   summarizeRun,
   truncateForComposer
@@ -33,6 +35,60 @@ describe('shouldComposeFinalResponse', () => {
   it('skips pure chat turns and composes post-tool turns', () => {
     expect(shouldComposeFinalResponse(0)).toBe(false)
     expect(shouldComposeFinalResponse(1)).toBe(true)
+  })
+})
+
+// SP-2 (Sweet Spot Phase, 2026-06-10) — the composer is part of agentic
+// coding mode. Default turns keep the model's own final reply (E3 fix).
+describe('SP-2 loadAgenticCodingConfig — composer gated on mode', () => {
+  it('null settings → mode off, composer never', () => {
+    const cfg = loadAgenticCodingConfig(null)
+    expect(cfg.mode).toBe(false)
+    expect(cfg.composer).toBe('never')
+  })
+
+  it('mode off (default) → composer never, even with a stored composer value', () => {
+    expect(loadAgenticCodingConfig({}).composer).toBe('never')
+    expect(
+      loadAgenticCodingConfig({ agenticCodingComposer: 'always' }).composer
+    ).toBe('never')
+    expect(
+      loadAgenticCodingConfig({ agenticCodingMode: false, agenticCodingComposer: 'auto' }).composer
+    ).toBe('never')
+  })
+
+  it('mode on → stored composer honored, auto when unset/unknown', () => {
+    expect(loadAgenticCodingConfig({ agenticCodingMode: true }).composer).toBe('auto')
+    expect(
+      loadAgenticCodingConfig({ agenticCodingMode: true, agenticCodingComposer: 'always' }).composer
+    ).toBe('always')
+    expect(
+      loadAgenticCodingConfig({ agenticCodingMode: true, agenticCodingComposer: 'never' }).composer
+    ).toBe('never')
+    expect(
+      loadAgenticCodingConfig({ agenticCodingMode: true, agenticCodingComposer: 'bogus' }).composer
+    ).toBe('auto')
+  })
+
+  it('mode off still surfaces configured skills (used when mode flips on)', () => {
+    const cfg = loadAgenticCodingConfig({ agenticCodingSkills: ['plan'] })
+    expect(cfg.skills).toEqual(['plan'])
+  })
+})
+
+describe('SP-2 resolveComposerGate', () => {
+  it("'never' is false on every round", () => {
+    expect(resolveComposerGate('never', 0)).toBe(false)
+    expect(resolveComposerGate('never', 3)).toBe(false)
+  })
+
+  it("'always' is true on every round", () => {
+    expect(resolveComposerGate('always', 0)).toBe(true)
+  })
+
+  it("'auto' composes only after a tool round", () => {
+    expect(resolveComposerGate('auto', 0)).toBe(false)
+    expect(resolveComposerGate('auto', 1)).toBe(true)
   })
 })
 
