@@ -165,7 +165,7 @@ export function MessageBubble({ message, attachedPlanner }: MessageBubbleProps) 
                   type="button"
                   onClick={() => setTraceOpen((v) => !v)}
                   className="flex items-center gap-1.5 text-[12px] uppercase tracking-wider text-[var(--text-muted)] transition-colors hover:text-[var(--text-secondary)]"
-                  title={traceOpen ? 'Hide planner trace' : 'Show planner trace'}
+                  title={traceOpen ? 'Hide plan trace' : 'Show plan trace'}
                 >
                   <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden>
                     {traceOpen ? <path d="M6 9l6 6 6-6" /> : <path d="M9 6l6 6-6 6" />}
@@ -173,7 +173,8 @@ export function MessageBubble({ message, attachedPlanner }: MessageBubbleProps) 
                   <span>{traceOpen ? 'Hide' : 'Show'} pipeline trace</span>
                   {attachedPlanner.model && (
                     <span className="ml-1 rounded bg-[var(--bg-tertiary)]/60 px-1 py-0.5 text-[10px] normal-case tracking-normal text-[var(--text-muted)]">
-                      planner · {attachedPlanner.model}
+                      {/* SP-7 — 'Plan', not the raw stage id 'planner' */}
+                      Plan · {attachedPlanner.model}
                     </span>
                   )}
                 </button>
@@ -217,8 +218,12 @@ export function MessageBubble({ message, attachedPlanner }: MessageBubbleProps) 
             </span>
           )}
           {message.stage === 'planner' && (
-            <span className="rounded bg-sky-500/15 px-1 text-sky-400 dark:text-sky-300">
-              Planner (orphan)
+            <span
+              className="rounded bg-sky-500/15 px-1 text-sky-400 dark:text-sky-300"
+              title="Plan produced by the pipeline; its coding turn did not complete"
+            >
+              {/* SP-7 — neutral label; '(orphan)' was harness jargon */}
+              Plan
             </span>
           )}
           <button

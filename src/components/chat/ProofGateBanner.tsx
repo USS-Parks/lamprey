@@ -93,14 +93,22 @@ export function ProofGateBanner({ notice, state, messageId }: ProofGateBannerPro
   return (
     <div className="mt-3 rounded-md border border-[var(--warning)]/40 bg-[var(--warning)]/10 px-3 py-2 text-[12px] text-[var(--text-secondary)]">
       <div className="flex flex-wrap items-start gap-2">
-        <div className="min-w-0 flex-1">
+        <div
+          className="min-w-0 flex-1"
+          // SP-7 — raw contract/receipt ids are audit metadata, not user
+          // copy. They live in the hover tooltip (and the After action
+          // panel), not the visible banner body.
+          title={
+            [notice.contractId ? `contract ${notice.contractId}` : null, receiptLabel]
+              .filter(Boolean)
+              .join(' · ') || undefined
+          }
+        >
           <div className="font-medium text-[var(--text-primary)]">{headerLabel}</div>
           <div className="mt-0.5 leading-snug">{notice.reason}</div>
-          {(notice.contractId || receiptLabel) && (
-            <div className="mt-1 font-mono text-[10px] text-[var(--text-muted)]">
-              {[notice.contractId ? `contract ${notice.contractId}` : null, receiptLabel]
-                .filter(Boolean)
-                .join(' · ')}
+          {receiptLabel && (
+            <div className="mt-1 text-[11px] text-[var(--text-muted)]">
+              Checks: {receiptLabel}
             </div>
           )}
         </div>
