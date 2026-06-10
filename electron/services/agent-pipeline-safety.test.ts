@@ -6,7 +6,7 @@ import {
   withPipelineSafety,
   type SystemMessagePayload
 } from './agent-pipeline-safety'
-import { mkdtempSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, writeFileSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { execFileSync } from 'node:child_process'
@@ -440,7 +440,6 @@ describe('SP-5 StageInactivityWatchdog — kick() resets the stall timer', () =>
 // the watchdog kick into runChatRound, and runChatRound must signal activity
 // from its stream + tool paths. Catches a silent unwire at review time.
 describe('SP-5 chat.ts wiring contract (source-reading)', () => {
-  const { readFileSync } = require('node:fs') as typeof import('node:fs')
   const chatSource = readFileSync(join(__dirname, '..', 'ipc', 'chat.ts'), 'utf-8')
 
   it('coderRunner passes () => watchdog.kick() to runChatRound', () => {

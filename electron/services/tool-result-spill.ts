@@ -122,7 +122,7 @@ export function gcSpillDir(
   const maxTotalBytes = opts.maxTotalBytes ?? SPILL_MAX_TOTAL_BYTES
   const now = opts.now ?? Date.now()
 
-  let entries: { path: string; mtimeMs: number; size: number }[] = []
+  let entries: { path: string; mtimeMs: number; size: number }[]
   try {
     entries = readdirSync(dir)
       .filter((name) => name.endsWith('.txt'))

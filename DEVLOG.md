@@ -1,3 +1,33 @@
+## [Sweet Spot Phase — Complete] SP-0 through SP-12 shipped end-to-end — 2026-06-10, v0.13.0
+
+Phase complete. 13 prompts (SP-0 through SP-12) shipped on `claude/hardcore-swanson-5561d9` (cut from `78b730e` = v0.12.0). The phase locks Lamprey to its declared target — functional + aesthetic parity with Claude Code in the Opus 4.5 era (2025-11-24 → 2026-01-24) — and closes the seven defects (D1–D7) surfaced by the 2026-06-10 four-track audit. Defaults moved; no features removed. Multi-agent, proof harness, composer, and lazy tool surface all remain available as explicit opt-ins.
+
+**Per-prompt commit SHAs:**
+- `f9047ea` — SP-0 plan + pre-change baseline (`PLANNING/SP_BASELINE.md`)
+- `24232e0` — SP-1 canonical `DEFAULT_APP_SETTINGS` (D1) + era defaults: `agentMode 'single'`, `proofGate 'off'`, `toolSurface 'full'`; runtime fallbacks flipped to match; parity lock test
+- `80b8d46` — SP-2 composer opt-in: gated on `agenticCodingMode`; default turns keep the model's own reply (E3); `loadAgenticCodingConfig`/`resolveComposerGate` moved to `final-response-composer.ts` (pure, tested)
+- `1a870d4` — SP-3 proof-gate dormancy: `clearMutationAttempted` at turn start (D4)
+- `5b226aa` — SP-4 ghost-reply guard: `role:'system'` failure notice when a turn ends with no visible reply (D5); pure `ghost-reply-guard.ts` + 11 tests; user aborts excluded
+- `77cb424` — SP-5 watchdog kick wired: `onActivity` callback threads `watchdog.kick()` through `runChatRound` (stream chunks, reasoning chunks, tool completions) so a progressing Coder stage no longer trips the stall timer (D2); fake-timer tests + source-reading wiring locks
+- `072bbb3` — SP-6 spill GC: startup sweep deletes spill files > 7 days, then trims oldest-first to 256 MB (D3); GC'd refs resolve to the existing "expired" reply
+- `1f01758` — SP-7 UI era pass: pipeline banner reads "Planning / Writing code / Reviewing" (not raw role ids); "Planner (orphan)" → "Plan"; raw contract/receipt ids moved from ProofGateBanner body to hover tooltip (E5); era-chrome source locks
+- `b47e0ff` — SP-8 router telemetry IPC (`after-action:routerTelemetry`) + preload + "Routing" section in the After action panel (D6 — CR-3 documented this surface but no handler existed)
+- `bcd6df9` — SP-9 `verify:proof` native-skip accounting: probes whether better-sqlite3 loads under the current Node and prints the ABI-guarded cohort either way; `--list-native-skips` mode (D7, the v0.9.2 follow-up)
+- `4ba6560` — SP-10 LL_SMOKE_PLAYBOOK v0.13.0 pass criteria: Configuration A (fresh defaults, era contract — all asks single, zero machinery chrome) + Configuration B (pin `agentMode 'auto'`, router exercise unchanged)
+- `(SP-11/SP-12)` — full gate + governance docs + ship arc (this commit + wrap)
+
+**Era realignment (decision register §4 of the plan):**
+- K1 `agentMode: 'single'` everywhere — D1's renderer/main mismatch ('auto' vs 'single') resolved by one canonical module + parity test; the era product never auto-fanned a turn into a pipeline
+- K2 `proofGate: 'off'` — `resolveProofRigor` unset now resolves OFF; 'rigor'/'always' are explicit opt-ins
+- K3 composer `'never'` unless `agenticCodingMode` is ON — no second model pass rewrites the reply on default turns; the WC-6 Verification footer rides the same gate
+- K4 `toolSurface: 'full'` — the model gets its whole catalog per turn like the era product; 'lazy' remains the MCP-heavy opt-in
+- K5 machinery UI renders only when its producers run (which defaults now prevent); labels neutralized
+- K6 Project conventions block + CR-8/CR-9 coder bullets kept verbatim (evidence-backed, era-equivalent of CLAUDE.md)
+
+**Verify gate:** lint OK, tsc node + web OK, vitest **2384 passed / 123 skipped** (baseline 2332/123; +52 new tests, zero new skips), electron-vite build OK, `verify:proof --no-tests` exits 0 with the new skip-accounting line. Prompt surfaces untouched (byte guards unchanged).
+
+**Honest notes:** the 123 vitest skips on this machine are platform/equipment guards (darwin-only, POSIX-only, etc.) — the better-sqlite3 binding loads under this Node, so the 14 ABI-guarded files DID run here; SP-9's accounting exists for environments where they don't. The CR-11-style live playbook re-run against an installed v0.13.0 build remains a user step (Configurations A + B in the playbook).
+
 ## [Cogency Restore Phase — Complete] CR-0 through CR-12 shipped end-to-end — 2026-06-09, v0.12.0
 
 Phase complete. 13 prompts (CR-0 through CR-12) shipped on `claude/cogency-restore` (cut from `61a8119` = `origin/main` at v0.11.1). Closes eight regressions surfaced by the L9 LL_SMOKE_PLAYBOOK run against v0.11.0 and v0.11.1 plus three new findings (F13, F14, F15) discovered during the v0.11.1 re-run.
