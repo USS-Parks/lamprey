@@ -87,6 +87,25 @@ describe('renderContract', () => {
     const out = renderContract()
     expect(out).toContain('consume it as vocabulary')
   })
+
+  // CR-7 (Cogency Restore Phase, 2026-06-09) — terse Reviewer-stage exemplar
+  // that steers DeepSeek/Gemma/Qwen away from the 4-section enumerated review
+  // template observed in the v0.11.1 playbook (Asks 3, 4, 5, 8). Locked in
+  // shape + an envelope-byte guard so future verbose additions to the
+  // exemplar trigger CI failure.
+  it('CR-7: includes the terse Reviewer exemplar shape', () => {
+    const out = renderContract()
+    expect(out).toContain('Reviewer:')
+    expect(out).toContain('Reviewed:')
+    // Verdict line on its own — exactly what the L4-slim review fragment
+    // requires AND the L9 verdict-line guard requires.
+    expect(out).toMatch(/\nCHANGES\n<\/example>/)
+  })
+
+  it('CR-7: reviewer exemplar bytes ≤ 300 (envelope guard)', async () => {
+    const { IDEAL_REVIEWER_EXEMPLAR } = await import('./system-prompt-builder')
+    expect(IDEAL_REVIEWER_EXEMPLAR.length).toBeLessThanOrEqual(300)
+  })
 })
 
 describe('buildSystemPrompt — default base', () => {
@@ -135,9 +154,15 @@ describe('Lampshade L9 — envelope shape guards', () => {
     )
   })
 
-  it('size: coding-mode single-agent prompt stays under 4,096 bytes (L1 was 10,897)', () => {
+  // CR-7 (Cogency Restore Phase, 2026-06-09) — bumped the L9 4,096 size guard
+  // to 4,400 bytes. The CR phase added: CR-1 ~520 bytes of Project conventions
+  // vocab (5 bullets) and CR-7 ~285 bytes of the terse Reviewer exemplar. Net
+  // contract regrowth is ~800 bytes — still well under the byte savings L2
+  // delivered (~7,200 bytes) and 4,400 is the post-CR coding-mode prompt
+  // size + ~150 bytes of headroom for future thin additions.
+  it('size: coding-mode single-agent prompt stays under 4,400 bytes (post-CR floor)', () => {
     const out = buildSystemPrompt([], '', undefined, undefined, undefined, 'coding')
-    expect(out.length).toBeLessThan(4096)
+    expect(out.length).toBeLessThan(4400)
   })
 
   it('negative: no rendered prompt names the pre-L2 hedging phrases', () => {
@@ -577,27 +602,36 @@ describe('HY4 — lazy skill bodies', () => {
   })
 })
 
-describe('HY6 — exemplar-based steering', () => {
-  it('embeds one ideal tool-using exemplar inside the contract', () => {
+describe('HY6 — exemplar-based steering (CR-7 added the reviewer exemplar)', () => {
+  it('embeds the HY6 ideal tool-using exemplar inside the contract', () => {
     const out = renderContract()
     expect(out).toContain('<example>')
     expect(out).toContain('</example>')
     expect(out).toContain('shell_command: grep')
     expect(out).toContain('apply_patch')
     expect(out).toContain('verify_workspace')
-    // exactly one exemplar
-    expect(out.split('<example>').length - 1).toBe(1)
   })
 
-  it('keeps the exemplar inside <contract> and stays under the size guard', () => {
+  // CR-7 (Cogency Restore Phase, 2026-06-09) — CR-7 adds a Reviewer-stage
+  // exemplar alongside the HY6 ideal-turn exemplar. The contract now contains
+  // exactly TWO `<example>` blocks (was 1 pre-CR-7); future additions to the
+  // exemplar set need to deliberately update this assertion.
+  it('CR-7: contains exactly two exemplars (HY6 ideal turn + CR-7 reviewer)', () => {
+    const out = renderContract()
+    expect(out.split('<example>').length - 1).toBe(2)
+    expect(out.split('</example>').length - 1).toBe(2)
+  })
+
+  it('keeps both exemplars inside <contract> and stays under the size guard', () => {
     const out = renderContract()
     expect(out.startsWith('<contract>')).toBe(true)
     expect(out.endsWith('</contract>')).toBe(true)
-    const ex = out.indexOf('<example>')
+    const firstEx = out.indexOf('<example>')
     const close = out.indexOf('</contract>')
-    expect(ex).toBeGreaterThan(0)
-    expect(ex).toBeLessThan(close)
-    // HY6 byte guard — exemplar is additive but the contract stays lean.
+    expect(firstEx).toBeGreaterThan(0)
+    expect(firstEx).toBeLessThan(close)
+    // HY6 byte guard — exemplars are additive but the contract stays lean.
+    // CR-7 budget allowance: ≤ 3,700 holds (CR-7 + CR-1 additions fit).
     expect(out.length).toBeLessThan(3700)
   })
 })

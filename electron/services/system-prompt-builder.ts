@@ -67,11 +67,11 @@ const CONTRACT_SECTIONS: ContractSection[] = [
     key: 'project_conventions',
     heading: 'Project conventions',
     bullets: [
-      'STS / Stem to Stern: the user has approved a P-SPR and wants every prompt run end-to-end with verify + commit per prompt. Do not ask mid-run.',
-      'P-SPR: Plan + Sequential Prompt Roster — a PLANNING/*.md file defining one phase end to end. "Show me the P-SPR" means produce one and stop.',
-      'Bucket: run `pwsh scripts/bucket.ps1`. The full ship pipeline (build + tag + R2 upload + GH release + CF purge). Do not try to do the steps manually.',
-      'When unsure of project shorthand, ask once. Do not grep for it as a filename.',
-      'When the user clarifies a project-specific term, consume it as vocabulary. Do not build a system named that term unless the user explicitly asks for one.'
+      'STS / Stem to Stern: user approved a P-SPR; run every prompt end to end with verify + commit. Do not ask mid-run.',
+      'P-SPR: Plan + Sequential Prompt Roster (a PLANNING/*.md file defining one phase). "Show me the P-SPR" = produce one, stop.',
+      'Bucket: run `pwsh scripts/bucket.ps1`. The full ship pipeline. Do not do the steps manually.',
+      'Unsure of project shorthand? Ask once; do not grep for it as a filename.',
+      'When the user clarifies a project term, consume it as vocabulary. Do not scaffold a system named that term unless asked.'
     ]
   }
 ]
@@ -174,6 +174,24 @@ export const IDEAL_TURN_EXEMPLAR = [
   '</example>'
 ].join('\n')
 
+// CR-7 (Cogency Restore Phase, 2026-06-09) — one compact terse exemplar for
+// the Reviewer stage. The LL_SMOKE_PLAYBOOK v0.11.1 re-run showed Reviewer
+// outputs are 15-22 lines and follow a 4-section enumerated template
+// ("Checked failure modes / Files consulted / Unchecked gaps / Verdict") in
+// 4 / 4 evaluated turns. L6 cut the reviewer-fragment bytes 11,016 → 697
+// but the model defaults to the verbose review template from training
+// inertia. This terse exemplar shows: cite by file:line, raise at most one
+// concrete concern, end with verdict on its own line. ≤ 300 bytes per
+// CR-7 envelope-byte guard test.
+export const IDEAL_REVIEWER_EXEMPLAR = [
+  '<example>',
+  'Reviewer:',
+  'Reviewed: src/parser.ts:48 changed the off-by-one in tokenize(); src/parser.test.ts added two coverage cases; tsc + vitest clean per receipt v_03.',
+  "One concern: tokenize() now drops the trailing newline — confirm the caller doesn't rely on it.",
+  'CHANGES',
+  '</example>'
+].join('\n')
+
 export function renderContract(): string {
   const lines: string[] = ['<contract>']
   for (const section of CONTRACT_SECTIONS) {
@@ -183,6 +201,11 @@ export function renderContract(): string {
   }
   // HY6 — a worked example beats a bullet for instruction-tuned models.
   lines.push(IDEAL_TURN_EXEMPLAR)
+  lines.push('')
+  // CR-7 — terse Reviewer-stage exemplar. Steers the Reviewer away from the
+  // 4-section enumerated template observed in the v0.11.1 playbook re-run
+  // back toward the shape the L4-slim review fragment describes.
+  lines.push(IDEAL_REVIEWER_EXEMPLAR)
   lines.push('')
   lines.push('</contract>')
   return lines.join('\n').trimEnd()
