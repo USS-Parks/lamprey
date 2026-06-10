@@ -22,7 +22,12 @@ import {
 //   Gather context before editing, Use tools as evidence, Protect user work,
 //   Verify before claiming done, Progress updates, Standalone deliverables,
 //   Final response.
-const EXPECTED_SECTION_HEADINGS = ['How you work']
+// CR-1 (Cogency Restore Phase, 2026-06-09) — added "Project conventions" section
+// with STS / P-SPR / Bucket / Stem to Stern vocab. The Lampshade L2 collapse
+// dropped these as "redundant prose" but the LL_SMOKE_PLAYBOOK proved Asks 7 + 8
+// failed because the Planner had no idea what those terms meant. The new section
+// follows the existing "How you work" block.
+const EXPECTED_SECTION_HEADINGS = ['How you work', 'Project conventions']
 
 const ALL_ROLES: ContractRole[] = [
   'coding',
@@ -58,6 +63,29 @@ describe('renderContract', () => {
       const firstBulletIdx = after.indexOf('\n- ')
       expect(firstBulletIdx, `expected a bullet under "${heading}"`).toBeGreaterThan(0)
     }
+  })
+
+  // CR-1 (Cogency Restore Phase) — the canonical project planning vocabulary
+  // MUST appear exactly once in the rendered contract. Asks 7 + 8 of the
+  // LL_SMOKE_PLAYBOOK proved the Planner has no concept of STS or P-SPR when
+  // these aren't in the prompt. The test guards against future contract cuts
+  // silently dropping the bullets again.
+  it('CR-1: includes the canonical project vocabulary (STS / P-SPR / Bucket / Stem to Stern)', () => {
+    const out = renderContract()
+    expect(out).toContain('STS')
+    expect(out).toContain('P-SPR')
+    expect(out).toContain('Bucket')
+    expect(out).toContain('Stem to Stern')
+    expect(out).toContain('Sequential Prompt Roster')
+    expect(out).toContain('Project conventions')
+  })
+
+  // CR-1 F13 — the fifth bullet locks the "vocab clarification ≠ build
+  // directive" behavior surfaced by Asks 6 + 8 v0.11.1 (Coder building entire
+  // Python p_spr package + Vite/Zustand React scaffold from terse clarifications).
+  it('CR-1: includes the F13 vocab-vs-build clarification bullet', () => {
+    const out = renderContract()
+    expect(out).toContain('consume it as vocabulary')
   })
 })
 

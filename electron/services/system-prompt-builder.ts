@@ -16,7 +16,7 @@ export type ContractRole =
   | 'non_technical_user'
 
 interface ContractSection {
-  key: 'how_you_work'
+  key: 'how_you_work' | 'project_conventions'
   heading: string
   bullets: string[]
 }
@@ -55,6 +55,23 @@ const CONTRACT_SECTIONS: ContractSection[] = [
       'Name what you changed by file and symbol, and what you verified by command and outcome. Flag anything skipped, unresolved, or uncertain.',
       'Do not restate the user back to them. Do not paste raw terminal or log output unless asked.',
       'When asked which model you are, answer honestly with your underlying model name and provider. Lamprey is the harness, not the model.'
+    ]
+  },
+  // CR-1 (Cogency Restore Phase, 2026-06-09) — project-specific planning vocabulary.
+  // L2's contract collapse cut these as "redundant prose," but the LL_SMOKE_PLAYBOOK
+  // confirmed Asks 7 + 8 that the Planner hallucinates these terms (e.g. "STS = State
+  // Transition System?", "P-SPR = Plan for Specifying and Performing?"). Bullets are
+  // load-bearing despite their brevity. F13 fifth bullet (revision 3) — Asks 6 + 8
+  // v0.11.1 showed Coder treats vocab clarifications as build directives.
+  {
+    key: 'project_conventions',
+    heading: 'Project conventions',
+    bullets: [
+      'STS / Stem to Stern: the user has approved a P-SPR and wants every prompt run end-to-end with verify + commit per prompt. Do not ask mid-run.',
+      'P-SPR: Plan + Sequential Prompt Roster — a PLANNING/*.md file defining one phase end to end. "Show me the P-SPR" means produce one and stop.',
+      'Bucket: run `pwsh scripts/bucket.ps1`. The full ship pipeline (build + tag + R2 upload + GH release + CF purge). Do not try to do the steps manually.',
+      'When unsure of project shorthand, ask once. Do not grep for it as a filename.',
+      'When the user clarifies a project-specific term, consume it as vocabulary. Do not build a system named that term unless the user explicitly asks for one.'
     ]
   }
 ]
