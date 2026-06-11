@@ -43,4 +43,11 @@ describe('SP-7 era chrome — no raw harness internals in user copy', () => {
     const messageList = readFileSync(join(here, 'MessageList.tsx'), 'utf-8')
     expect(messageList).toMatch(/role === 'system'\s*\?\s*\(\s*<SystemMarker/)
   })
+
+  it('model chip shows real model names, not the legacy R1/V3 binary', () => {
+    expect(messageBubble).not.toContain("'deepseek-reasoner' ? 'R1' : 'V3'")
+    expect(messageBubble).toContain('formatModelIdFallback')
+    expect(messageBubble).toContain('{modelLabel}')
+    expect(messageBubble).toContain('title={message.model}')
+  })
 })

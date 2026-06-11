@@ -12,6 +12,8 @@ import { ForkDialog } from './ForkDialog'
 import { PinDialog } from './PinDialog'
 import { SeedContextChip, parseSeedContext } from './SeedContextChip'
 import { useChatStore } from '@/stores/chat-store'
+import { useModelStore } from '@/stores/model-store'
+import { formatModelIdFallback } from '@/lib/model-label'
 import { ProofGateBanner } from './ProofGateBanner'
 import { parseProofGateNotice } from './proof-gate-notice'
 import { computeProofBannerState } from './proof-banner-state'
@@ -45,6 +47,13 @@ export function MessageBubble({ message, attachedPlanner }: MessageBubbleProps) 
   const isTool = message.role === 'tool'
   const addMemory = useMemoryStore((s) => s.addMemory)
   const forkFromMessage = useChatStore((s) => s.forkFromMessage)
+  // Model chip label: prefer the catalog display name (same source the
+  // ModelSwitcher shows), fall back to a compacted form of the raw id for
+  // legacy rows / removed custom models. Raw id stays in the hover tooltip.
+  const models = useModelStore((s) => s.models)
+  const modelLabel = message.model
+    ? models.find((m) => m.id === message.model)?.name ?? formatModelIdFallback(message.model)
+    : null
   const [saving, setSaving] = useState(false)
   const [forkOpen, setForkOpen] = useState(false)
   // PS21 — pin-as-memory dialog state. Sits next to the Fork dialog so the
@@ -198,8 +207,11 @@ export function MessageBubble({ message, attachedPlanner }: MessageBubbleProps) 
         <div className="mt-1 flex items-center gap-2 text-[12px] text-[var(--text-muted)] opacity-0 transition-opacity group-hover:opacity-100">
           <span>{formatTime(message.timestamp)}</span>
           {message.model && (
-            <span className="rounded bg-[var(--bg-primary)] px-1">
-              {message.model === 'deepseek-reasoner' ? 'R1' : 'V3'}
+            <span
+              className="max-w-[160px] truncate rounded bg-[var(--bg-primary)] px-1"
+              title={message.model}
+            >
+              {modelLabel}
             </span>
           )}
           {/* R7 — stage chip. Reviewer rows get a small purple "Reviewer"
