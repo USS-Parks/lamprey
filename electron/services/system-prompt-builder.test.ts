@@ -88,23 +88,14 @@ describe('renderContract', () => {
     expect(out).toContain('consume it as vocabulary')
   })
 
-  // CR-7 (Cogency Restore Phase, 2026-06-09) — terse Reviewer-stage exemplar
-  // that steers DeepSeek/Gemma/Qwen away from the 4-section enumerated review
-  // template observed in the v0.11.1 playbook (Asks 3, 4, 5, 8). Locked in
-  // shape + an envelope-byte guard so future verbose additions to the
-  // exemplar trigger CI failure.
-  it('CR-7: includes the terse Reviewer exemplar shape', () => {
+  // UB-2 (Unburdening Phase, 2026-06-10) — the CR-7 reviewer-stage exemplar
+  // is EXCISED from the contract: it was pipeline steering embedded in every
+  // single-agent prompt. Absence-lock so it can't quietly return.
+  it('UB-2: the contract contains NO reviewer-stage exemplar', () => {
     const out = renderContract()
-    expect(out).toContain('Reviewer:')
-    expect(out).toContain('Reviewed:')
-    // Verdict line on its own — exactly what the L4-slim review fragment
-    // requires AND the L9 verdict-line guard requires.
-    expect(out).toMatch(/\nCHANGES\n<\/example>/)
-  })
-
-  it('CR-7: reviewer exemplar bytes ≤ 300 (envelope guard)', async () => {
-    const { IDEAL_REVIEWER_EXEMPLAR } = await import('./system-prompt-builder')
-    expect(IDEAL_REVIEWER_EXEMPLAR.length).toBeLessThanOrEqual(300)
+    expect(out).not.toContain('Reviewer:')
+    expect(out).not.toContain('Reviewed:')
+    expect(out).not.toMatch(/\nCHANGES\n/)
   })
 
   // CR-8 (Cogency Restore Phase, 2026-06-09) — three Coder operational
@@ -656,14 +647,12 @@ describe('HY6 — exemplar-based steering (CR-7 added the reviewer exemplar)', (
     expect(out).toContain('verify_workspace')
   })
 
-  // CR-7 (Cogency Restore Phase, 2026-06-09) — CR-7 adds a Reviewer-stage
-  // exemplar alongside the HY6 ideal-turn exemplar. The contract now contains
-  // exactly TWO `<example>` blocks (was 1 pre-CR-7); future additions to the
-  // exemplar set need to deliberately update this assertion.
-  it('CR-7: contains exactly two exemplars (HY6 ideal turn + CR-7 reviewer)', () => {
+  // UB-2 (Unburdening Phase, 2026-06-10) — back to exactly ONE exemplar (the
+  // HY6 ideal turn). The CR-7 reviewer exemplar left with the pipeline.
+  it('UB-2: contains exactly one exemplar (HY6 ideal turn)', () => {
     const out = renderContract()
-    expect(out.split('<example>').length - 1).toBe(2)
-    expect(out.split('</example>').length - 1).toBe(2)
+    expect(out.split('<example>').length - 1).toBe(1)
+    expect(out.split('</example>').length - 1).toBe(1)
   })
 
   it('keeps both exemplars inside <contract> and stays under the size guard', () => {

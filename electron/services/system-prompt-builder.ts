@@ -180,24 +180,6 @@ export const IDEAL_TURN_EXEMPLAR = [
   '</example>'
 ].join('\n')
 
-// CR-7 (Cogency Restore Phase, 2026-06-09) — one compact terse exemplar for
-// the Reviewer stage. The LL_SMOKE_PLAYBOOK v0.11.1 re-run showed Reviewer
-// outputs are 15-22 lines and follow a 4-section enumerated template
-// ("Checked failure modes / Files consulted / Unchecked gaps / Verdict") in
-// 4 / 4 evaluated turns. L6 cut the reviewer-fragment bytes 11,016 → 697
-// but the model defaults to the verbose review template from training
-// inertia. This terse exemplar shows: cite by file:line, raise at most one
-// concrete concern, end with verdict on its own line. ≤ 300 bytes per
-// CR-7 envelope-byte guard test.
-export const IDEAL_REVIEWER_EXEMPLAR = [
-  '<example>',
-  'Reviewer:',
-  'Reviewed: src/parser.ts:48 changed the off-by-one in tokenize(); src/parser.test.ts added two coverage cases; tsc + vitest clean per receipt v_03.',
-  "One concern: tokenize() now drops the trailing newline — confirm the caller doesn't rely on it.",
-  'CHANGES',
-  '</example>'
-].join('\n')
-
 export function renderContract(): string {
   const lines: string[] = ['<contract>']
   for (const section of CONTRACT_SECTIONS) {
@@ -208,11 +190,9 @@ export function renderContract(): string {
   // HY6 — a worked example beats a bullet for instruction-tuned models.
   lines.push(IDEAL_TURN_EXEMPLAR)
   lines.push('')
-  // CR-7 — terse Reviewer-stage exemplar. Steers the Reviewer away from the
-  // 4-section enumerated template observed in the v0.11.1 playbook re-run
-  // back toward the shape the L4-slim review fragment describes.
-  lines.push(IDEAL_REVIEWER_EXEMPLAR)
-  lines.push('')
+  // UB-2 (Unburdening Phase, 2026-06-10) — the CR-7 reviewer-stage exemplar
+  // that used to follow here was pipeline steering embedded in EVERY single-
+  // agent prompt. Excised with the pipeline; ~285 B back per turn.
   lines.push('</contract>')
   return lines.join('\n').trimEnd()
 }
