@@ -261,7 +261,6 @@ export function FloatingEnvironmentCard({
 }: FloatingEnvironmentCardProps): React.ReactElement | null {
   const openSettings = useUiStore((s) => s.openSettings)
   const setActiveTool = useUiStore((s) => s.setActiveTool)
-  const agentMode = useAgentStore((s) => s.mode)
   const { snapshot, refresh } = useEnvironment()
   const { sources, groups } = useSources()
   const reduced = usePrefersReducedMotion()
@@ -399,7 +398,8 @@ export function FloatingEnvironmentCard({
     : snapshot.ahead > 0
     ? `Push (${snapshot.ahead} ahead)`
     : 'Commit or push'
-  const workModeLabel = agentMode === 'multi' ? 'Pipeline' : 'Local'
+  // UB-6 — single-agent always; the 'Pipeline' label died with the toggle.
+  const workModeLabel = 'Local'
 
   const settled = state === 'visible'
   const interactive = settled

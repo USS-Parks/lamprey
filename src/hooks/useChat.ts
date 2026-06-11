@@ -84,37 +84,12 @@ export function useChat(): void {
       if (!matchesActive(e as { conversationId?: string })) return
       flushNow()
       useChatStore.getState().finishStream(e.message as any)
-      // Prompt 11: in agentMode the Coder's chat:done fires BEFORE the
-      // Reviewer stage emits its `agent:status reviewer:running`. If we
-      // clear unconditionally the AgentRunBanner flickers off + back on.
-      // Only retire the pipeline display when no role is still in flight.
-      const stillRunning = useAgentStore
-        .getState()
-        .activeRun.some((r) => r.state === 'running')
-      if (!stillRunning) useAgentStore.getState().clearRun()
     })
-
-    // Reasoning Audit Phase R4 — Planner audit row arriving mid-pipeline
-    // (between Planner and Coder stages). Append to messages without
-    // disrupting streaming state; R7 will attach it to the Coder bubble
-    // behind the "Show pipeline trace" toggle at render time.
-    const onPlannerMessage = (window.api.chat as {
-      onPlannerMessage?: (cb: (e: { conversationId: string; message: unknown }) => void) => void
-    }).onPlannerMessage
-    if (onPlannerMessage) {
-      onPlannerMessage((e) => {
-        if (!matchesActive(e as { conversationId?: string })) return
-        useChatStore.getState().appendPlannerMessage(e.message as any)
-      })
-    }
 
     window.api.chat.onError((e) => {
       if (!matchesActive(e)) return
       flushNow()
       useChatStore.getState().streamError(e.error)
-      // Errors always retire the pipeline — there's no recovery path that
-      // keeps a stale "running" pill on screen.
-      useAgentStore.getState().clearRun()
     })
 
     window.api.chat.onToolCall((e) => {
@@ -181,18 +156,8 @@ export function useChat(): void {
         })
       : undefined
 
-    const onAgentStatus = window.api.chat.onAgentStatus
-    if (onAgentStatus) {
-      onAgentStatus((e: unknown) => {
-        const event = e as AgentStatusEvent
-        // P11 review-P2: filter by active conversation, same as every
-        // other chat event. agent-store keeps a single global `activeRun`
-        // (no per-conversation indexing), so a side-chat pipeline's
-        // status events would otherwise pollute the visible AgentRunBanner.
-        if (!matchesActive(event)) return
-        useAgentStore.getState().recordStatus(event)
-      })
-    }
+    // UB-6 (Unburdening Phase, 2026-06-10) — the agent:status +
+    // planner-message listeners that lived here died with the pipeline.
 
     // Plan checklist live updates. The `plan:updated` event is broadcast
     // from chat.ts after every successful update_plan tool call; we drop

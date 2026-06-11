@@ -1,19 +1,16 @@
 import { useState, useEffect } from 'react'
 import { useSettingsStore } from '@/stores/settings-store'
 
-// T5 — single-pane control surface for every time-budget knob in the
-// turn-execution stack. Numbers here are stored in settings.json and read
-// by the matching back-end services (provider/registry.ts, mcp-manager.ts,
-// agent-pipeline.ts) — no IPC patch required: each service reads fresh on
-// every call. The labels deliberately surface ms-stored seconds so the user
-// doesn't have to do arithmetic.
+// T5 — control surface for the time-budget knobs in the turn-execution
+// stack. Numbers here are stored in settings.json and read by the matching
+// back-end services (provider/registry.ts, mcp-manager.ts) — no IPC patch
+// required: each service reads fresh on every call. UB-6 (Unburdening
+// Phase, 2026-06-10): the per-stage pipeline budgets died with the
+// pipeline; stream + MCP caps remain.
 
 const DEFAULTS = {
   streamInactivitySec: 60,
-  mcpCallTimeoutSec: 120,
-  plannerSec: 120,
-  coderSec: 600,
-  reviewerSec: 120
+  mcpCallTimeoutSec: 120
 }
 
 function secondsToMsOrZero(sec: number): number {
@@ -111,28 +108,12 @@ export function StreamingTimeoutsSettings() {
     DEFAULTS.streamInactivitySec
   )
   const mcpCallTimeoutSec = msToSeconds(settings.mcpCallTimeoutMs, DEFAULTS.mcpCallTimeoutSec)
-  const plannerSec = msToSeconds(settings.stageBudgetMs?.planner, DEFAULTS.plannerSec)
-  const coderSec = msToSeconds(settings.stageBudgetMs?.coder, DEFAULTS.coderSec)
-  const reviewerSec = msToSeconds(settings.stageBudgetMs?.reviewer, DEFAULTS.reviewerSec)
 
   const setStreamInactivity = (sec: number): void => {
     void updateSettings({ streamInactivityMs: secondsToMsOrZero(sec) })
   }
   const setMcpCallTimeout = (sec: number): void => {
     void updateSettings({ mcpCallTimeoutMs: secondsToMsOrZero(sec) })
-  }
-  const setStageBudget = (
-    role: 'planner' | 'coder' | 'reviewer',
-    sec: number
-  ): void => {
-    const next = {
-      planner: secondsToMsOrZero(plannerSec),
-      coder: secondsToMsOrZero(coderSec),
-      reviewer: secondsToMsOrZero(reviewerSec),
-      ...(settings.stageBudgetMs ?? {}),
-      [role]: secondsToMsOrZero(sec)
-    }
-    void updateSettings({ stageBudgetMs: next })
   }
 
   return (
@@ -176,44 +157,6 @@ export function StreamingTimeoutsSettings() {
         />
       </section>
 
-      <section className="space-y-3">
-        <h4 className="font-mono text-[13px] uppercase tracking-wider text-[var(--text-muted)]">
-          Pipeline stage budgets
-        </h4>
-        <p className="text-[12px] leading-relaxed text-[var(--text-muted)]">
-          Wall-clock cap per role in the Planner → Coder → Reviewer pipeline.
-          Budget-exhausted planner falls through with a stub plan; coder and
-          reviewer surface a clear "budget exceeded" message so you can re-prompt
-          with "continue" or raise the cap.
-        </p>
-        <NumberRow
-          id="plannerBudget"
-          label="Planner stage"
-          hint="Planner should produce a tight numbered plan quickly — 2 minutes is generous."
-          value={plannerSec}
-          onCommit={(sec) => setStageBudget('planner', sec)}
-          defaultSec={DEFAULTS.plannerSec}
-          minSec={10}
-        />
-        <NumberRow
-          id="coderBudget"
-          label="Coder stage"
-          hint="Coder does the real work — reading files, calling tools, writing replies. The default 10 minutes covers most multi-tool turns; raise for deep refactors."
-          value={coderSec}
-          onCommit={(sec) => setStageBudget('coder', sec)}
-          defaultSec={DEFAULTS.coderSec}
-          minSec={10}
-        />
-        <NumberRow
-          id="reviewerBudget"
-          label="Reviewer stage"
-          hint="Reviewer operates on a summarized context — 2 minutes is plenty for a SHIP/CHANGES verdict."
-          value={reviewerSec}
-          onCommit={(sec) => setStageBudget('reviewer', sec)}
-          defaultSec={DEFAULTS.reviewerSec}
-          minSec={10}
-        />
-      </section>
     </div>
   )
 }

@@ -41,7 +41,6 @@ vi.mock('../services/conversation-store', () => ({
 }))
 
 vi.mock('../services/providers/registry', () => ({ chatOnce: vi.fn() }))
-vi.mock('../services/stage-metrics-store', () => ({ listStageMetrics: vi.fn(() => []) }))
 vi.mock('../services/workspace-state', () => ({ getActiveWorkspace: vi.fn(() => 'C:/current') }))
 vi.mock('../services/conversation-rag', () => ({
   ensureConversationCollection: vi.fn(() => ({

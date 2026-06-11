@@ -372,7 +372,7 @@ function App(): React.ReactElement {
       }
       await Promise.all([loadConversations(), loadModels(), loadSettings()])
       const s = useSettingsStore.getState().settings
-      hydrateAgents(s.agentMode || 'single', s.agentRoster)
+      hydrateAgents(s.agentRoster)
     }
     init()
   }, [])

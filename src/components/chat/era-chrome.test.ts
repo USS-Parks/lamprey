@@ -42,10 +42,14 @@ describe('SP-7 era chrome — no raw harness internals in user copy', () => {
     expect(workModePopover).not.toContain('agentMode')
   })
 
-  it('MessageBubble no longer says "Planner (orphan)" or "planner ·"', () => {
+  it('UB-6: pipeline trace + stage chips reduced to one legacy marker', () => {
+    expect(messageBubble).not.toContain('attachedPlanner')
+    expect(messageBubble).not.toContain('pipeline trace')
     expect(messageBubble).not.toContain('Planner (orphan)')
-    expect(messageBubble).not.toContain('planner · {')
-    expect(messageBubble).toContain('Plan · {attachedPlanner.model}')
+    expect(messageBubble).toContain('Pipeline (legacy)')
+    // The legacy chip is the ONLY stage rendering left, and it is muted.
+    expect(messageBubble).not.toContain('bg-purple-500/15')
+    expect(messageBubble).not.toContain('bg-sky-500/15')
   })
 
   it('UB-4: the proof-gate banner no longer exists at all', () => {

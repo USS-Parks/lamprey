@@ -37,11 +37,8 @@ export function AgentSettings() {
   }, [models.length, loadModels])
 
   useEffect(() => {
-    // 2026-06-10 user direction — the run-mode toggle (Auto / Single /
-    // Multi) is REMOVED from settings: the pipeline is retired from
-    // dispatch and the settings-read layer coerces stale pins to 'single'.
-    // Hydration pins 'single' unconditionally.
-    hydrate('single', settings.agentRoster)
+    // UB-6 — roster-only hydration; mode died with the pipeline.
+    hydrate(settings.agentRoster)
   }, [settings.agentRoster, hydrate])
 
   const persistRole = async (role: AgentRole, modelId: string) => {

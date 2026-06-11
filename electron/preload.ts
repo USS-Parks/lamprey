@@ -64,7 +64,6 @@ const api = {
       ipcRenderer.on('chat:document-created', handler)
       return () => ipcRenderer.removeListener('chat:document-created', handler)
     },
-    onAgentStatus: (cb: (e: unknown) => void) => ipcRenderer.on('agent:status', (_, e) => cb(e)),
     onAsyncEvent: (cb: (e: unknown) => void): (() => void) => {
       const handler = (_: unknown, e: unknown): void => cb(e)
       ipcRenderer.on('async-event:received', handler)
@@ -75,14 +74,12 @@ const api = {
         'chat:chunk',
         'chat:reasoning',
         'chat:done',
-        'chat:planner-message',
         'chat:error',
         'chat:tool-call',
         'chat:tool-call-result',
         'chat:phase',
         'chat:streaming-vitals',
-        'chat:document-created',
-        'agent:status'
+        'chat:document-created'
       ].forEach((ch) => ipcRenderer.removeAllListeners(ch))
     },
     // Per-conversation subscription that returns an unsubscribe function.
