@@ -1,7 +1,5 @@
 import { PopoverMenu } from '@/components/ui/PopoverMenu'
-import { MenuRow, MenuSeparator, MenuSectionLabel } from '@/components/ui/MenuRow'
-import { useAgentStore } from '@/stores/agent-store'
-import { useSettingsStore } from '@/stores/settings-store'
+import { MenuRow } from '@/components/ui/MenuRow'
 import { useUiStore } from '@/stores/ui-store'
 import { toast } from '@/stores/toast-store'
 
@@ -9,47 +7,6 @@ interface WorkModePopoverProps {
   open: boolean
   onClose: () => void
   anchorRef: React.RefObject<HTMLElement | null>
-}
-
-function SingleAgentGlyph(): React.ReactElement {
-  return (
-    <svg
-      width="14"
-      height="14"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <circle cx="12" cy="12" r="3" />
-      <circle cx="12" cy="12" r="8" />
-    </svg>
-  )
-}
-
-function PipelineGlyph(): React.ReactElement {
-  return (
-    <svg
-      width="14"
-      height="14"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <circle cx="5" cy="12" r="2" />
-      <circle cx="19" cy="12" r="2" />
-      <circle cx="12" cy="12" r="2" />
-      <line x1="7" y1="12" x2="10" y2="12" />
-      <line x1="14" y1="12" x2="17" y2="12" />
-    </svg>
-  )
 }
 
 function FolderGlyph(): React.ReactElement {
@@ -97,24 +54,10 @@ export function WorkModePopover({
   onClose,
   anchorRef
 }: WorkModePopoverProps): React.ReactElement {
-  const mode = useAgentStore((s) => s.mode)
-  const roster = useAgentStore((s) => s.roster)
-  const hydrate = useAgentStore((s) => s.hydrate)
-  const updateSettings = useSettingsStore((s) => s.updateSettings)
+  // 2026-06-10 user direction — the Single/Pipeline mode switch is REMOVED:
+  // the multi-agent pipeline is retired from dispatch and its toggle is gone
+  // everywhere. This popover keeps its workspace affordances only.
   const openWorktreeModal = useUiStore((s) => s.openWorktreeModal)
-
-  const setMode = async (next: 'single' | 'multi') => {
-    if (next === mode) {
-      onClose()
-      return
-    }
-    hydrate(next, roster)
-    await updateSettings({ agentMode: next })
-    onClose()
-    toast.success(
-      next === 'multi' ? 'Pipeline mode enabled' : 'Single agent mode enabled'
-    )
-  }
 
   const pickWorkdir = async () => {
     onClose()
@@ -137,20 +80,6 @@ export function WorkModePopover({
       minWidth={240}
       ariaLabel="Work mode"
     >
-      <MenuSectionLabel>Continue in</MenuSectionLabel>
-      <MenuRow
-        label="Single agent"
-        leading={<SingleAgentGlyph />}
-        selected={mode === 'single'}
-        onSelect={() => void setMode('single')}
-      />
-      <MenuRow
-        label="Pipeline (Planner → Coder → Reviewer)"
-        leading={<PipelineGlyph />}
-        selected={mode === 'multi'}
-        onSelect={() => void setMode('multi')}
-      />
-      <MenuSeparator />
       <MenuRow
         label="Change workdir…"
         leading={<FolderGlyph />}

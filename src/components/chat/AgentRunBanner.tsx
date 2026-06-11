@@ -1,19 +1,12 @@
-import { useAgentStore } from '@/stores/agent-store'
 import { useChatStore } from '@/stores/chat-store'
 import { useSettingsStore } from '@/stores/settings-store'
 import type { AgentRunPhase } from '@/lib/types'
 
-const ROLE_ORDER: Array<'planner' | 'coder' | 'reviewer'> = ['planner', 'coder', 'reviewer']
-
-// SP-7 (Sweet Spot Phase, 2026-06-10) — user-facing labels for the pipeline
-// stages. The raw role ids ('planner'/'coder'/'reviewer') are harness
-// internals; the banner shows what each stage is DOING, matching the
-// plain-English voice of PHASE_LABEL below.
-const ROLE_LABEL: Record<(typeof ROLE_ORDER)[number], string> = {
-  planner: 'Planning',
-  coder: 'Writing code',
-  reviewer: 'Reviewing'
-}
+// 2026-06-10 user direction — the multi-agent stage banner that used to
+// render here (planner → coder → reviewer dots above the input pill) is
+// DELETED, not gated: that dispatch path is retired and its toggle is gone
+// from Settings. What remains is the single-mode run-phase pill — the
+// era-style one-line status ("Reading your message", "Editing", …).
 
 // Plain-English mapping shown in the pill. Mirrored from main-side intent —
 // the labels are user-facing, not technical names. Keep the wording short
@@ -66,54 +59,11 @@ function RunPhasePill({ phase, codingMode }: { phase: AgentRunPhase; codingMode:
 }
 
 export function AgentRunBanner() {
-  const mode = useAgentStore((s) => s.mode)
-  const activeRun = useAgentStore((s) => s.activeRun)
   const runPhase = useChatStore((s) => s.runPhase)
   const codingMode = useSettingsStore((s) => s.settings.agenticCodingMode)
 
-  // Multi-agent mode renders the role pipeline (planner / coder /
-  // reviewer fan-out). Unreachable until the agent store sets `mode` to
-  // 'multi' and `activeRun` receives status events; kept as the rendering
-  // surface for that path.
-  if (mode === 'multi' && activeRun.length > 0) {
-    return (
-      <div className="pointer-events-auto mb-2 flex w-full items-center gap-3 rounded-lg bg-[var(--bg-tertiary)] px-3 py-2 text-[13px]">
-        <span className="font-mono uppercase tracking-wider text-[var(--text-muted)]">Pipeline</span>
-        <div className="flex flex-1 items-center gap-2">
-          {ROLE_ORDER.map((role, idx) => {
-            const entry = activeRun.find((e) => e.role === role)
-            const state = entry?.state ?? 'pending'
-            const dotClass =
-              state === 'running'
-                ? 'bg-[var(--accent)] animate-pulse'
-                : state === 'done'
-                ? 'bg-[var(--success)]'
-                : state === 'error'
-                ? 'bg-[var(--error)]'
-                : 'bg-[var(--text-muted)]/40'
-            return (
-              <div key={role} className="flex items-center gap-1.5">
-                <span className={`inline-block h-2 w-2 rounded-full ${dotClass}`} aria-hidden />
-                <span className="text-[var(--text-secondary)]">
-                  {ROLE_LABEL[role]}
-                  {entry?.model && (
-                    <span className="ml-1 text-[var(--text-muted)]">· {entry.model}</span>
-                  )}
-                </span>
-                {idx < ROLE_ORDER.length - 1 && (
-                  <span className="text-[var(--text-muted)]">→</span>
-                )}
-              </div>
-            )
-          })}
-        </div>
-      </div>
-    )
-  }
-
-  // Single-agent mode: show the run-phase pill while a run is active. The
-  // store nulls runPhase on terminal phases, so this branch unmounts itself
-  // when the model finishes.
+  // Show the run-phase pill while a run is active. The store nulls runPhase
+  // on terminal phases, so this unmounts itself when the model finishes.
   if (runPhase && runPhase !== 'done' && runPhase !== 'error') {
     return <RunPhasePill phase={runPhase} codingMode={codingMode} />
   }

@@ -2,8 +2,7 @@
 import { useModelStore } from '@/stores/model-store'
 import { useSettingsStore } from '@/stores/settings-store'
 import { useAgentStore } from '@/stores/agent-store'
-import { toast } from '@/stores/toast-store'
-import type { AgentMode, AgentRole, AgentRoster } from '@/lib/types'
+import type { AgentRole, AgentRoster } from '@/lib/types'
 
 const ROLE_LABELS: Record<AgentRole, { title: string; blurb: string }> = {
   planner: {
@@ -29,9 +28,7 @@ export function AgentSettings() {
   const loadModels = useModelStore((s) => s.loadModels)
   const settings = useSettingsStore((s) => s.settings)
   const updateSettings = useSettingsStore((s) => s.updateSettings)
-  const agentMode = useAgentStore((s) => s.mode)
   const roster = useAgentStore((s) => s.roster)
-  const setMode = useAgentStore((s) => s.setMode)
   const setRole = useAgentStore((s) => s.setRole)
   const hydrate = useAgentStore((s) => s.hydrate)
 
@@ -40,23 +37,12 @@ export function AgentSettings() {
   }, [models.length, loadModels])
 
   useEffect(() => {
-    // SP-1 (Sweet Spot Phase, 2026-06-10) — `'single'` is the era default,
-    // matching DEFAULT_APP_SETTINGS. Rows with an explicit 'auto' or 'multi'
-    // pass through unchanged.
-    hydrate(settings.agentMode || 'single', settings.agentRoster)
-  }, [settings.agentMode, settings.agentRoster, hydrate])
-
-  const persistMode = async (next: AgentMode) => {
-    setMode(next)
-    await updateSettings({ agentMode: next })
-    const label =
-      next === 'auto'
-        ? 'Auto mode enabled — Lamprey will pick single or multi per turn'
-        : next === 'multi'
-          ? 'Multi-agent mode enabled'
-          : 'Single-model mode enabled'
-    toast.success(label)
-  }
+    // 2026-06-10 user direction — the run-mode toggle (Auto / Single /
+    // Multi) is REMOVED from settings: the pipeline is retired from
+    // dispatch and the settings-read layer coerces stale pins to 'single'.
+    // Hydration pins 'single' unconditionally.
+    hydrate('single', settings.agentRoster)
+  }, [settings.agentRoster, hydrate])
 
   const persistRole = async (role: AgentRole, modelId: string) => {
     setRole(role, modelId)
@@ -69,55 +55,9 @@ export function AgentSettings() {
       <div>
         <h3 className="font-mono text-sm font-semibold text-[var(--text-primary)]">Agent roster</h3>
         <p className="mt-1 text-[13px] leading-relaxed text-[var(--text-muted)]">
-          Lamprey can run as a single chat or as a multi-agent pipeline. In multi-agent mode the Planner,
-          Coder, and Reviewer roles each get their own model - pair DeepSeek V4 Pro on planning with V4
-          Flash on coding for the canonical setup, or assign Gemma / Qwen3 Coder to any role.
+          Assign a model to each of Lamprey's roles. The Co-worker powers the side chat; the
+          remaining slots are legacy and slated for removal.
         </p>
-      </div>
-
-      <div className="rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] p-3">
-        <div className="text-[12px] uppercase tracking-wider text-[var(--text-muted)]">Run mode</div>
-        <div className="mt-2 flex flex-col gap-2 sm:flex-row">
-          <button
-            onClick={() => persistMode('auto')}
-            className={`flex-1 rounded border px-3 py-2 text-left text-xs transition-colors ${
-              agentMode === 'auto'
-                ? 'border-[var(--accent)] bg-[var(--accent-dim)] text-[var(--accent)]'
-                : 'border-[var(--panel-border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-            }`}
-          >
-            <div className="font-mono font-semibold">Auto (recommended)</div>
-            <div className="mt-0.5 text-[12px] text-[var(--text-muted)]">
-              Picks single or multi per turn based on the ask. Short asks stay single.
-            </div>
-          </button>
-          <button
-            onClick={() => persistMode('single')}
-            className={`flex-1 rounded border px-3 py-2 text-left text-xs transition-colors ${
-              agentMode === 'single'
-                ? 'border-[var(--accent)] bg-[var(--accent-dim)] text-[var(--accent)]'
-                : 'border-[var(--panel-border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-            }`}
-          >
-            <div className="font-mono font-semibold">Single model</div>
-            <div className="mt-0.5 text-[12px] text-[var(--text-muted)]">
-              One model answers each turn. Tools + MCP fully active.
-            </div>
-          </button>
-          <button
-            onClick={() => persistMode('multi')}
-            className={`flex-1 rounded border px-3 py-2 text-left text-xs transition-colors ${
-              agentMode === 'multi'
-                ? 'border-[var(--accent)] bg-[var(--accent-dim)] text-[var(--accent)]'
-                : 'border-[var(--panel-border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-            }`}
-          >
-            <div className="font-mono font-semibold">Multi-agent</div>
-            <div className="mt-0.5 text-[12px] text-[var(--text-muted)]">
-              Planner → Coder → Reviewer pipeline, each on its own model.
-            </div>
-          </button>
-        </div>
       </div>
 
       <div className="space-y-2">

@@ -30,7 +30,15 @@ function readSettings() {
   if (!existsSync(settingsPath)) return { ...defaultSettings }
   try {
     const data = JSON.parse(readFileSync(settingsPath, 'utf-8'))
-    return { ...defaultSettings, ...data }
+    const merged = { ...defaultSettings, ...data }
+    // 2026-06-10 user direction — the multi-agent toggle is gone from the
+    // UI and the pipeline is unreachable from dispatch. Stale 'multi' /
+    // 'auto' pins in existing settings.json files are coerced here so every
+    // consumer (renderer hydration, chat dispatch, labels) sees 'single'.
+    // The v0.13.0 lesson: changing defaults alone never reaches an existing
+    // install — coerce, don't hope.
+    merged.agentMode = 'single'
+    return merged
   } catch {
     return { ...defaultSettings }
   }

@@ -713,186 +713,80 @@ describe('runAgentPipeline — failure paths', () => {
 })
 
 describe('resolveAgentDispatch — chat:send dispatch decision', () => {
-  // Pinning the decision tree the chat:send IPC handler runs every turn.
-  // Tests cover the cases that previously needed an Electron-host smoke
-  // test to exercise: single-mode pass-through, multi-mode happy path,
-  // and every fallback-to-single reason.
+  // 2026-06-10 user direction — the multi-agent pipeline is RETIRED from
+  // dispatch. resolveAgentDispatch returns single for EVERY input: fresh
+  // installs, stale 'multi' pins, stale 'auto' pins, --multi flags, long
+  // prompts, phase phrases. The settings-read layer additionally coerces
+  // persisted agentMode to 'single' (electron/ipc/settings.ts). This suite
+  // supersedes the L8 auto-routing + CR-4 playbook locks; the last live
+  // version of those tests is in git history at v0.13.0.
 
   it('returns single when settings JSON is missing', () => {
     expect(resolveAgentDispatch(null)).toEqual({ kind: 'single' })
   })
 
-  it('returns single when agentMode is "single"', () => {
-    const result = resolveAgentDispatch({
-      agentMode: 'single',
-      agentRoster: validRoster
-    })
-    expect(result).toEqual({ kind: 'single' })
-  })
-
-  it('returns single when agentMode is missing or unknown', () => {
+  it('returns single for every persisted agentMode value', () => {
+    expect(resolveAgentDispatch({ agentMode: 'single', agentRoster: validRoster }).kind).toBe(
+      'single'
+    )
     expect(resolveAgentDispatch({}).kind).toBe('single')
     expect(resolveAgentDispatch({ agentMode: 'unknown' }).kind).toBe('single')
     expect(resolveAgentDispatch({ agentMode: 42 }).kind).toBe('single')
   })
 
-  it('returns multi with the validated roster on the happy path', () => {
-    const result = resolveAgentDispatch({
-      agentMode: 'multi',
-      agentRoster: validRoster
-    })
-    expect(result.kind).toBe('multi')
-    if (result.kind === 'multi') {
-      expect(result.roster).toEqual({ planner, coder, reviewer })
-    }
+  it('IGNORES a stale agentMode=multi pin — the playbook root cause can never recur', () => {
+    // Pre-retirement, an explicit 'multi' pin bypassed the router and ran
+    // the pipeline on every turn (the v0.11–v0.13 user-visible torture).
+    // Now the pin is inert even with a fully valid roster.
+    const r = resolveAgentDispatch(
+      { agentMode: 'multi', agentRoster: validRoster },
+      'Fix this typo'
+    )
+    expect(r.kind).toBe('single')
   })
 
-  it('falls back to single (with reason) when agentMode=multi but roster is missing', () => {
-    const result = resolveAgentDispatch({ agentMode: 'multi' })
-    expect(result.kind).toBe('single')
-    if (result.kind === 'single') {
-      expect(result.reason).toBeDefined()
-      expect(result.reason!.toLowerCase()).toContain('missing')
-    }
+  it('IGNORES agentMode=auto and every multi-promoting prompt shape', () => {
+    const longText = 'word '.repeat(200) // 1000 chars — old long-prompt promotion
+    expect(
+      resolveAgentDispatch({ agentMode: 'auto', agentRoster: validRoster }, longText).kind
+    ).toBe('single')
+    expect(
+      resolveAgentDispatch(
+        { agentMode: 'auto', agentRoster: validRoster },
+        'STS the error-boundary phase'
+      ).kind
+    ).toBe('single')
+    expect(
+      resolveAgentDispatch({ agentMode: 'auto', agentRoster: validRoster }, 'Fix this --multi')
+        .kind
+    ).toBe('single')
   })
 
-  it('falls back to single (with reason) when a roster role uses an unknown model id', () => {
-    const result = resolveAgentDispatch({
-      agentMode: 'multi',
-      agentRoster: { ...validRoster, coder: 'totally-fake-id' }
-    })
-    expect(result.kind).toBe('single')
-    if (result.kind === 'single') {
-      expect(result.reason).toContain('coder')
-      expect(result.reason).toContain('totally-fake-id')
-    }
-  })
-
-  it('falls back to single (with reason) when a roster role is the wrong type', () => {
-    const result = resolveAgentDispatch({
-      agentMode: 'multi',
-      agentRoster: { ...validRoster, planner: 42 }
-    })
-    expect(result.kind).toBe('single')
-    if (result.kind === 'single') {
-      expect(result.reason).toContain('planner')
-    }
-  })
-
-  it('SINGLE-mode dispatch carries no roster — proves the chat:send branch will skip the pipeline (no agent:status will be emitted)', () => {
-    // The chat:send handler does:
-    //     if (dispatch.kind === 'multi') runAgentPipeline(...)
-    //     else runChatRound(...)   ← single path, never emits agent:status
-    // This test pins the discriminant so a future refactor that adds a
-    // 'pipeline-lite' kind has to update the chat:send switch too.
-    const single = resolveAgentDispatch({ agentMode: 'single', agentRoster: validRoster })
+  it('single decisions never carry a roster — chat:send always takes the single branch', () => {
+    const single = resolveAgentDispatch({ agentMode: 'multi', agentRoster: validRoster })
     expect(single.kind).toBe('single')
     // @ts-expect-error — single decisions never carry a roster
     expect(single.roster).toBeUndefined()
   })
 
-  // L8 (Lampshade Phase, 2026-06-09) — `'auto'` mode resolves per-turn via
-  // routeAgentMode. The decision tree is: short asks → single, long /
-  // multi-deliverable / phase-shaped → multi (when the roster is valid),
-  // or → single with a routeReason explaining why the auto-promotion fell
-  // back (e.g. invalid roster).
-  it('AUTO + short userText → single (with routeReason)', () => {
-    const r = resolveAgentDispatch(
-      { agentMode: 'auto', agentRoster: validRoster },
-      'What does the keychain do?'
-    )
-    expect(r.kind).toBe('single')
-    expect(r.routeReason).toMatch(/short/)
-  })
-
-  it('AUTO + long userText → multi with the validated roster', () => {
-    const longText = 'word '.repeat(200) // 1000 chars > 800 threshold
-    const r = resolveAgentDispatch({ agentMode: 'auto', agentRoster: validRoster }, longText)
-    expect(r.kind).toBe('multi')
-    expect(r.routeReason).toMatch(/long prompt/)
-    if (r.kind === 'multi') expect(r.roster).toEqual(validRoster)
-  })
-
-  it('AUTO + STS phrase → multi (phase-shaped ask)', () => {
-    const r = resolveAgentDispatch(
-      { agentMode: 'auto', agentRoster: validRoster },
-      'STS the error-boundary phase'
-    )
-    expect(r.kind).toBe('multi')
-    expect(r.routeReason).toMatch(/STS|phase/i)
-  })
-
-  it('AUTO + multi-promoting text but invalid roster → single (graceful fallback with routeReason)', () => {
-    const longText = 'STS the error-boundary phase'
-    const r = resolveAgentDispatch({ agentMode: 'auto' /* no roster */ }, longText)
-    expect(r.kind).toBe('single')
-    if (r.kind === 'single') {
-      expect(r.routeReason).toMatch(/auto→multi/)
-      expect(r.reason).toMatch(/roster/i)
-    }
-  })
-
-  it('AUTO + explicit --single flag in text → single, even on long text', () => {
-    const longText = '--single ' + 'word '.repeat(200)
-    const r = resolveAgentDispatch({ agentMode: 'auto', agentRoster: validRoster }, longText)
-    expect(r.kind).toBe('single')
-    expect(r.routeReason).toMatch(/--single/)
-  })
-
-  it('AUTO + explicit --multi flag in short text → multi', () => {
-    const r = resolveAgentDispatch(
-      { agentMode: 'auto', agentRoster: validRoster },
-      'Fix this --multi'
-    )
-    expect(r.kind).toBe('multi')
-    expect(r.routeReason).toMatch(/--multi/)
-  })
-
-  it('AUTO with no userText defaults to single (degenerate case is harmless)', () => {
-    const r = resolveAgentDispatch({ agentMode: 'auto', agentRoster: validRoster })
-    expect(r.kind).toBe('single')
-  })
-
-  // CR-4 (Cogency Restore Phase, 2026-06-09) — locks the LL_SMOKE_PLAYBOOK
-  // asks to the resolved dispatch under agentMode='auto'. The router
-  // (agent-router.ts) already routes these correctly per CR-3 telemetry; the
-  // observed v0.11.0/v0.11.1 multi-routing in the user's playbook runs was
-  // because the user's settings.agentMode was NOT 'auto' (likely 'multi').
-  // No rule tuning was needed — but lock the auto-mode behavior here so a
-  // future regression on the heuristic is caught.
-  describe('CR-4 LL_SMOKE_PLAYBOOK dispatch (auto mode)', () => {
-    const asks: Array<{ ask: string; prompt: string; kind: 'single' | 'multi' }> = [
-      { ask: 'Ask 2', prompt: 'Rename runChatRound to dispatchSingleAgentTurn in electron/ipc/chat.ts', kind: 'single' },
-      { ask: 'Ask 3', prompt: "Fix the typo 'Lampshde' in the README", kind: 'single' },
-      { ask: 'Ask 4', prompt: 'Why is the build failing?', kind: 'single' },
-      { ask: 'Ask 5', prompt: 'Add a button to the chat header that exports the transcript as markdown', kind: 'single' },
-      { ask: 'Ask 6', prompt: 'Refactor the chat store to use Zustand 5 slices across every consuming component', kind: 'multi' },
-      { ask: 'Ask 7', prompt: 'STS the new error-boundary phase', kind: 'multi' },
-      { ask: 'Ask 8', prompt: 'Show me the P-SPR for adding telemetry', kind: 'multi' }
+  describe('LL_SMOKE_PLAYBOOK asks — ALL single now (supersedes CR-4 auto-mode locks)', () => {
+    const asks: Array<{ ask: string; prompt: string }> = [
+      { ask: 'Ask 2', prompt: 'Rename runChatRound to dispatchSingleAgentTurn in electron/ipc/chat.ts' },
+      { ask: 'Ask 3', prompt: "Fix the typo 'Lampshde' in the README" },
+      { ask: 'Ask 4', prompt: 'Why is the build failing?' },
+      { ask: 'Ask 5', prompt: 'Add a button to the chat header that exports the transcript as markdown' },
+      { ask: 'Ask 6', prompt: 'Refactor the chat store to use Zustand 5 slices across every consuming component' },
+      { ask: 'Ask 7', prompt: 'STS the new error-boundary phase' },
+      { ask: 'Ask 8', prompt: 'Show me the P-SPR for adding telemetry' }
     ]
-    for (const { ask, prompt, kind } of asks) {
-      it(`${ask} → ${kind} under agentMode=auto`, () => {
-        const r = resolveAgentDispatch(
-          { agentMode: 'auto', agentRoster: validRoster },
-          prompt
-        )
-        expect(r.kind).toBe(kind)
+    for (const { ask, prompt } of asks) {
+      it(`${ask} → single regardless of agentMode`, () => {
+        for (const agentMode of ['single', 'multi', 'auto', undefined]) {
+          const r = resolveAgentDispatch({ agentMode, agentRoster: validRoster }, prompt)
+          expect(r.kind).toBe('single')
+        }
       })
     }
-  })
-
-  // CR-4 — pins the dispatch-layer observation: agentMode='multi' BYPASSES
-  // the router entirely. The user's playbook runs went multi because of this
-  // bypass, not because of a router miss. If a future change wires the
-  // router into the explicit-multi path, this test breaks and forces a
-  // deliberate decision.
-  it('CR-4: agentMode=multi BYPASSES routeAgentMode (user-visible playbook root cause)', () => {
-    const shortAskThatRouterWouldSingle = 'Fix this typo'
-    const r = resolveAgentDispatch(
-      { agentMode: 'multi', agentRoster: validRoster },
-      shortAskThatRouterWouldSingle
-    )
-    expect(r.kind).toBe('multi')
   })
 })
 

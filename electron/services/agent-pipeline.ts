@@ -23,7 +23,9 @@ import {
 import { trace } from './debug-trace'
 // L8 (Lampshade Phase, 2026-06-09) — resolveAgentDispatch consults the
 // per-turn routing heuristic when agentMode === 'auto'.
-import { routeAgentMode } from './agent-router'
+// 2026-06-10 — routeAgentMode import removed with the dispatch retirement;
+// the router module survives untouched (pure, tested) until the Unburdening
+// Phase decides its fate.
 // CR-3 (Cogency Restore Phase, 2026-06-09) — record per-turn router
 // decisions in an in-memory ring buffer so the /debug surface can show
 // matched rules. Also lets us label non-auto dispatches with an explicit
@@ -199,78 +201,35 @@ export type AgentDispatchDecision =
 
 export function resolveAgentDispatch(
   settingsRaw: Record<string, unknown> | null,
-  // L8 — userText is only consulted when agentMode === 'auto'. Pass an
-  // empty string for explicit 'single' / 'multi' modes (no allocation).
   userText: string = '',
   // CR-3 — when present, attached to the router-telemetry entry so the
-  // /debug view can correlate decisions back to a conversation.
+  // After action view can correlate decisions back to a conversation.
   conversationId?: string
 ): AgentDispatchDecision {
+  // 2026-06-10 user direction — the multi-agent pipeline is RETIRED from
+  // dispatch. Lamprey runs single-agent, period: the Opus 4.5-era product
+  // never fanned a turn out to a planner/coder/reviewer chain, and the mode
+  // toggle is gone from Settings and the work-mode popover. Stale
+  // `agentMode: 'multi' | 'auto'` pins in existing settings.json files are
+  // deliberately IGNORED here (and coerced to 'single' at the settings-read
+  // layer) so no existing install stays on the old behavior — the v0.13.0
+  // lesson was that defaults-only changes never reach the one user who
+  // matters. The L8 router and the pipeline below are retired in place
+  // pending the Unburdening Phase excision; git history at v0.13.0 holds
+  // the last live version of the auto-routing dispatch.
   if (!settingsRaw) return { kind: 'single' }
-  const agentMode = settingsRaw.agentMode
-
-  // L8 — 'auto' mode delegates to the per-turn heuristic.
-  if (agentMode === 'auto') {
-    const decision = routeAgentMode(userText)
-    // CR-3 — record the heuristic's matched rule for diagnostics.
-    recordRouterDecision({
-      promptText: userText,
-      route: decision.mode,
-      matchedRule: decision.matchedRule,
-      reason: decision.reason,
-      conversationId
-    })
-    if (decision.mode === 'single') {
-      return { kind: 'single', routeReason: decision.reason }
-    }
-    // Auto promoted to multi — still need a valid roster, else fall through.
-    const validation = validateRoster(settingsRaw.agentRoster)
-    if (!validation.ok || !validation.value) {
-      return {
-        kind: 'single',
-        reason: validation.error ?? 'roster validation failed',
-        routeReason: `auto→multi (${decision.reason}), but ${validation.error ?? 'roster invalid'}`
-      }
-    }
-    return { kind: 'multi', roster: validation.value, routeReason: decision.reason }
-  }
-
-  // CR-3 — explicit single/multi modes get a synthetic telemetry entry so the
-  // /debug view never shows a turn with no decision (which would look like
-  // routing skipped the layer entirely). The matchedRule names the user's
-  // settings, not the heuristic.
-  if (agentMode !== 'multi') {
-    recordRouterDecision({
-      promptText: userText,
-      route: 'single',
-      matchedRule: 'default_single',
-      reason: 'agentMode=single (settings-pinned)',
-      conversationId
-    })
-    return { kind: 'single' }
-  }
-  const validation = validateRoster(settingsRaw.agentRoster)
-  if (!validation.ok || !validation.value) {
-    recordRouterDecision({
-      promptText: userText,
-      route: 'single',
-      matchedRule: 'default_single',
-      reason: `agentMode=multi but ${validation.error ?? 'roster invalid'} — degraded to single`,
-      conversationId
-    })
-    return {
-      kind: 'single',
-      reason: validation.error ?? 'roster validation failed'
-    }
-  }
+  const pinned = settingsRaw.agentMode
   recordRouterDecision({
     promptText: userText,
-    route: 'multi',
-    matchedRule: 'explicit_flag',
-    reason: 'agentMode=multi (settings-pinned)',
+    route: 'single',
+    matchedRule: 'default_single',
+    reason:
+      pinned === 'multi' || pinned === 'auto'
+        ? `single — stale agentMode='${pinned}' pin ignored (pipeline retired 2026-06-10)`
+        : 'single (pipeline retired)',
     conversationId
   })
-  return { kind: 'multi', roster: validation.value }
+  return { kind: 'single' }
 }
 
 // Conservative roster validator. We don't fall through `resolveModel`

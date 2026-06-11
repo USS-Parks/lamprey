@@ -15,14 +15,32 @@ const messageBubble = readFileSync(join(here, 'MessageBubble.tsx'), 'utf-8')
 const proofGateBanner = readFileSync(join(here, 'ProofGateBanner.tsx'), 'utf-8')
 
 describe('SP-7 era chrome — no raw harness internals in user copy', () => {
-  it('AgentRunBanner renders plain-English stage labels, not raw role ids', () => {
-    expect(agentRunBanner).toContain('ROLE_LABEL')
-    expect(agentRunBanner).toContain("planner: 'Planning'")
-    expect(agentRunBanner).toContain("coder: 'Writing code'")
-    expect(agentRunBanner).toContain("reviewer: 'Reviewing'")
-    // The pipeline row must render the label, never the bare role id.
-    expect(agentRunBanner).toMatch(/\{ROLE_LABEL\[role\]\}/)
-    expect(agentRunBanner).not.toMatch(/>\s*\{role\}/)
+  it('AgentRunBanner has NO pipeline branch at all (deleted 2026-06-10 per user direction)', () => {
+    // The multi-agent "Pipeline" banner (planner → coder → reviewer stage
+    // dots above the input pill) is deleted, not gated. Only the single-mode
+    // run-phase pill remains.
+    expect(agentRunBanner).not.toContain('Pipeline')
+    expect(agentRunBanner).not.toContain('ROLE_ORDER')
+    expect(agentRunBanner).not.toContain('activeRun')
+    expect(agentRunBanner).not.toContain('useAgentStore')
+    expect(agentRunBanner).toContain('RunPhasePill')
+  })
+
+  it('the mode toggle is gone from Settings and the work-mode popover', () => {
+    const agentSettings = readFileSync(
+      join(here, '..', 'settings', 'AgentSettings.tsx'),
+      'utf-8'
+    )
+    const workModePopover = readFileSync(
+      join(here, '..', 'workspace', 'WorkModePopover.tsx'),
+      'utf-8'
+    )
+    expect(agentSettings).not.toContain('persistMode')
+    expect(agentSettings).not.toContain('Multi-agent')
+    expect(agentSettings).not.toContain("persistMode('auto')")
+    expect(workModePopover).not.toContain('Pipeline (Planner')
+    expect(workModePopover).not.toContain("setMode('multi')")
+    expect(workModePopover).not.toContain('agentMode')
   })
 
   it('MessageBubble no longer says "Planner (orphan)" or "planner ·"', () => {
