@@ -4,6 +4,9 @@
 // transitively imports skill-loader / electron-toolkit / providers, none
 // of which initialize cleanly under headless vitest.
 
+// UB-7 (Unburdening Phase, 2026-06-10) — the `agentMode` request field died
+// with the pipeline; unknown fields (including stale agentMode from old
+// callers) are simply ignored.
 export type ChatSendValidation =
   | {
       ok: true
@@ -12,7 +15,6 @@ export type ChatSendValidation =
         model: string
         conversationId: string
         activeSkillIds: string[]
-        requestedAgentMode: 'single' | 'multi' | undefined
       }
     }
   | { ok: false; error: string }
@@ -44,10 +46,6 @@ export function validateChatSendRequest(raw: unknown): ChatSendValidation {
         (s): s is string => typeof s === 'string' && s.length > 0
       )
     : []
-  const requestedAgentMode =
-    req.agentMode === 'single' || req.agentMode === 'multi'
-      ? req.agentMode
-      : undefined
   return {
     ok: true,
     value: {
@@ -55,8 +53,7 @@ export function validateChatSendRequest(raw: unknown): ChatSendValidation {
       model: req.model,
       conversationId:
         typeof req.conversationId === 'string' ? req.conversationId : 'new',
-      activeSkillIds,
-      requestedAgentMode
+      activeSkillIds
     }
   }
 }

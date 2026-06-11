@@ -149,7 +149,6 @@ function writeLocal(key: string, value: string): void {
 export type SettingsTabId =
   | 'general'
   | 'models'
-  | 'agents'
   | 'agenticCoding'
   | 'api'
   | 'github'

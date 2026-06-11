@@ -25,18 +25,12 @@ describe('SP-7 era chrome — no raw harness internals in user copy', () => {
     expect(agentRunBanner).toContain('RunPhasePill')
   })
 
-  it('the mode toggle is gone from Settings and the work-mode popover', () => {
-    const agentSettings = readFileSync(
-      join(here, '..', 'settings', 'AgentSettings.tsx'),
-      'utf-8'
-    )
+  it('UB-7: the Agents settings tab is deleted; the work-mode popover has no mode switch', () => {
+    expect(existsSync(join(here, '..', 'settings', 'AgentSettings.tsx'))).toBe(false)
     const workModePopover = readFileSync(
       join(here, '..', 'workspace', 'WorkModePopover.tsx'),
       'utf-8'
     )
-    expect(agentSettings).not.toContain('persistMode')
-    expect(agentSettings).not.toContain('Multi-agent')
-    expect(agentSettings).not.toContain("persistMode('auto')")
     expect(workModePopover).not.toContain('Pipeline (Planner')
     expect(workModePopover).not.toContain("setMode('multi')")
     expect(workModePopover).not.toContain('agentMode')

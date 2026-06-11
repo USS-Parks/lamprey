@@ -132,8 +132,7 @@ export function SideChatPanel() {
       conversationId: convId,
       model: activeModel,
       content,
-      activeSkillIds: [],
-      agentMode: 'single'
+      activeSkillIds: []
     })
     if (!res?.success) {
       setError(res?.error ?? 'send failed')

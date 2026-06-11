@@ -1,7 +1,10 @@
 import { useEffect, useMemo } from 'react'
 import { useSettingsStore } from '@/stores/settings-store'
 import { useSkillsStore } from '@/stores/skills-store'
-import type { AgenticCodingComposerMode } from '@/lib/types'
+
+// UB-7 (Unburdening Phase, 2026-06-10) — the final-response composer option
+// block died with the composer (UB-5). Agentic coding mode is exactly two
+// things now: the coding contract role + the auto-activated skill set.
 
 const BUNDLED_WORKFLOW_SKILL_IDS = new Set([
   'context',
@@ -12,28 +15,6 @@ const BUNDLED_WORKFLOW_SKILL_IDS = new Set([
   'review',
   'verify'
 ])
-
-const COMPOSER_OPTIONS: Array<{
-  id: AgenticCodingComposerMode
-  label: string
-  description: string
-}> = [
-  {
-    id: 'auto',
-    label: 'Auto (recommended)',
-    description: 'Compose only when at least one tool round ran. Matches the default Lamprey behavior.'
-  },
-  {
-    id: 'always',
-    label: 'Always',
-    description: 'Compose every turn, including pure chat. Helps weaker models structure their final answer.'
-  },
-  {
-    id: 'never',
-    label: 'Never',
-    description: 'Skip the composer entirely. The model\'s draft is the final reply.'
-  }
-]
 
 export function AgenticCodingSettings() {
   const settings = useSettingsStore((s) => s.settings)
@@ -133,34 +114,6 @@ export function AgenticCodingSettings() {
             ))}
           </div>
         )}
-      </section>
-
-      <section className="space-y-3">
-        <h4 className="font-mono text-[13px] uppercase tracking-wider text-[var(--text-muted)]">
-          Final-response composer
-        </h4>
-        <div className="space-y-1.5">
-          {COMPOSER_OPTIONS.map((opt) => (
-            <label
-              key={opt.id}
-              className="flex cursor-pointer items-start gap-3 rounded border border-[var(--panel-border)] bg-[var(--bg-primary)] px-3 py-2 text-xs text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-tertiary)]"
-            >
-              <input
-                type="radio"
-                name="agenticCodingComposer"
-                checked={settings.agenticCodingComposer === opt.id}
-                onChange={() => updateSettings({ agenticCodingComposer: opt.id })}
-                className="mt-0.5 h-3.5 w-3.5 accent-[var(--accent)]"
-              />
-              <span className="flex-1">
-                <span className="block font-medium text-[var(--text-primary)]">{opt.label}</span>
-                <span className="mt-1 block text-[13px] leading-relaxed text-[var(--text-muted)]">
-                  {opt.description}
-                </span>
-              </span>
-            </label>
-          ))}
-        </div>
       </section>
     </div>
   )

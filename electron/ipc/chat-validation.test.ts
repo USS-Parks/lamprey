@@ -73,7 +73,6 @@ describe('validateChatSendRequest', () => {
       expect(r.value.model).toBe('m')
       expect(r.value.conversationId).toBe('new')
       expect(r.value.activeSkillIds).toEqual([])
-      expect(r.value.requestedAgentMode).toBeUndefined()
     }
   })
 
@@ -89,29 +88,16 @@ describe('validateChatSendRequest', () => {
     }
   })
 
-  it('accepts agentMode "single" / "multi" and drops anything else', () => {
-    expect(
-      (validateChatSendRequest({
-        content: 'hi',
-        model: 'm',
-        agentMode: 'single'
-      }) as { ok: true; value: { requestedAgentMode: string } }).value.requestedAgentMode
-    ).toBe('single')
-    expect(
-      (validateChatSendRequest({
-        content: 'hi',
-        model: 'm',
-        agentMode: 'multi'
-      }) as { ok: true; value: { requestedAgentMode: string } }).value.requestedAgentMode
-    ).toBe('multi')
-    expect(
-      (validateChatSendRequest({
-        content: 'hi',
-        model: 'm',
-        agentMode: 'bogus'
-      }) as { ok: true; value: { requestedAgentMode: string | undefined } }).value
-        .requestedAgentMode
-    ).toBeUndefined()
+  it('UB-7: a stale agentMode field from old callers is ignored, not rejected', () => {
+    const r = validateChatSendRequest({
+      content: 'hi',
+      model: 'm',
+      agentMode: 'multi'
+    })
+    expect(r.ok).toBe(true)
+    if (r.ok) {
+      expect('requestedAgentMode' in r.value).toBe(false)
+    }
   })
 
   it('passes through a real conversationId verbatim', () => {

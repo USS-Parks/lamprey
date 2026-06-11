@@ -3,7 +3,6 @@ import { GeneralSettings } from './GeneralSettings'
 import { AppearanceSettings } from './AppearanceSettings'
 import { ModelSettings } from './ModelSettings'
 import { ApiKeySettings } from './ApiKeySettings'
-import { AgentSettings } from './AgentSettings'
 import { AgenticCodingSettings } from './AgenticCodingSettings'
 import { HooksSettings } from './HooksSettings'
 import { AutomationsSettings } from './AutomationsSettings'
@@ -30,7 +29,6 @@ interface SettingsDialogProps {
 const TABS = [
   { id: 'general', label: 'General' },
   { id: 'models', label: 'Models' },
-  { id: 'agents', label: 'Agents' },
   { id: 'agenticCoding', label: 'Coding Mode' },
   { id: 'api', label: 'API Keys' },
   { id: 'github', label: 'GitHub' },
@@ -104,7 +102,6 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
           <div className="flex-1 overflow-y-auto p-4">
             {activeTab === 'general' && <GeneralSettings />}
             {activeTab === 'models' && <ModelSettings />}
-            {activeTab === 'agents' && <AgentSettings />}
             {activeTab === 'agenticCoding' && <AgenticCodingSettings />}
             {activeTab === 'api' && <ApiKeySettings />}
             {activeTab === 'github' && <GitHubSettings />}

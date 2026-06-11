@@ -213,7 +213,7 @@ export function registerChatHandlers(): void {
     if (!validation.ok) {
       return { success: false, error: validation.error }
     }
-    const { content: rawContent, model, activeSkillIds, requestedAgentMode } = validation.value
+    const { content: rawContent, model, activeSkillIds } = validation.value
     // D3 — the prompt body the rest of the handler sees may have a
     // /research or --no-research prefix stripped off it. The actual
     // routing decision is made below before any model dispatch.
@@ -497,8 +497,6 @@ export function registerChatHandlers(): void {
       // anymore. The multi-agent pipeline (Prompt 11 → L8 → CR-2) is excised;
       // every turn is one model with its full tools. Git history at v0.13.0
       // holds the last live pipeline.
-      void requestedAgentMode
-
       // UB-4 (Unburdening Phase, 2026-06-10) — the HY5/CR-5 rigor resolution
       // that ran here (proof-gate scoping per turn) is excised with the
       // proof machinery.

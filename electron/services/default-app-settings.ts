@@ -24,6 +24,10 @@
 //   toolSurface 'full'  — the model gets its full tool set every turn, like
 //                         the era product. 'lazy' remains the MCP-heavy opt-in.
 
+// UB-7 (Unburdening Phase, 2026-06-10) — `agentMode`, `agentRoster`,
+// `proofGate`, and `agenticCodingComposer` retired with the pipeline, proof
+// machinery, and composer excisions. Stale keys in existing settings.json
+// files are inert: nothing reads them.
 export interface DefaultAppSettings {
   theme: 'dark'
   themePreset: string
@@ -37,13 +41,9 @@ export interface DefaultAppSettings {
   aiGeneratedTitles: boolean
   modelConfig: Record<string, unknown>
   customModels: unknown[]
-  agentMode: 'single' | 'multi' | 'auto'
-  agentRoster: Record<string, string>
   toolSurface: 'lazy' | 'full'
-  proofGate: 'rigor' | 'always' | 'off'
   agenticCodingMode: boolean
   agenticCodingSkills: string[]
-  agenticCodingComposer: 'auto' | 'always' | 'never'
   snipEnabled: boolean
   snipVerbose: boolean
   safeSeedLength: number
@@ -63,18 +63,9 @@ export const DEFAULT_APP_SETTINGS: DefaultAppSettings = {
   aiGeneratedTitles: false,
   modelConfig: {},
   customModels: [],
-  agentMode: 'single',
-  agentRoster: {
-    planner: 'deepseek-v4-pro',
-    coder: 'deepseek-v4-flash',
-    reviewer: 'deepseek-v4-pro',
-    coworker: 'qwen3-coder-plus'
-  },
   toolSurface: 'full',
-  proofGate: 'off',
   agenticCodingMode: false,
   agenticCodingSkills: ['plan', 'context', 'verify'],
-  agenticCodingComposer: 'auto',
   snipEnabled: true,
   snipVerbose: false,
   safeSeedLength: 8192,

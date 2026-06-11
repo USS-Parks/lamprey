@@ -7,7 +7,6 @@ const api = {
       model: string
       content: string
       activeSkillIds: string[]
-      agentMode?: 'single' | 'multi'
     }) => ipcRenderer.invoke('chat:send', request),
     cancel: (conversationId: string) => ipcRenderer.invoke('chat:cancel', conversationId),
     generateTitle: (content: string) => ipcRenderer.invoke('chat:generateTitle', content),

@@ -141,24 +141,9 @@ export interface DocumentCreatedPayload {
   }
 }
 
-// Prompt 11: agent pipeline status. One emit per stage transition during a
-// multi-agent run (planner / coder / reviewer). The renderer's agent-store
-// records these into `activeRun`; AgentRunBanner renders them.
-//
-// Single-mode chat does NOT emit on this channel — agent:status is the
-// exclusive signal that the model is being driven by the Planner→Coder→
-// Reviewer pipeline rather than the single-pass loop. Treat the absence of
-// agent:status events as proof that pipeline orchestration did not run.
-export type AgentPipelineRole = 'planner' | 'coder' | 'reviewer' | 'coworker'
-export type AgentPipelineState = 'running' | 'done' | 'error'
-
-export interface AgentStatusPayload {
-  conversationId: string
-  role: AgentPipelineRole
-  model: string
-  state: AgentPipelineState
-  output?: string
-}
+// UB-7 (Unburdening Phase, 2026-06-10) — the Prompt-11 `agent:status`
+// pipeline channel (AgentPipelineRole / AgentStatusPayload) died with the
+// multi-agent pipeline. No producers, no listeners.
 
 /** Track 2 / C3 — plan-mode toggle event. Fires whenever the per-conversation
  *  plan_mode_active flag flips via the `enter_plan_mode` / `exit_plan_mode`
@@ -270,7 +255,6 @@ export interface ChatEventMap {
   'tasks:spawned': TaskSpawnedPayload
   'memory:added': MemoryAddedPayload
   'chat:document-created': DocumentCreatedPayload
-  'agent:status': AgentStatusPayload
   'research:progress': ResearchProgressPayload
   'research:completed': ResearchCompletedPayload
   'research:failed': ResearchFailedPayload

@@ -1,8 +1,7 @@
 import { useEffect } from 'react'
 import { useChatStore } from '@/stores/chat-store'
-import { useAgentStore } from '@/stores/agent-store'
 import { usePlanStore } from '@/stores/plan-store'
-import type { AgentRunPhase, AgentStatusEvent, PlanSnapshot } from '@/lib/types'
+import type { AgentRunPhase, PlanSnapshot } from '@/lib/types'
 
 export function useChat(): void {
   useEffect(() => {

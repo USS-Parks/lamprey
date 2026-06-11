@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
 import { useUiStore } from '@/stores/ui-store'
-import { useAgentStore } from '@/stores/agent-store'
 import { useEnvironment } from '@/hooks/useEnvironment'
 import { useSources } from '@/hooks/useSources'
 import { usePrefersReducedMotion } from '@/hooks/usePrefersReducedMotion'

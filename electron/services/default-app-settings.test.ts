@@ -39,17 +39,21 @@ function expectRendererDefault(key: string, valueText: string): void {
 }
 
 describe('SP-1 defaults parity — canonical vs renderer literal', () => {
-  it('era keys match the §4 decision register', () => {
-    expect(DEFAULT_APP_SETTINGS.agentMode).toBe('single')
-    expect(DEFAULT_APP_SETTINGS.proofGate).toBe('off')
+  it('era keys match the decision registers (SP-1 + UB-7)', () => {
     expect(DEFAULT_APP_SETTINGS.toolSurface).toBe('full')
-    expectRendererDefault('agentMode', "'single'")
-    expectRendererDefault('proofGate', "'off'")
     expectRendererDefault('toolSurface', "'full'")
   })
 
-  it('renderer no longer carries the L8 auto default (D1 regression lock)', () => {
-    expect(rendererSource).not.toMatch(/agentMode:\s*'auto'/)
+  it('UB-7: retired keys are gone from BOTH defaults (absence locks)', () => {
+    const canonical = DEFAULT_APP_SETTINGS as unknown as Record<string, unknown>
+    expect(canonical.agentMode).toBeUndefined()
+    expect(canonical.agentRoster).toBeUndefined()
+    expect(canonical.proofGate).toBeUndefined()
+    expect(canonical.agenticCodingComposer).toBeUndefined()
+    expect(rendererSource).not.toMatch(/\bagentMode:/)
+    expect(rendererSource).not.toMatch(/\bagentRoster:/)
+    expect(rendererSource).not.toMatch(/\bproofGate:/)
+    expect(rendererSource).not.toMatch(/\bagenticCodingComposer:/)
   })
 
   it('scalar defaults match', () => {
@@ -62,7 +66,6 @@ describe('SP-1 defaults parity — canonical vs renderer literal', () => {
     expectRendererDefault('autoCheckUpdates', String(DEFAULT_APP_SETTINGS.autoCheckUpdates))
     expectRendererDefault('aiGeneratedTitles', String(DEFAULT_APP_SETTINGS.aiGeneratedTitles))
     expectRendererDefault('agenticCodingMode', String(DEFAULT_APP_SETTINGS.agenticCodingMode))
-    expectRendererDefault('agenticCodingComposer', `'${DEFAULT_APP_SETTINGS.agenticCodingComposer}'`)
     expectRendererDefault('snipEnabled', String(DEFAULT_APP_SETTINGS.snipEnabled))
     expectRendererDefault('snipVerbose', String(DEFAULT_APP_SETTINGS.snipVerbose))
     expectRendererDefault('safeSeedLength', String(DEFAULT_APP_SETTINGS.safeSeedLength))
@@ -70,12 +73,6 @@ describe('SP-1 defaults parity — canonical vs renderer literal', () => {
       'includePastReasoningInContext',
       String(DEFAULT_APP_SETTINGS.includePastReasoningInContext)
     )
-  })
-
-  it('agent roster matches role-for-role', () => {
-    for (const [role, model] of Object.entries(DEFAULT_APP_SETTINGS.agentRoster)) {
-      expectRendererDefault(role, `'${model}'`)
-    }
   })
 
   it('agentic coding skills match', () => {

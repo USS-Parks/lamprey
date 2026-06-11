@@ -21,7 +21,6 @@ import { FloatingEnvironmentCard } from '@/components/workspace/FloatingEnvironm
 import { useChatStore } from '@/stores/chat-store'
 import { useModelStore } from '@/stores/model-store'
 import { useSettingsStore } from '@/stores/settings-store'
-import { useAgentStore } from '@/stores/agent-store'
 import { usePlanStore } from '@/stores/plan-store'
 import { useProvidersStore, type ProviderEntry } from '@/stores/providers-store'
 import { useUiStore, RIGHT_PANEL_BOUNDS } from '@/stores/ui-store'
@@ -58,7 +57,6 @@ function App(): React.ReactElement {
   const loadConversations = useChatStore((s) => s.loadConversations)
   const loadModels = useModelStore((s) => s.loadModels)
   const loadSettings = useSettingsStore((s) => s.loadSettings)
-  const hydrateAgents = useAgentStore((s) => s.hydrate)
   const settingsOpen = useUiStore((s) => s.settingsOpen)
   const closeSettings = useUiStore((s) => s.closeSettings)
   const openSettings = useUiStore((s) => s.openSettings)
@@ -371,8 +369,6 @@ function App(): React.ReactElement {
         setNeedsApiKey(fallback.success ? !fallback.data : true)
       }
       await Promise.all([loadConversations(), loadModels(), loadSettings()])
-      const s = useSettingsStore.getState().settings
-      hydrateAgents(s.agentRoster)
     }
     init()
   }, [])

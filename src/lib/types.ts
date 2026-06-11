@@ -275,33 +275,13 @@ export interface ModelInfo {
   description?: string
 }
 
-export type AgentRole = 'planner' | 'coder' | 'reviewer' | 'coworker'
-// L8 (Lampshade Phase, 2026-06-09) — `'auto'` joins the union as the new
-// default mode. Auto routes per-turn via `routeAgentMode` in
-// `electron/services/agent-router.ts` (pure heuristic, no LLM call): short
-// asks dispatch through `runChatRound` (single), long / multi-deliverable
-// / build-from-scratch / multi-file / phase-shaped asks dispatch through
-// `runAgentPipeline` (multi). The two manual modes stay available so power
-// users can override the heuristic.
-export type AgentMode = 'auto' | 'single' | 'multi'
+// UB-7 (Unburdening Phase, 2026-06-10) — AgentRole/AgentMode/AgentRoster/
+// AgentStatusEvent died with the multi-agent pipeline, its router, and its
+// roster. The model-callable multi_agent_run tool keeps its own role enum
+// main-side.
 
 /** HY2 — model tool-surface presentation mode. */
 export type ToolSurfaceMode = 'lazy' | 'full'
-
-export interface AgentRoster {
-  planner: string
-  coder: string
-  reviewer: string
-  coworker: string
-}
-
-export interface AgentStatusEvent {
-  conversationId: string
-  role: AgentRole
-  model: string
-  state: 'running' | 'done' | 'error'
-  output?: string
-}
 
 export type ThemePresetId =
   | 'lamprey-default'
@@ -359,7 +339,6 @@ export interface WindowBounds {
   height: number
 }
 
-export type AgenticCodingComposerMode = 'auto' | 'always' | 'never'
 
 export interface AppSettings {
   theme: 'dark'
@@ -375,15 +354,15 @@ export interface AppSettings {
   modelConfig: Record<string, ModelConfig>
   customModels: ModelInfo[]
   windowBounds?: WindowBounds
-  agentMode: AgentMode
-  agentRoster: AgentRoster
+  // UB-7 (Unburdening Phase, 2026-06-10) — `agentMode` and `agentRoster`
+  // retired with the pipeline. Stale keys in existing settings.json files
+  // are inert (nothing reads them).
   /**
    * HY2 (Hygiene Phase) — how the tool catalog is presented to the model.
-   * `'lazy'` (default): send a small always-on core set + a `tool_search`
-   * meta-tool; the model unlocks additional tools on demand. `'full'`: send
-   * the entire normalized catalog every turn (pre-Hygiene behavior). The
-   * dispatch auto-downgrades a conversation to `'full'` if a model repeatedly
-   * emits malformed `tool_search` calls. Optional → treated as `'lazy'`.
+   * `'full'` (the SP-1 era default, also when unset): send the entire
+   * normalized catalog every turn. `'lazy'` (opt-in): send a small
+   * always-on core set + a `tool_search` meta-tool; the model unlocks
+   * additional tools on demand.
    */
   toolSurface?: ToolSurfaceMode
   /**
@@ -395,20 +374,13 @@ export interface AppSettings {
    */
   toolResultSpill?: boolean
   toolResultSpillBytes?: number
-  /**
-   * HY5 — when the proof gate + change-contract machinery engages. `'rigor'`
-   * (default): only on turns that ask for verification (audit/verify/prove/…)
-   * or dispatch multi-agent. `'always'`: every mutating turn (pre-Hygiene).
-   * `'off'`: never. L8 routing is unaffected either way.
-   */
-  proofGate?: 'rigor' | 'always' | 'off'
-  // End-to-end agentic coding mode (Prompt 14). When `agenticCodingMode` is
-  // on, every turn uses the coding contract role, auto-activates the listed
-  // skill ids, and runs the final-response composer per the composer mode.
+  // UB-7 — `proofGate` retired with the proof machinery (UB-4); stale keys
+  // are inert.
+  // Agentic coding mode (Prompt 14, slimmed by UB-5): when on, every turn
+  // uses the coding contract role and auto-activates the listed skill ids.
   // Off by default so existing chats are unchanged.
   agenticCodingMode: boolean
   agenticCodingSkills: string[]
-  agenticCodingComposer: AgenticCodingComposerMode
   /**
    * Snip Phase K9: master kill-switch for the shell-output filter
    * layer. Default `true` — every foreground shell command runs
@@ -436,16 +408,6 @@ export interface AppSettings {
    * stalled MCP server from blocking the whole turn.
    */
   mcpCallTimeoutMs?: number
-  /**
-   * T3 — Per-stage wall-clock budgets (ms) for the multi-agent pipeline.
-   * 0 disables a stage's budget, min 10_000. Defaults: planner 120_000,
-   * coder 600_000, reviewer 120_000.
-   */
-  stageBudgetMs?: {
-    planner?: number
-    coder?: number
-    reviewer?: number
-  }
   /**
    * Reasoning Audit Phase R8 — when on (default), past assistant rows
    * with persisted reasoning get re-fed into the next turn's API stack
@@ -482,13 +444,7 @@ export interface ChatRequest {
   model: string
   content: string
   activeSkillIds: string[]
-  // L8 (Lampshade Phase, 2026-06-09) — narrowed from `AgentMode` to the
-  // binary subset because 'auto' is a settings-level value, not a per-turn
-  // override. When settings.agentMode === 'auto' the dispatch decision is
-  // made server-side by `routeAgentMode`; the per-turn override stays
-  // binary for callers (skills, fork views, debug paths) that genuinely
-  // want to pin one path for this turn only.
-  agentMode?: Exclude<AgentMode, 'auto'>
+  // UB-7 — the per-turn agentMode override died with the pipeline.
 }
 
 export interface ChatChunkEvent {
