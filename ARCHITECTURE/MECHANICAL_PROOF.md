@@ -1,3 +1,5 @@
+> **HISTORICAL (2026-06-10, Unburdening Phase / v0.14.0):** the runtime proof machinery this document describes (rigor scoping, proof gate, implicit change contracts, receipts scan, trust banners) was EXCISED in UB-4. The store layers + DB schema survive for historical rows; the erify:proof repo gate (WC-7) remains as dev tooling. This document is kept as the design record.
+
 # Mechanical Proof Architecture
 
 > Lamprey v0.9.x — Mechanical Proof Harness Phase (M1-M13)

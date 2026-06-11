@@ -85,12 +85,6 @@ interface ChatState {
   appendStreamChunk: (content: string) => void
   appendReasoningChunk: (content: string) => void
   appendStreamingDocument: (doc: DocumentAttachment) => void
-  /** Reasoning Audit Phase R4 — append a persisted Planner audit row
-   *  mid-pipeline (between Planner and Coder stages). Unlike
-   *  finishStream, this does NOT clear streaming state — the Coder is
-   *  still streaming when the Planner row arrives. Idempotent on
-   *  message.id so a duplicate event is dropped. */
-  appendPlannerMessage: (message: Message) => void
   finishStream: (message: Message) => void
   streamError: (error: string) => void
   setStreamingVitals: (
@@ -504,14 +498,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
     set({ streamingVitals: v })
   },
 
-  appendPlannerMessage: (message: Message) => {
-    set((state) => {
-      // Idempotent — duplicate planner-message events (e.g. re-fire after
-      // a brief disconnect) shouldn't double-append.
-      if (state.messages.some((m) => m.id === message.id)) return state
-      return { messages: [...state.messages, message] }
-    })
-  },
 
   finishStream: (message: Message) => {
     set((state) => ({

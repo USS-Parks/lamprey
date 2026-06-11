@@ -1,3 +1,24 @@
+## [Unburdening Phase — Complete] UB-0 through UB-12 shipped end-to-end — 2026-06-10, v0.14.0
+
+Phase complete. 13 prompts (UB-0 through UB-12) on `claude/hardcore-swanson-5561d9`, immediately following the same-day pipeline retirement (`2f40e68`). Per explicit user direction ("Lamprey is still tortured... strip away the stale and burdensome scaffolding so that it can breathe easier and be comfortable in its own skin"), this phase DELETES — not gates — every subsystem the Opus 4.5-era product never had. **Net −7,400+ lines across 64+ files.** Git history at the v0.13.0 tag holds the last full-machinery build.
+
+**Per-prompt commit SHAs:**
+- `2f40e68` — (pre-phase, same user turn) pipeline retired from dispatch + UI; stale settings pins neutralized
+- `f1f04b1` — UB-0 inventory baseline (`PLANNING/UB_BASELINE.md`: 5,008 lines in whole-module deletions identified)
+- `2be7dd4` — UB-1 pipeline core: `runAgentPipeline` + stage machinery, `agent-pipeline-safety` (CR-2 wrapper), `review-evidence-packet` (M7), chat.ts multi branch, `resolveAgentDispatch` — all deleted (−3,578 lines)
+- `7a5aa77` — UB-2 CR-7 reviewer exemplar excised from `renderContract()` (~285 B/turn back). **Deviation, documented:** `AGENT_ROLE_PROMPTS` + `buildAgentSystemPrompt` SURVIVE — the kept model-callable `multi_agent_run` tool (Task-tool analog, era-accurate) consumes them; discovered at excision time
+- `7c14452` — UB-3 L8 router + CR-3 telemetry: `agent-router.ts`, `router-telemetry.ts`, SP-8 IPC + After-action Routing section (−810 lines)
+- `c94b75f` — UB-4 runtime proof machinery: `proof-rigor`, `proof-gate`, WC-3 implicit contract synthesis, receipts scan, `ProofGateBanner` + notice + banner-state, `messages:setProofStatus`, After-action Proof section (−1,597 lines). Store layers (`proof-receipts`, `change-contract-store`, `failure-ledger`) + DB schema stay per K2
+- `073b5e1` — UB-5 composer: `final-response-composer` deleted; the reply the user reads is the model's reply, byte-for-byte. R6 reasoning trail (user-directed audit) extracted to `reasoning-trail.ts`; agentic config (mode+skills) to `agentic-coding-config.ts` (−946 lines net)
+- `65ee457` — UB-6 stage chrome + plumbing: `agent:status` chain (emitter-less since UB-1) removed end-to-end (preload, useChat, agent-store activeRun), R7 planner-attachment pre-walk + "Show pipeline trace" toggle deleted, stage chips collapsed to ONE muted "Pipeline (legacy)" chip on historical rows (K3), stage-budget UI removed, 'Pipeline' work-mode labels removed
+- `b0a64f7` — UB-7 settings/types: `agentMode` / `agentRoster` / `proofGate` / `agenticCodingComposer` retired from both defaults objects + AppSettings; `agent-store` reduced then DELETED (roster had zero functional consumers — the pipeline was its only reader); Agents settings tab deleted; `agent:status` channel typing removed; ChatRequest.agentMode removed (stale fields from old callers are ignored)
+- `ce5b88b` — UB-8 re-measure: contract 3,401 → **3,118 B**, coding-mode prompt 4,039 → **3,756 B**; guards tightened 3,700→3,300 and 4,400→3,900 (guards only ever tighten)
+- `(UB-9..12)` — docs, playbook v0.14.0, full gate, ship + Bucket (this commit + wrap)
+
+**What Lamprey is now:** one model per turn, full tool catalog, thin contract (~3.1 KB), read–edit–verify, the model's own reply, era chrome only. Kept intact: coworker side chat, `multi_agent_run` model-callable tool, Deep Research, RAG, Snip, Skills/Connectors/Plugins, panels aesthetic, reasoning audit + trail + trace viewer, stream/MCP timeouts, ghost-reply guard, spill valve + GC, sanitizer, memory/projects/chapters, `verify:proof` repo gate.
+
+**Verify gate (UB-11):** lint OK, tsc node + web OK, vitest 2,18x passed / 123 skipped (suite count FELL with the deleted modules — correct per K6), build OK, `verify:proof --no-tests` exit 0. Completion grep: zero live references to `runAgentPipeline` / `routeAgentMode` / `composeFinalResponse` / `proofGate` outside retirement comments.
+
 ## [Sweet Spot Phase — Complete] SP-0 through SP-12 shipped end-to-end — 2026-06-10, v0.13.0
 
 Phase complete. 13 prompts (SP-0 through SP-12) shipped on `claude/hardcore-swanson-5561d9` (cut from `78b730e` = v0.12.0). The phase locks Lamprey to its declared target — functional + aesthetic parity with Claude Code in the Opus 4.5 era (2025-11-24 → 2026-01-24) — and closes the seven defects (D1–D7) surfaced by the 2026-06-10 four-track audit. Defaults moved; no features removed. Multi-agent, proof harness, composer, and lazy tool surface all remain available as explicit opt-ins.
