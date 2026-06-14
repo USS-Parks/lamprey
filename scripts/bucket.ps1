@@ -153,6 +153,13 @@ if ($DryRun) {
   exit 0
 }
 
+# Per-step outcome flags. The GH-release step has flaked at `gh release create`
+# on three consecutive ships, which used to `throw` and abandon the R2 wait + CF
+# purge. We now CAPTURE step failures and run every step to completion, then
+# surface a non-zero exit at the very end. R2 + CF never get stranded by GH.
+$ghError = $null
+$r2Failed = $false
+
 # Kick off R2 upload in a background job (multipart for the big zip)
 $endpoint = "https://$($config.r2.accountId).r2.cloudflarestorage.com"
 Write-Host ""
@@ -172,25 +179,42 @@ $r2Job = Start-Job -Name "bucket-r2" -ScriptBlock {
   }
 } -ArgumentList $config.r2.bucket, $endpoint, $dist, $awsCreds, $awsConf, $useProjectCreds, $awsProfile, $awsExe
 
-# GitHub release in the foreground (also takes a few minutes for the zip)
+# GitHub release. The create-WITH-assets path flakes reliably (HTTP 404 on the
+# uploads endpoint — three ships running), so DECOUPLE the two operations:
+#   1. ensure the release ROW exists (create with NO assets — fast + reliable,
+#      retried a few times for transient API hiccups), then
+#   2. attach the four files via the reliable `gh release upload --clobber`.
+# Any failure is captured into $ghError (not thrown) so the R2 wait + CF purge
+# below still run and a partial ship is reported honestly at the end.
 Write-Host "  Creating/updating GH release $tag..." -ForegroundColor White
 Push-Location $repoRoot
 try {
-  $releaseExists = $false
   gh release view $tag --repo $config.github.repo 2>$null | Out-Null
-  if ($LASTEXITCODE -eq 0) { $releaseExists = $true }
+  $releaseExists = ($LASTEXITCODE -eq 0)
 
   if (-not $releaseExists) {
-    gh release create $tag --repo $config.github.repo `
-      --title $tag `
-      --notes "Release $tag" `
-      @artifactPaths
-    if ($LASTEXITCODE -ne 0) { throw "gh release create failed (exit $LASTEXITCODE)" }
-  } else {
-    gh release upload $tag --repo $config.github.repo --clobber @artifactPaths
-    if ($LASTEXITCODE -ne 0) { throw "gh release upload failed (exit $LASTEXITCODE)" }
+    for ($attempt = 1; $attempt -le 3 -and -not $releaseExists; $attempt++) {
+      gh release create $tag --repo $config.github.repo --title $tag --notes "Release $tag"
+      if ($LASTEXITCODE -eq 0) {
+        $releaseExists = $true
+      } else {
+        Write-Host "  gh release create attempt $attempt/3 failed (exit $LASTEXITCODE)" -ForegroundColor Yellow
+        if ($attempt -lt 3) { Start-Sleep -Seconds 3 }
+      }
+    }
+    if (-not $releaseExists) { $ghError = "gh release create failed after 3 attempts" }
   }
-  Write-Host "  GH release done" -ForegroundColor Green
+
+  if (-not $ghError) {
+    gh release upload $tag --repo $config.github.repo --clobber @artifactPaths
+    if ($LASTEXITCODE -ne 0) { $ghError = "gh release upload failed (exit $LASTEXITCODE)" }
+  }
+
+  if (-not $ghError) {
+    Write-Host "  GH release done" -ForegroundColor Green
+  } else {
+    Write-Host "  WARNING: $ghError — continuing so R2 + CF still complete." -ForegroundColor Yellow
+  }
 } finally {
   Pop-Location
 }
@@ -207,11 +231,14 @@ $r2Output = Receive-Job -Job $r2Job 2>&1
 $r2State = $r2Job.State
 Remove-Job -Job $r2Job
 if ($r2State -ne "Completed") {
-  Write-Host "ERROR: R2 upload failed. Output:" -ForegroundColor Red
+  # Capture (don't exit) so the CF purge below still fires for whatever DID
+  # upload, and the final summary reports the partial ship.
+  $r2Failed = $true
+  Write-Host "  WARNING: R2 upload did not complete (state: $r2State). Output:" -ForegroundColor Red
   $r2Output | Write-Host
-  exit 1
+} else {
+  Write-Host "  R2 upload done" -ForegroundColor Green
 }
-Write-Host "  R2 upload done" -ForegroundColor Green
 
 # === Cloudflare cache purge ===
 if (Test-Path $cfTokenPath) {
@@ -239,8 +266,24 @@ if (Test-Path $cfTokenPath) {
 
 # === Done ===
 Write-Host ""
-Write-Host "=== Ship complete: $tag ===" -ForegroundColor Cyan
+if ($ghError -or $r2Failed) {
+  Write-Host "=== Ship PARTIAL: $tag ===" -ForegroundColor Yellow
+  if ($ghError) {
+    Write-Host "  GitHub release step FAILED: $ghError" -ForegroundColor Red
+    Write-Host "  Recover: gh release create $tag <dist artifacts> (or gh release upload --clobber if the row exists)." -ForegroundColor Yellow
+  }
+  if ($r2Failed) {
+    Write-Host "  R2 upload FAILED — the CDN .exe/.zip may be stale. Re-run the aws s3 cp." -ForegroundColor Red
+  }
+  Write-Host "  Steps that succeeded are NOT rolled back — fix the failed step and re-run." -ForegroundColor Yellow
+} else {
+  Write-Host "=== Ship complete: $tag ===" -ForegroundColor Cyan
+}
 Write-Host "  GitHub: https://github.com/$($config.github.repo)/releases/tag/$tag"
 Write-Host "  CDN:    https://$($config.cloudflare.cdnHost)/Lamprey-x64.exe"
 Write-Host "  CDN:    https://$($config.cloudflare.cdnHost)/Lamprey-x64.zip"
 Write-Host ""
+
+# Non-zero exit at the very end if any step failed — but only AFTER every step
+# has run, so a GH flake never strands the R2 upload or CF purge again.
+if ($ghError -or $r2Failed) { exit 1 }

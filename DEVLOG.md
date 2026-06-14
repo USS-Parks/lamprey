@@ -1,3 +1,20 @@
+## 2026-06-14 — Bucket ship-script hardening
+
+`scripts/bucket.ps1`'s GitHub-release step has flaked at `gh release create` on three
+consecutive ships (v0.9.1, v0.15.0, v0.15.1) — systematic, not occasional — and the old `throw`
+also abandoned the background R2 upload (never reached `Wait-Job`) and skipped the CF purge,
+forcing a full manual recovery each time. Hardened:
+- **Decoupled release-row creation from asset upload.** The create-WITH-assets path is what
+  flakes; now the script ensures the release ROW exists first (`gh release create` with NO
+  assets — fast + reliable, retried up to 3× with a 3s backoff), then attaches the four files via
+  the reliable `gh release upload --clobber @artifactPaths`.
+- **Capture, don't throw.** GH and R2 failures set `$ghError` / `$r2Failed` instead of throwing,
+  so every step runs to completion — R2 + CF are never stranded by a GH flake — and the script
+  reports a "Ship PARTIAL" summary + a single non-zero `exit 1` at the very end.
+- `-DryRun` / `-NoBuild` / `-NoTag` unchanged. Validated: AST parse clean; `pwsh bucket.ps1
+  -DryRun` runs clean (exit 0) in the real primary environment (a real ship is the only runtime
+  test of the GH/R2/CF path, which `-DryRun` exits before). Pending first-real-ship confirmation.
+
 ## 2026-06-14 — Loop Phase gap-closure (v0.15.1)
 
 Closes the four honest gaps documented at the Loop Phase wrap.
