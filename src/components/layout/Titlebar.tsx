@@ -19,7 +19,8 @@ const TOOL_TITLES: Record<ToolId, string> = {
   artifacts: 'Artifacts',
   plan: 'Plan',
   background: 'Background tasks',
-  afterAction: 'After action'
+  afterAction: 'After action',
+  loop: 'Loops'
 }
 
 interface TitlebarProps {

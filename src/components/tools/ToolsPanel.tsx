@@ -13,6 +13,7 @@ import { TerminalPanel } from './panels/TerminalPanel'
 import { PlanToolPanel } from './panels/PlanToolPanel'
 import { BackgroundTasksPanel } from './panels/BackgroundTasksPanel'
 import { AfterActionPanel } from './panels/AfterActionPanel'
+import { LoopsPanel } from './panels/LoopsPanel'
 import { EnvironmentPanel } from '@/components/workspace/EnvironmentPanel'
 import { SourcesPanel } from '@/components/workspace/SourcesPanel'
 import { ArtifactsPanel } from '@/components/workspace/ArtifactsPanel'
@@ -28,7 +29,8 @@ const TOOL_LABELS: Record<ToolId, string> = {
   artifacts: 'Artifacts',
   plan: 'Plan',
   background: 'Background tasks',
-  afterAction: 'After action'
+  afterAction: 'After action',
+  loop: 'Loops'
 }
 
 function BrowserGlyph(): React.ReactElement {
@@ -110,6 +112,17 @@ function ToolHeaderIcon({ tool }: { tool: ToolId }): React.ReactElement {
       return <img src={backgroundIcon} alt="" aria-hidden className="icon-asset h-7 w-7 object-contain" />
     case 'afterAction':
       return <img src={reasoningTraceIcon} alt="" aria-hidden className="icon-asset h-7 w-7 object-contain" />
+    case 'loop':
+      return (
+        <span className="flex h-7 w-7 items-center justify-center text-[var(--text-secondary)]">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <polyline points="17 1 21 5 17 9" />
+            <path d="M3 11V9a4 4 0 0 1 4-4h14" />
+            <polyline points="7 23 3 19 7 15" />
+            <path d="M21 13v2a4 4 0 0 1-4 4H3" />
+          </svg>
+        </span>
+      )
   }
 }
 
@@ -137,6 +150,8 @@ function renderToolBody(tool: ToolId): React.ReactElement {
       return <BackgroundTasksPanel />
     case 'afterAction':
       return <AfterActionPanel />
+    case 'loop':
+      return <LoopsPanel />
   }
 }
 

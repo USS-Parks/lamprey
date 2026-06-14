@@ -93,6 +93,16 @@ describe('SP-1 defaults parity — canonical vs renderer literal', () => {
     expect(rendererSource).toMatch(/themeMode:\s*DEFAULT_THEME_MODE/)
   })
 
+  it('LP-7: loop defaults are OFF + bounded, and parity-locked', () => {
+    expect(DEFAULT_APP_SETTINGS.loopsEnabled).toBe(false)
+    expectRendererDefault('loopsEnabled', 'false')
+    expectRendererDefault('loopMaxIterations', String(DEFAULT_APP_SETTINGS.loopMaxIterations))
+    expectRendererDefault('loopMaxWallclockMs', String(DEFAULT_APP_SETTINGS.loopMaxWallclockMs))
+    expectRendererDefault('loopTokenBudget', String(DEFAULT_APP_SETTINGS.loopTokenBudget))
+    expectRendererDefault('loopMaxConcurrent', String(DEFAULT_APP_SETTINGS.loopMaxConcurrent))
+    expectRendererDefault('loopMinIntervalSeconds', String(DEFAULT_APP_SETTINGS.loopMinIntervalSeconds))
+  })
+
   it('every canonical key appears in the renderer literal', () => {
     for (const key of Object.keys(DEFAULT_APP_SETTINGS)) {
       expect(rendererSource, `renderer defaults literal is missing key \`${key}\``).toMatch(

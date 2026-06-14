@@ -28,6 +28,28 @@ export interface ScheduleWakeupInput {
 const WAKEUP_PREFIX = '[scheduled wake-up]'
 let timer: NodeJS.Timeout | null = null
 
+// LP-1 (Loop Phase) — injected headless turn runner. `chat.ts` wires this at
+// handler-registration time via setLoopTurnRunner. Injection (rather than a
+// direct import) avoids a service→ipc cycle: loop-runner is a service, while
+// runHeadlessTurn lives in ipc/chat.ts. When unset (unit tests, or before
+// wiring) a fired wake-up still persists its user message — it just won't
+// auto-run a turn, which is the pre-LP-1 behaviour.
+export type LoopTurnRunner = (input: {
+  conversationId: string
+  model: string
+  promptBody?: string
+}) => Promise<unknown>
+
+let turnRunner: LoopTurnRunner | null = null
+
+export function setLoopTurnRunner(fn: LoopTurnRunner | null): void {
+  turnRunner = fn
+}
+
+export function getLoopTurnRunner(): LoopTurnRunner | null {
+  return turnRunner
+}
+
 function rowToWakeup(row: any): LoopWakeup {
   return {
     id: row.id,
@@ -158,6 +180,21 @@ export function fireDueWakeups(now = Date.now()): LoopWakeup[] {
       fired.push(done)
       emit('loop:wakeup:fired', { wakeup: done, message: msg })
       recordLoopEvent('loop.wakeup.fired', done)
+      // LP-1 — actually RUN the turn. Before this, a fired wake-up only
+      // injected the user message and the renderer reloaded it; nothing
+      // answered (G1). Now the injected prompt drives a real headless turn.
+      // Fire-and-forget: a long turn must not block the 30s wake-up tick.
+      if (turnRunner) {
+        const conv = getConversation(wakeup.conversationId)
+        const model = conv?.model ?? 'deepseek-v4-pro'
+        void turnRunner({
+          conversationId: wakeup.conversationId,
+          model,
+          promptBody: wakeup.prompt
+        }).catch((err) => {
+          console.error('[loops] wake-up turn failed:', err)
+        })
+      }
     } catch (err) {
       const error = err instanceof Error ? err.message : String(err)
       db.prepare(

@@ -35,6 +35,8 @@ const TYPE_LABELS: Record<EventType, string> = {
   'automation.failed': 'Automation failed',
   'loop.wakeup.scheduled': 'Wake-up scheduled',
   'loop.wakeup.fired': 'Wake-up fired',
+  'loop.iteration': 'Loop iteration',
+  'loop.iteration.error': 'Loop iteration failed',
   'security.decision': 'Security decision',
   'permission.policy.created': 'Policy added',
   'permission.policy.updated': 'Policy updated',

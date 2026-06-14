@@ -33,6 +33,7 @@ export type ToolId =
   | 'plan'
   | 'background'
   | 'afterAction'
+  | 'loop'
 
 export type ShellKind = 'powershell' | 'cmd' | 'git-bash' | 'wsl'
 

@@ -65,6 +65,10 @@ export const EVENT_TYPES = [
   'loop.wakeup.scheduled',
   'loop.wakeup.fired',
 
+  // Loop Phase LP-3: recurring loop iteration lifecycle.
+  'loop.iteration',
+  'loop.iteration.error',
+
   // Security / policy (Prompt 2 + ongoing).
   'security.decision',
   'permission.policy.created',

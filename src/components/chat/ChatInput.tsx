@@ -11,6 +11,8 @@ import { AtFileMention } from './AtFileMention'
 import { ToolActivityChip } from './ToolActivityChip'
 import { useSlashCommandsStore } from '@/stores/slash-commands-store'
 import { usePlanStore } from '@/stores/plan-store'
+import { useLoopsStore } from '@/stores/loops-store'
+import { parseLoopCommand } from '@/lib/parse-loop-command'
 import { detectAtMention } from '@/lib/file-rank'
 import { detectMemoryShortcut } from '@/lib/memory-shortcut'
 import {
@@ -734,6 +736,37 @@ export function ChatInput({ onSend, onCancel, isStreaming, disabled }: ChatInput
         // the palette and only resolves through IPC for harness use.
         useChatStore.setState({ messages: [], streamingContent: '', streamingReasoning: '' })
         toast.info('Cleared visible messages.')
+        return true
+      }
+      case '/loop': {
+        // Loop Phase LP-8 — start a recurring loop in the current conversation.
+        //   /loop <task>           self-paced (model paces itself)
+        //   /loop 5m <task>        interval (fixed cadence)
+        //   /loop --auto <mission> autonomous (drains + grows its own backlog)
+        if (!useSettingsStore.getState().settings.loopsEnabled) {
+          toast.error('Loops are off. Enable them in Settings → Loops.')
+          return true
+        }
+        const rest = raw.trim().slice(cmd?.length ?? 0).trim()
+        const parsed = parseLoopCommand(rest)
+        if (parsed.error) {
+          toast.error(parsed.error)
+          return true
+        }
+        const loop = await useLoopsStore.getState().create({
+          mode: parsed.mode,
+          conversationId: activeConvId ?? undefined,
+          instruction: parsed.instruction,
+          intervalSeconds: parsed.intervalSeconds,
+          tasks: parsed.tasks
+        })
+        if (loop) {
+          toast.success(`Loop started (${parsed.mode.replace('_', '-')}).`)
+          if (loop.conversationId && loop.conversationId !== activeConvId) {
+            await useChatStore.getState().loadConversations()
+            await useChatStore.getState().selectConversation(loop.conversationId)
+          }
+        }
         return true
       }
       default: {

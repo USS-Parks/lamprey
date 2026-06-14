@@ -90,6 +90,12 @@ export function RightPanelHome({ onCollapse }: RightPanelHomeProps): React.React
       label: 'After action',
       description: 'Explain stalls, empty turns, failures, and tool loops',
       icon: reasoningTraceIcon
+    },
+    {
+      id: 'loop',
+      label: 'Loops',
+      description: 'Recurring loops — status, backlog, pause and stop',
+      icon: backgroundIcon
     }
   ]
 

@@ -1,3 +1,232 @@
+## 2026-06-14 — Loop Phase
+
+Deliberate, user-authorized extension PAST the Opus 4.5 era-lock: a first-class Loop primitive
+spanning interval → self-paced → autonomous "work-the-backlog" loops that re-invoke real chat
+turns headlessly in the main process, drain a dedicated backlog queue, are bounded by hard
+ceilings, are observable, and ship **off by default**. Plan: `PLANNING/LAMPREY_LOOP_PLAN.md`
+(APPROVED 2026-06-14). Built on the pre-existing half-built loop scaffold — see
+`PLANNING/LP_BASELINE.md`.
+
+### LP-0 — Baseline + extension declaration (docs only)
+- `PLANNING/LP_BASELINE.md` (new) — B1–B8 inventory of the existing scaffold, the G1–G4 gaps
+  (the `App.tsx:316–326` re-invocation defect quoted verbatim: a fired wake-up reloads the
+  message list but never calls `chat:send`, so it never runs a turn), the governance gap
+  (loop/automations/workflow/activity layer undocumented in CLAUDE.md), the §4 target
+  architecture, and the explicit deliberate-past-era-extension statement.
+- `PLANNING/LAMPREY_LOOP_PLAN.md` §6 flipped to APPROVED.
+- Verify: docs only; baseline tsc node + web both exit 0 (pre-change).
+
+### LP-1 — Headless turn runner extraction (closes G1)
+- `electron/ipc/chat.ts` — factored the normal-dispatch body (context compression →
+  prompt/memory/skills assembly → tool surface → abort registration → `runChatRound` →
+  cleanup) out of the `chat:send` handler into a new exported `runHeadlessTurn(input)`. The
+  handler now persists the user message then calls `runHeadlessTurn` (behaviour byte-identical
+  for the chat path). The runner owns abort registration + cleanup in a `finally` (no leaked
+  `activeAbortControllers` entry on throw) and bridges an optional external cancel signal so
+  `chat:cancel` AND a future loop-cancel both interrupt a turn.
+- `electron/services/loop-runner.ts` — added an injected `LoopTurnRunner` seam
+  (`setLoopTurnRunner`) and wired `fireDueWakeups` to invoke it (fire-and-forget) right after
+  it injects the wake-up user message. **This closes G1:** a fired `schedule_wakeup` wake-up
+  now drives a real headless turn instead of leaving the injected message unanswered. Injection
+  (not a direct import) keeps loop-runner a pure service — no service→ipc cycle.
+- `electron/ipc/chat.ts` — `registerChatHandlers()` wires `setLoopTurnRunner(runHeadlessTurn)`
+  at registration time.
+- Net effect: the pre-existing self-paced `schedule_wakeup` tool finally functions end to end —
+  schedule → fire → run a turn → the model may `schedule_wakeup` again. Headless: works with
+  the window closed or another conversation focused (no `activeConversationId` guard).
+- Verify: tsc node + web exit 0; `vitest` loop-runner + ghost-reply + chat-correlation +
+  chat-validation suites — 35 passed / 2 skipped (loop-runner DB suite skips under the
+  better-sqlite3 NODE_MODULE_VERSION mismatch, honest); `verify:proof --no-tests` exit 0
+  (chat.ts touched).
+
+### LP-2 — Loop data layer (migration v17 + loop-store.ts)
+- `electron/services/db-migrations.ts` — appended migration **v17** creating three tables:
+  `loops` (the recurring entity: mode/status/instruction/model/cadence/ceilings/progress),
+  `loop_backlog` (the dedicated queue — position-ordered, per the user's backlog decision), and
+  `loop_runs` (per-iteration audit). All `CREATE TABLE IF NOT EXISTS` + indexes; idempotent.
+  `LATEST_VERSION` auto-recomputes to 17.
+- `electron/services/loop-store.ts` (new) — the single SQL surface for loops: loop CRUD
+  (`createLoop`/`getLoop`/`listLoops`/`listDueLoops`/`updateLoop`/`deleteLoop` with cascade),
+  backlog queue (`enqueueBacklog`/`nextBacklogItem`/`listBacklog`/`countBacklog`/
+  `updateBacklogItem`/`reorderBacklog`/`removeBacklogItem`), and run audit
+  (`recordLoopRun`/`finishLoopRun`/`listLoopRuns`). Plus a pure `nextPosition` helper.
+- `electron/services/loop-store.test.ts` (new) — pure `nextPosition` cases (always run) +
+  DB-backed CRUD/backlog/run/cascade cases (skip under the better-sqlite3 NODE_MODULE_VERSION
+  mismatch, honest — same guard as `loop-runner.test.ts`; the LP-10 smoke playbook is the real
+  integration gate).
+- Verify: tsc node + web exit 0; `vitest loop-store.test.ts` — 2 passed / 7 skipped.
+
+### LP-3 — Loop controller core: interval mode + ceilings + stop authorities
+- `electron/services/loop-controller.ts` (new) — the per-iteration lifecycle. Pure helpers
+  (`checkCeilings`, `computeNextFire`, `estimateTokens`, `buildIterationPrompt`) + the core
+  `runLoopIteration(loop, deps)` which takes an **injected `store` + `runTurn` seam** so the
+  ceiling / stop-authority / backlog-drain logic is unit-tested as pure logic that ACTUALLY
+  RUNS (no DB, no skip). Sequence: pre-flight ceilings → pull next backlog item → mark
+  in_progress + open run audit → build ledger prompt → run turn → finish run + mark item done →
+  drain-check / post-ceiling / schedule-next. Stop authorities: `max-iterations`,
+  `max-wallclock`, `token-budget`, `backlog-empty`; a thrown turn marks the item `error` and
+  the loop keeps running (iteration counter still ticks toward the cap, so a failing loop can't
+  spin forever). Production `tickLoops()` builds DB-backed deps (real `loop-store` + the
+  `getLoopTurnRunner()` headless runner) and runs due loops serially; `startLoopController()` /
+  `stopLoopController()` own a 30s timer.
+- `electron/services/loop-runner.ts` — added `getLoopTurnRunner()` so the controller reaches
+  the headless runner without a service→ipc cycle.
+- `electron/main.ts` — `startLoopController()` next to `startLoopWakeups()`; `stopLoopController()`
+  in both the GUI and headless shutdown paths.
+- `electron/services/event-log.ts`, `src/lib/types.ts`, `src/lib/event-presentation.ts` —
+  registered `loop.iteration` + `loop.iteration.error` event types + labels.
+- `electron/services/loop-controller.test.ts` (new) — 16 cases, **all run** (injected fakes):
+  ceiling pure cases, `computeNextFire` (interval + runaway-floor clamp + autonomous floor),
+  prompt assembly, and full `runLoopIteration` paths — 3-item drain → backlog-empty, pre-flight
+  max-iterations, post token-budget, turn-throw → item error + loop survives, next-fire
+  scheduling.
+- Verify: tsc node + web exit 0; `vitest loop-controller.test.ts` — 16 passed / 0 skipped;
+  `verify:proof --no-tests` exit 0 (lint clean).
+
+### LP-4 — Self-paced mode + model loop tools
+- `electron/services/loop-tool-logic.ts` (new) — pure logic for the three model tools, behind an
+  injected `LoopToolStore` seam (unit-tested without a DB): `applyLoopEnqueue` (append backlog
+  tasks, dropping blanks), `applyLoopCompleteTask` (mark the in-progress item done + record the
+  outcome — the ledger entry), `applyLoopControl` (`pause` / `stop` / `mission_complete` /
+  `continue` with a floor-clamped `delaySeconds` for self-paced cadence).
+- `electron/services/loop-tool-pack.ts` — registered `loop_enqueue`, `loop_complete_task`,
+  `loop_control` native tools (risks `['write']`, no approval) as thin wrappers over the pure
+  logic + the production store. All resolve "the current loop" from `ctx.conversationId` and
+  return a clear `{ ok:false }` when the conversation has no active loop.
+- `electron/services/loop-store.ts` — added `getActiveLoopForConversation` +
+  `inProgressBacklogItem` helpers.
+- `electron/services/loop-controller.ts` — the continue path now re-reads the loop after the
+  turn: if the model changed state via `loop_control` (pause/stop/mission_complete) it respects
+  the terminal state instead of resurrecting the loop; for self-paced it honours a future
+  next-fire the model set via `loop_control continue`.
+- `electron/services/loop-tool-logic.test.ts` (new, 9 cases) + 2 new self-paced cases in
+  `loop-controller.test.ts` — all run (injected seams, no skip).
+- Verify: tsc node exit 0 (LP-4 is node-only; web unchanged since LP-3); `vitest` loop-tool-logic
+  + loop-controller — 27 passed / 0 skipped; `verify:proof --no-tests` exit 0.
+
+### LP-5 — Autonomous backlog mode + idempotency ledger + runaway guard
+- `electron/services/loop-controller.ts` — `buildIterationPrompt` now injects a **progress
+  ledger**: the recently-completed tasks + their outcomes ("Already done (do NOT repeat): …"),
+  bounded by `LEDGER_RESULT_MAX_CHARS`. Autonomous loops also get a tail reminding the model it
+  may `loop_enqueue` follow-up work and `loop_control mission_complete` when nothing remains.
+  `runLoopIteration` fetches the ledger via the new `listRecentDone` seam method each iteration.
+  Runaway guard: `computeNextFire('autonomous')` and `loop_control continue` both clamp to the
+  interval floor, so a loop cannot schedule itself faster than `minIntervalSeconds`.
+- `electron/services/loop-store.ts` — `listRecentDone(loopId, limit)` (done items by
+  `finished_at DESC`).
+- `electron/services/loop-controller.test.ts` — 3 LP-5 cases (all run): autonomous grows the
+  backlog mid-turn via `appendPending` then drains to `done`/`backlog-empty` over the right
+  iteration count; the ledger appears only after the first task completes and lists prior tasks
+  (idempotency); a continuing autonomous iteration fires no sooner than the floor.
+- Verify: tsc node exit 0 (node-only); `vitest` loop-controller + loop-tool-logic — 30 passed /
+  0 skipped; `verify:proof --no-tests` exit 0.
+
+### LP-6 — Per-iteration stall watchdog + spill GC
+- `electron/services/loop-controller.ts` — each iteration now runs under a per-iteration
+  wall-clock budget (`iterationTimeoutMs`): an `AbortController` is passed to `runTurn` as
+  `signal` and a timer aborts it on overrun. A tripped watchdog records the run as `timeout`,
+  marks the item `error` ("iteration timed out after N ms"), and advances the loop (counter
+  ticks toward `maxIterations`) rather than wedging. Production uses
+  `DEFAULT_ITERATION_TIMEOUT_MS` (10 min; LP-7 makes it a setting). `tickLoops` calls
+  `gcSpillDir()` (throttled hourly) while loops are active, so a long-running loop's spill files
+  don't grow unbounded between app restarts.
+- `electron/services/loop-controller.test.ts` — 2 LP-6 cases (run): a hung turn is aborted by
+  the 20 ms watchdog → item error, loop still running + advanced + rescheduled; a fast turn
+  under a 10 s budget is unaffected.
+- Verify: tsc node exit 0 (node-only); `vitest loop-controller.test.ts` — 23 passed / 0 skipped;
+  `verify:proof --no-tests` exit 0.
+
+### LP-7 — Settings + IPC + preload + renderer store
+- Settings (off by default): `loopsEnabled` (false) + `loopMaxIterations` (25) /
+  `loopMaxWallclockMs` (1.8M) / `loopTokenBudget` (500k) / `loopMaxConcurrent` (1) /
+  `loopMinIntervalSeconds` (30) added to `AppSettings` (`src/lib/types.ts`), the canonical
+  `DEFAULT_APP_SETTINGS`, the renderer mirror (`settings-store.ts`), and the parity test
+  (`default-app-settings.test.ts` — explicit LP-7 block + the catch-all key check).
+- `electron/services/loop-config.ts` (new) — pure `resolveLoopConfig(raw)` + `readLoopConfig()`
+  fs wrapper; controller `productionDeps` reads `minIntervalSeconds`, `tickLoops` slices due
+  loops by `maxConcurrent`.
+- `electron/ipc/loops.ts` — loop-entity handlers (distinct from the wake-up channels):
+  `loops:create` (gated on `loopsEnabled`; seeds the backlog from tasks or the instruction;
+  applies config ceilings), `listLoops` / `getLoop` / `pause` / `resume` (gated) / `stop` /
+  `deleteLoop` / `listBacklog` / `enqueue` / `reorderBacklog` / `removeBacklog` / `listRuns`.
+- `electron/preload.ts` — `window.api.loops.*` extended + `onLoopEvent` subscription;
+  `LampreyAPI = typeof api` flows the renderer types automatically.
+- `src/stores/loops-store.ts` (new) — Zustand store for loop entities (consumed by LP-9 UI).
+- `electron/services/loop-config.test.ts` (new, 4 cases, run) + parity test LP-7 block.
+- Verify: tsc node + web exit 0; `vitest` default-app-settings + loop-config — 11 passed / 0
+  skipped; `verify:proof --no-tests` exit 0. With `loopsEnabled=false`, `loops:create` /
+  `loops:resume` refuse cleanly.
+
+### LP-8 — `/loop` slash command
+- `src/lib/parse-loop-command.ts` (new) — pure parser: `/loop <task>` → self-paced,
+  `/loop 5m <task>` → interval (s/m/h units), `/loop --auto <mission>` → autonomous (mission
+  seeds the backlog + is the standing instruction). Usage errors for empty / task-less forms.
+- `src/components/chat/ChatInput.tsx` — `/loop` built-in case: gated on `loopsEnabled` (clear
+  "Loops are off. Enable them in Settings → Loops." toast when off), otherwise creates the loop
+  via `useLoopsStore` and selects the loop's conversation. The IPC gate is the real enforcement;
+  this is the friendly front door.
+- `src/lib/parse-loop-command.test.ts` (new, 7 cases, run).
+- Verify: tsc web exit 0 (web-only); `vitest parse-loop-command` — 7 passed;
+  `verify:proof --no-tests` exit 0.
+
+### LP-9 — Observation UI: running-loop panel + backlog management
+- `src/components/tools/panels/LoopsPanel.tsx` (new) — the docked Loops panel: lists each loop
+  with live status / `iter N/max` / `budget X%` / `next Ns` (1s countdown ticker), subscribes to
+  `window.api.loops.onLoopEvent` for live refresh, and exposes pause / resume / stop / delete +
+  an expandable backlog with add (enqueue) and remove.
+- `src/stores/ui-store.ts` — `ToolId` gains `'loop'`.
+- `src/components/tools/ToolsPanel.tsx` — `loop` wired into `TOOL_LABELS`, `ToolHeaderIcon` (loop
+  glyph), and `renderToolBody` (→ `LoopsPanel`). `src/components/layout/Titlebar.tsx` —
+  `TOOL_TITLES.loop` (the other `Record<ToolId,string>` site).
+- `src/components/artifacts/RightPanelHome.tsx` — a "Loops" right-panel pill.
+- `src/components/tools/loops-panel.wiring.test.ts` (new, 4 cases, run) — source-locks the
+  ToolId / pill / panel / store wiring (WC-8 pattern).
+- Verify: tsc web + node exit 0; `vitest loops-panel.wiring` — 4 passed; `verify:proof --no-tests`
+  exit 0.
+- **Honest gap:** the LoopsPanel is the canonical running-loop observation surface. A dedicated
+  status-line slot for loop entities (beyond the existing pending-wake-up count) is deferred —
+  it would require extending the statusline.md `SlotId` config machinery and the live UI is
+  validated via the LP-10 smoke playbook rather than here.
+
+### LP-10 — Safety hardening + smoke playbook
+- `electron/services/loop-safety.test.ts` (new, 6 cases, run) — source-locks the master-toggle
+  gate at every entry point (`loops:create` + `loops:resume` check `enabled`; `/loop` checks
+  `settings.loopsEnabled`; the model tools refuse outside an active loop) + the OFF defaults in
+  both the canonical defaults and the config resolver + the runaway-floor clamp in the
+  controller and the `loop_control` tool. A future edit can't silently arm autonomous loops.
+- `PLANNING/LP_SMOKE_PLAYBOOK.md` (new) — the live integration gate (DB-backed loop tests skip
+  under the native-binding mismatch, so this is where real coverage lives): enable → interval /
+  self-paced / autonomous runs, headless-with-window-unfocused, ceiling trips, user/model/floor
+  stop authorities, backlog persistence across restart. Lists the honest gaps (no Settings UI
+  tab, no status-line slot, approximate token budget, DB-test skip).
+- Verify: tsc node + web exit 0; **full `npx vitest run` — 2240 passed / 130 skipped / 0 failed**
+  (+7 skips vs baseline = the loop-store DB suites); `verify:proof --no-tests` exit 0.
+
+### LP-11 — Governance wrap + ship (v0.15.0)
+- `package.json` 0.14.0 → **0.15.0**.
+- `CLAUDE.md` Current State — Loop Phase entry added (records the deliberate past-era extension
+  + the discovery that the loop scaffold/automations/workflow/activity layer pre-existed
+  undocumented); reference-only note updated.
+- `README.md` — download heading + table URLs → v0.15.0; "New in v0.15.0 — Loop Phase" paragraph
+  (Unburdening demoted to "Previously in").
+- Memory `project-era-lock-scope` — documented-exception note for the Loop Phase (off by default,
+  sanctioned opt-in extension, not drift).
+- **Per-prompt commit SHAs:** `4a3ba24` LP-0 · `15ea9cf` LP-1 · `4032573` LP-2 · `ca937e5` LP-3 ·
+  `1603e70` LP-4 · `4b6f61a` LP-5 · `07ecf3d` LP-6 · `e6b1dd3` LP-7 · `9144d49` LP-8 ·
+  `7ac5dba` LP-9 · `8cf312b` LP-10 · (this commit) LP-11.
+- **Final gate:** lint OK, tsc node + web OK, full vitest 2240 passed / 130 skipped / 0 failed,
+  `npx electron-vite build` OK, `verify:proof` exit 0.
+
+**Phase complete.** 12 prompts (LP-0 → LP-11) on `claude/sad-newton-d2e91a`. Lamprey gains a
+first-class Loop primitive across the interval → self-paced → autonomous gradient, headless
+main-process re-invocation (closing the G1 wake-up defect), a dedicated backlog queue, hard
+ceilings + stop authorities + runaway/stall guards, and a Loops panel — all OFF by default. The
+first deliberate, documented extension past the Opus 4.5 era lock. Controller / config / tool /
+parser logic is covered by RUNNING pure tests; DB integration is gated by
+`PLANNING/LP_SMOKE_PLAYBOOK.md` (live).
+
+
+
 ## [Unburdening Phase — Complete] UB-0 through UB-12 shipped end-to-end — 2026-06-10, v0.14.0
 
 Phase complete. 13 prompts (UB-0 through UB-12) on `claude/hardcore-swanson-5561d9`, immediately following the same-day pipeline retirement (`2f40e68`). Per explicit user direction ("Lamprey is still tortured... strip away the stale and burdensome scaffolding so that it can breathe easier and be comfortable in its own skin"), this phase DELETES — not gates — every subsystem the Opus 4.5-era product never had. **Net −7,400+ lines across 64+ files.** Git history at the v0.13.0 tag holds the last full-machinery build.

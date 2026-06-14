@@ -84,6 +84,8 @@ import {
 import { concatReasoningTrail } from '../services/reasoning-trail'
 import { loadAgenticCodingConfig } from '../services/agentic-coding-config'
 import { getAskUserRuntime } from '../services/ask-user-runtime'
+// LP-1 (Loop Phase) — wire the headless turn runner into the loop runner.
+import { setLoopTurnRunner } from '../services/loop-runner'
 import type { ChatCompletionMessageParam, ChatCompletionTool } from 'openai/resources/chat/completions'
 
 interface ModelParams {
@@ -341,177 +343,18 @@ export function registerChatHandlers(): void {
         void DeepResearchCancelledError
       }
 
-      emitPhase(conversationId, 'understanding')
-
-      void fireHooks('promptSubmit', { conversationId, promptBody: content })
-
-      // Track 2 / E5 — auto context compression. Run BEFORE pulling
-      // history so the next turn's prompt sees the compressed view.
-      // The model's context window comes from the catalogue entry; an
-      // unknown model defaults to a conservative 128k cap. The compressor
-      // is a pure-SQL operation (no LLM call in v1), so the latency is
-      // negligible.
-      try {
-        const modelInfo = resolveModel(model)
-        const ctxWindow = modelInfo.contextWindow ?? 128_000
-        const r = compressOldestMessages(conversationId, ctxWindow)
-        if (r) {
-          emitChatEvent('chat:compressed', {
-            conversationId,
-            summaryMessageId: r.summaryMessageId,
-            compressedCount: r.compressedCount,
-            reductionPct: r.reductionPct
-          })
-        }
-      } catch (err) {
-        console.error('[chat] context compression failed:', err)
-      }
-
-      const allMessages = convStore.getMessages(conversationId)
-      // The dispatcher uses the effective view (compressed messages
-      // hidden, summary inserted in their place) for the OpenAI API.
-      const promptHistory = getEffectiveMessages(conversationId)
-      const memoryBlock = memStore.buildMemoryBlock()
-      // D2: always-loaded `<memory_index>` block built from MEMORY.md.
-      // Returns '' when the project has no entries, in which case
-      // buildSystemPrompt drops the block entirely.
-      const memoryIndexBlock = memStore.buildMemoryIndexBlock()
-      const taskNotificationsBlock = buildTaskNotificationsBlock(
-        drainAsyncEventsForPrompt(conversationId)
-      )
-
-      const settingsRaw = readSettingsJson()
-      const agentic = loadAgenticCodingConfig(settingsRaw)
-
-      // Auto-merge the configured agentic-coding skill ids into the round's
-      // active set when mode is on. mergeAgenticSkillIds dedupes against the
-      // user's existing picks so toggling the same skill from the panel
-      // doesn't double-inject its content.
-      // activeSkillIds was already validated + filtered at the handler entry.
-      const effectiveSkillIds = agentic.mode
-        ? mergeAgenticSkillIds(activeSkillIds, agentic.skills)
-        : activeSkillIds
-
-      let skillContents: {
-        name: string
-        content: string
-        allowedTools?: string[]
-        description?: string
-      }[] = []
-      if (effectiveSkillIds.length > 0) {
-        const skills = listSkills()
-        skillContents = effectiveSkillIds
-          .map((id: string) => {
-            const skill = skills.find((s) => s.id === id)
-            if (!skill) return null
-            const content = getSkillContent(id)
-            if (!content) return null
-            return {
-              name: skill.name,
-              content,
-              ...(skill.allowedTools ? { allowedTools: skill.allowedTools } : {}),
-              // HY4 — carry the description so lazy skill stubs can summarize.
-              ...(skill.description ? { description: skill.description } : {})
-            }
-          })
-          .filter(Boolean) as {
-          name: string
-          content: string
-          allowedTools?: string[]
-          description?: string
-        }[]
-      }
-
-      // HY4 — lazy skill bodies follow the tool-surface mode: 'lazy' (opt-in)
-      // injects name+description stubs; 'full' (the SP-1 era default) injects
-      // full bodies as before.
-      const lazySkillBodies =
-        ((settingsRaw as { toolSurface?: string } | null)?.toolSurface ?? 'full') !== 'full'
-
-      const { params: modelParams, systemPromptOverride } = loadModelConfig(settingsRaw, model)
-      const activeWorkspace = getActiveWorkspace()
-      const agentsMd = readAgentsMd(activeWorkspace)
-      const chaptersBlock = buildChaptersBlock(conversationId)
-      const supportsTools = resolveModel(model).supportsTools
-      const systemPrompt = buildSystemPrompt(
-        skillContents,
-        memoryBlock,
-        systemPromptOverride,
-        agentsMd,
-        model,
-        // When mode is on, layer the coding role fragment on top of the base
-        // contract. When off, leave contractRole undefined so existing turn
-        // shapes match pre-Prompt-14.
-        agentic.mode ? 'coding' : undefined,
-        memoryIndexBlock,
-        taskNotificationsBlock,
-        chaptersBlock,
-        supportsTools,
-        lazySkillBodies
-      )
-
-      // Tools come from the unified registry — natives (memory_add today) plus
-      // all currently-connected MCP server tools, with stable descriptors and
-      // OpenAI-compatible function schemas.
-      //
-      // WC-1: Tools are now normalized for the active model's provider before
-      // dispatch. The normalizer strips unsupported JSON Schema keywords,
-      // fails fast on core tools that can't be normalized, and drops non-core
-      // tools with a logged warning. Single-mode and multi-mode share this
-      // tools array (line 529 + 574), so both pathways are covered.
-      //
-      // WC-2: The Coder is the role that receives tools — single-mode is
-      // implicitly Coder; multi-mode's Planner uses chatOnce without tools
-      // and Reviewer uses subAgentRunner without tools (per FC_AUDIT §4).
-      // Filtering by role='coder' here returns the full set (Coder allowlist
-      // is unrestricted) but the call site is now the explicit source of
-      // truth for which role receives this tools array.
-      const activeProvider = getProviderForModel(model)
-      // HY2 — model tool-surface. `'full'` (the SP-1 era default) sends the
-      // entire normalized catalog every turn, like the Opus 4.5-era product.
-      // `'lazy'` (opt-in for MCP-heavy setups) sends the always-on core set +
-      // `tool_search`; the model unlocks the rest on demand (state in
-      // tool-unlock-state.ts).
-      const tools: ChatCompletionTool[] =
-        buildDispatchTools(conversationId, activeProvider, settingsRaw)
-
-      const apiMessages = buildApiMessagesFromStoredMessages(systemPrompt, promptHistory)
-
-      const abortController = new AbortController()
-      // Stash the abort controller + the correlationId generated above so
-      // chat:cancel can find them. Every downstream producer takes this id so
-      // the whole run is one row-group in the event log. Pre-Prompt-3 events
-      // landed without one.
-      activeAbortControllers.set(conversationId, {
-        controller: abortController,
-        correlationId,
-        startedAt: Date.now()
-      })
-
-      // Workspace pinned at the start of the round so the in-flight tool
-      // loop sees one consistent cwd even if the user retargets the folder
-      // chip mid-stream.
-      const workspacePath = activeWorkspace
-
-      // UB-1 (Unburdening Phase, 2026-06-10) — there is no dispatch decision
-      // anymore. The multi-agent pipeline (Prompt 11 → L8 → CR-2) is excised;
-      // every turn is one model with its full tools. Git history at v0.13.0
-      // holds the last live pipeline.
-      // UB-4 (Unburdening Phase, 2026-06-10) — the HY5/CR-5 rigor resolution
-      // that ran here (proof-gate scoping per turn) is excised with the
-      // proof machinery.
-      await runChatRound(
+      // LP-1 (Loop Phase) — the normal-dispatch body (prompt assembly + tools
+      // + abort registration + runChatRound + cleanup) is now `runHeadlessTurn`
+      // so a loop iteration or a fired `schedule_wakeup` wake-up can run the
+      // identical turn in the main process. The user message was already
+      // persisted above; runHeadlessTurn owns abort registration + cleanup.
+      await runHeadlessTurn({
         conversationId,
         model,
-        apiMessages,
-        tools.length > 0 ? tools : undefined,
-        workspacePath,
-        abortController.signal,
-        0,
-        modelParams,
-        /* suppressDoneEvent */ false,
-        correlationId
-      )
+        activeSkillIds,
+        correlationId,
+        promptBody: content
+      })
 
       activeAbortControllers.delete(conversationId)
       drainPendingDocuments(correlationId)
@@ -613,6 +456,17 @@ export function registerChatHandlers(): void {
   // mcp:approveToolCall used to live here because chat.ts owned the pending
   // confirmation promises. It now lives in electron/ipc/permissions.ts and
   // routes through permissionsService.
+
+  // LP-1 (Loop Phase) — wire the headless turn runner into the loop runner so a
+  // fired schedule_wakeup wake-up (and, from LP-3, a loop iteration) runs a
+  // real turn instead of leaving the injected user message unanswered (G1).
+  setLoopTurnRunner((runnerInput) =>
+    runHeadlessTurn({
+      conversationId: runnerInput.conversationId,
+      model: runnerInput.model,
+      promptBody: runnerInput.promptBody
+    })
+  )
 }
 
 // Prompt 11: agent-pipeline mode needs to capture the Coder's final
@@ -628,6 +482,163 @@ export function registerChatHandlers(): void {
 // value; the byte-for-byte behaviour of the pre-Prompt-11 path is
 // preserved.
 export type RunChatRoundResult = { message: unknown } | null
+
+/**
+ * LP-1 (Loop Phase) — the headless turn runner. Factored out of `chat:send`
+ * so a loop iteration or a fired `schedule_wakeup` wake-up can run a real chat
+ * turn in the main process, with the window closed or another conversation
+ * focused. The CALLER persists the triggering user message first (chat:send
+ * does; fireDueWakeups does). This function assembles the prompt + tools,
+ * registers an abort controller (so chat:cancel AND a loop's cancel both
+ * interrupt it), runs runChatRound, and owns its own cleanup in a `finally` —
+ * a throwing turn never leaks the activeAbortControllers entry.
+ */
+export async function runHeadlessTurn(input: {
+  conversationId: string
+  model: string
+  activeSkillIds?: string[]
+  correlationId?: string
+  /** Body for the promptSubmit hook (the user/wake-up text). */
+  promptBody?: string
+  /** External cancel signal (e.g. a loop's controller) — aborts the turn. */
+  signal?: AbortSignal
+  suppressDoneEvent?: boolean
+}): Promise<RunChatRoundResult> {
+  const { conversationId, model } = input
+  const correlationId = input.correlationId ?? randomUUID()
+  const activeSkillIds = input.activeSkillIds ?? []
+
+  emitPhase(conversationId, 'understanding')
+
+  void fireHooks('promptSubmit', { conversationId, promptBody: input.promptBody ?? '' })
+
+  // Track 2 / E5 — auto context compression. Run BEFORE pulling
+  // history so the next turn's prompt sees the compressed view.
+  try {
+    const modelInfo = resolveModel(model)
+    const ctxWindow = modelInfo.contextWindow ?? 128_000
+    const r = compressOldestMessages(conversationId, ctxWindow)
+    if (r) {
+      emitChatEvent('chat:compressed', {
+        conversationId,
+        summaryMessageId: r.summaryMessageId,
+        compressedCount: r.compressedCount,
+        reductionPct: r.reductionPct
+      })
+    }
+  } catch (err) {
+    console.error('[chat] context compression failed:', err)
+  }
+
+  // The dispatcher uses the effective view (compressed messages hidden,
+  // summary inserted in their place) for the OpenAI API.
+  const promptHistory = getEffectiveMessages(conversationId)
+  const memoryBlock = memStore.buildMemoryBlock()
+  const memoryIndexBlock = memStore.buildMemoryIndexBlock()
+  const taskNotificationsBlock = buildTaskNotificationsBlock(
+    drainAsyncEventsForPrompt(conversationId)
+  )
+
+  const settingsRaw = readSettingsJson()
+  const agentic = loadAgenticCodingConfig(settingsRaw)
+
+  const effectiveSkillIds = agentic.mode
+    ? mergeAgenticSkillIds(activeSkillIds, agentic.skills)
+    : activeSkillIds
+
+  let skillContents: {
+    name: string
+    content: string
+    allowedTools?: string[]
+    description?: string
+  }[] = []
+  if (effectiveSkillIds.length > 0) {
+    const skills = listSkills()
+    skillContents = effectiveSkillIds
+      .map((id: string) => {
+        const skill = skills.find((s) => s.id === id)
+        if (!skill) return null
+        const skillBody = getSkillContent(id)
+        if (!skillBody) return null
+        return {
+          name: skill.name,
+          content: skillBody,
+          ...(skill.allowedTools ? { allowedTools: skill.allowedTools } : {}),
+          ...(skill.description ? { description: skill.description } : {})
+        }
+      })
+      .filter(Boolean) as {
+      name: string
+      content: string
+      allowedTools?: string[]
+      description?: string
+    }[]
+  }
+
+  // HY4 — lazy skill bodies follow the tool-surface mode.
+  const lazySkillBodies =
+    ((settingsRaw as { toolSurface?: string } | null)?.toolSurface ?? 'full') !== 'full'
+
+  const { params: modelParams, systemPromptOverride } = loadModelConfig(settingsRaw, model)
+  const activeWorkspace = getActiveWorkspace()
+  const agentsMd = readAgentsMd(activeWorkspace)
+  const chaptersBlock = buildChaptersBlock(conversationId)
+  const supportsTools = resolveModel(model).supportsTools
+  const systemPrompt = buildSystemPrompt(
+    skillContents,
+    memoryBlock,
+    systemPromptOverride,
+    agentsMd,
+    model,
+    agentic.mode ? 'coding' : undefined,
+    memoryIndexBlock,
+    taskNotificationsBlock,
+    chaptersBlock,
+    supportsTools,
+    lazySkillBodies
+  )
+
+  const activeProvider = getProviderForModel(model)
+  const tools: ChatCompletionTool[] = buildDispatchTools(
+    conversationId,
+    activeProvider,
+    settingsRaw
+  )
+
+  const apiMessages = buildApiMessagesFromStoredMessages(systemPrompt, promptHistory)
+
+  const abortController = new AbortController()
+  // Bridge an external cancel signal (a loop's controller) into the turn's
+  // own controller so chat:cancel + loop-cancel both interrupt this run.
+  if (input.signal) {
+    if (input.signal.aborted) abortController.abort()
+    else input.signal.addEventListener('abort', () => abortController.abort(), { once: true })
+  }
+  activeAbortControllers.set(conversationId, {
+    controller: abortController,
+    correlationId,
+    startedAt: Date.now()
+  })
+
+  const workspacePath = activeWorkspace
+  try {
+    return await runChatRound(
+      conversationId,
+      model,
+      apiMessages,
+      tools.length > 0 ? tools : undefined,
+      workspacePath,
+      abortController.signal,
+      0,
+      modelParams,
+      input.suppressDoneEvent ?? false,
+      correlationId
+    )
+  } finally {
+    activeAbortControllers.delete(conversationId)
+    drainPendingDocuments(correlationId)
+  }
+}
 
 /**
  * HY2 — Build the tool array handed to the model for a turn. `'full'` (the

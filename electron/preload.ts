@@ -624,6 +624,42 @@ const api = {
       const handler = (_: unknown, event: unknown): void => cb(event)
       ipcRenderer.on('loop:wakeup:fired', handler)
       return () => ipcRenderer.removeListener('loop:wakeup:fired', handler)
+    },
+    // LP-7 — loop entities (recurring loops, distinct from one-shot wake-ups).
+    create: (input: {
+      mode: 'interval' | 'self_paced' | 'autonomous'
+      conversationId?: string
+      instruction?: string
+      model?: string
+      intervalSeconds?: number
+      tasks?: string[]
+    }) => ipcRenderer.invoke('loops:create', input),
+    listLoops: (filter?: { conversationId?: string; status?: string | string[]; limit?: number }) =>
+      ipcRenderer.invoke('loops:listLoops', filter),
+    getLoop: (id: string) => ipcRenderer.invoke('loops:getLoop', id),
+    pause: (id: string) => ipcRenderer.invoke('loops:pause', id),
+    resume: (id: string) => ipcRenderer.invoke('loops:resume', id),
+    stop: (id: string, reason?: string) => ipcRenderer.invoke('loops:stop', id, reason),
+    deleteLoop: (id: string) => ipcRenderer.invoke('loops:deleteLoop', id),
+    listBacklog: (loopId: string) => ipcRenderer.invoke('loops:listBacklog', loopId),
+    enqueue: (loopId: string, tasks: string[]) => ipcRenderer.invoke('loops:enqueue', loopId, tasks),
+    reorderBacklog: (loopId: string, orderedIds: string[]) =>
+      ipcRenderer.invoke('loops:reorderBacklog', loopId, orderedIds),
+    removeBacklog: (id: string) => ipcRenderer.invoke('loops:removeBacklog', id),
+    listRuns: (loopId: string, limit?: number) => ipcRenderer.invoke('loops:listRuns', loopId, limit),
+    onLoopEvent: (cb: (event: { channel: string; payload: unknown }) => void): (() => void) => {
+      const channels = [
+        'loop:iteration:start',
+        'loop:iteration:done',
+        'loop:iteration:error',
+        'loop:stopped'
+      ]
+      const handlers = channels.map((channel) => {
+        const handler = (_: unknown, payload: unknown): void => cb({ channel, payload })
+        ipcRenderer.on(channel, handler)
+        return { channel, handler }
+      })
+      return () => handlers.forEach(({ channel, handler }) => ipcRenderer.removeListener(channel, handler))
     }
   },
 

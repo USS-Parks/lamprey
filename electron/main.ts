@@ -23,6 +23,7 @@ import {
 } from './services/debug-trace'
 import { startAutomations, stopAutomations } from './services/automations-runner'
 import { startLoopWakeups, stopLoopWakeups } from './services/loop-runner'
+import { startLoopController, stopLoopController } from './services/loop-controller'
 import { mcpManager } from './services/mcp-manager'
 import { ensureNodeReplDefaultServer } from './services/node-repl-default-server'
 import { initializeSkillLoader, shutdownSkillLoader } from './services/skill-loader'
@@ -389,6 +390,7 @@ app.whenReady().then(() => {
         }
         process.stderr.write(formatHeadlessResult(result, process.argv.includes('--json')) + '\n')
       } finally {
+        stopLoopController()
         stopLoopWakeups()
         stopAutomations()
         shutdownMemoryStore()
@@ -608,6 +610,7 @@ app.whenReady().then(() => {
     void fireHooks('sessionStart')
     startAutomations()
     startLoopWakeups()
+    startLoopController()
   } catch (err) {
     console.error('[main] hooks/automations/loops init error:', (err as Error).message)
   }
@@ -672,6 +675,7 @@ app.on('will-quit', () => {
   destroyAllMonitors()
   stopAutomations()
   stopLoopWakeups()
+  stopLoopController()
   void shutdownReviewWatcher()
   // closeDb() also runs a final TRUNCATE checkpoint before closing the
   // handle (PS2). That covers graceful exits. The periodic checkpoint

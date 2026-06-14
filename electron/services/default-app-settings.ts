@@ -48,6 +48,14 @@ export interface DefaultAppSettings {
   snipVerbose: boolean
   safeSeedLength: number
   includePastReasoningInContext: boolean
+  // Loop Phase LP-7 — autonomous loops, OFF by default (deliberate past-era
+  // extension; power machinery is opt-in, never default).
+  loopsEnabled: boolean
+  loopMaxIterations: number
+  loopMaxWallclockMs: number
+  loopTokenBudget: number
+  loopMaxConcurrent: number
+  loopMinIntervalSeconds: number
 }
 
 export const DEFAULT_APP_SETTINGS: DefaultAppSettings = {
@@ -69,5 +77,11 @@ export const DEFAULT_APP_SETTINGS: DefaultAppSettings = {
   snipEnabled: true,
   snipVerbose: false,
   safeSeedLength: 8192,
-  includePastReasoningInContext: true
+  includePastReasoningInContext: true,
+  loopsEnabled: false,
+  loopMaxIterations: 25,
+  loopMaxWallclockMs: 1800000,
+  loopTokenBudget: 500000,
+  loopMaxConcurrent: 1,
+  loopMinIntervalSeconds: 30
 }
