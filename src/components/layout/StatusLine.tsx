@@ -19,6 +19,7 @@ type SlotId =
   | 'workflow'
   | 'branch'
   | 'wakeups'
+  | 'loops'
   | 'snip'
   | 'tokens'
   | 'rag'
@@ -30,13 +31,14 @@ interface StatusLineConfig {
 }
 
 const DEFAULT_CONFIG: StatusLineConfig = {
-  slots: ['model', 'context', 'workflow', 'branch', 'wakeups', 'snip'],
+  slots: ['model', 'context', 'workflow', 'branch', 'wakeups', 'loops', 'snip'],
   formats: {
     model: '{name}',
     context: '{percent}% ctx',
     workflow: '{label}',
     branch: '{name}',
     wakeups: '{count} wake-up{plural}',
+    loops: '{count} loop{plural} · iter {iter}',
     snip: 'snip: {saved} saved',
     tokens: '{kilo}k tokens',
     rag: '{count} corpus'
@@ -59,6 +61,11 @@ function pluralize(count: number): string {
 export function StatusLine() {
   const [config, setConfig] = useState<StatusLineConfig>(DEFAULT_CONFIG)
   const [pendingWakeups, setPendingWakeups] = useState<number>(0)
+  // Gap-closure: running-loop count + lead iteration for the `loops` slot.
+  const [runningLoops, setRunningLoops] = useState<{ count: number; iter: number }>({
+    count: 0,
+    iter: 0
+  })
   // Fluidity J8: current git branch for the `branch` slot. Polled on mount
   // and whenever the working folder changes; cheap enough at 30s intervals
   // to not need a dedicated IPC channel.
@@ -161,6 +168,42 @@ export function StatusLine() {
     }
   }, [])
 
+  // Gap-closure: poll running LOOP entities (distinct from the wake-up count
+  // above) every 10s + on any loop event, for the `loops` slot.
+  useEffect(() => {
+    let cancelled = false
+    function refresh(): void {
+      const loopsApi = (
+        window.api as {
+          loops?: {
+            listLoops?: (f?: { status?: string; limit?: number }) => Promise<unknown>
+            onLoopEvent?: (cb: () => void) => () => void
+          }
+        }
+      )?.loops
+      if (!loopsApi?.listLoops) return
+      void loopsApi.listLoops({ status: 'running', limit: 50 }).then((res: unknown) => {
+        if (cancelled) return
+        const r = res as { success?: boolean; data?: Array<{ iteration?: number }> }
+        if (r?.success && Array.isArray(r.data)) {
+          const iter = r.data.reduce((m, l) => Math.max(m, l.iteration ?? 0), 0)
+          setRunningLoops({ count: r.data.length, iter })
+        }
+      })
+    }
+    refresh()
+    const interval = setInterval(refresh, 10_000)
+    const loopsApi = (
+      window.api as { loops?: { onLoopEvent?: (cb: () => void) => () => void } }
+    )?.loops
+    const dispose = loopsApi?.onLoopEvent?.(() => refresh())
+    return () => {
+      cancelled = true
+      clearInterval(interval)
+      if (typeof dispose === 'function') dispose()
+    }
+  }, [])
+
   const activeWorkflow = useMemo(
     () => runs.find((r) => r.status === 'running'),
     [runs]
@@ -233,6 +276,25 @@ export function StatusLine() {
             tone="wakeups"
             label={text || `${pendingWakeups} wake-up${pluralize(pendingWakeups)}`}
             title={`${pendingWakeups} pending scheduled wake-up(s)`}
+          />
+        )
+      }
+      case 'loops': {
+        if (runningLoops.count === 0) return null
+        const text = applyFormat(fmt, {
+          count: runningLoops.count,
+          plural: pluralize(runningLoops.count),
+          iter: runningLoops.iter
+        })
+        return (
+          <Slot
+            key={slot}
+            tone="wakeups"
+            label={
+              text ||
+              `${runningLoops.count} loop${pluralize(runningLoops.count)} · iter ${runningLoops.iter}`
+            }
+            title={`${runningLoops.count} running loop(s), lead iteration ${runningLoops.iter}`}
           />
         )
       }

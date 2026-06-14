@@ -415,6 +415,16 @@ function productionDeps(): LoopIterationDeps {
         model: input.model,
         promptBody: input.promptBody
       })
+      // runHeadlessTurn returns a context-aware { tokensEstimate } counting the
+      // full sent message stack (system prompt + history + prompt) plus reply —
+      // prefer it over the prompt-only fallback below.
+      if (
+        result &&
+        typeof result === 'object' &&
+        typeof (result as { tokensEstimate?: unknown }).tokensEstimate === 'number'
+      ) {
+        return { tokensUsed: (result as { tokensEstimate: number }).tokensEstimate }
+      }
       const replyText = ((): string => {
         try {
           return JSON.stringify(result ?? '')

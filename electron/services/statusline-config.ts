@@ -35,6 +35,7 @@ export type StatusLineSlot =
   | 'workflow'
   | 'branch'
   | 'wakeups'
+  | 'loops'
   | 'snip'
   | 'tokens'
   | 'rag'
@@ -45,6 +46,7 @@ const ALL_SLOTS: StatusLineSlot[] = [
   'workflow',
   'branch',
   'wakeups',
+  'loops',
   'snip',
   'tokens',
   'rag'
@@ -59,6 +61,7 @@ const DEFAULT_VISIBLE_SLOTS: StatusLineSlot[] = [
   'workflow',
   'branch',
   'wakeups',
+  'loops',
   'snip'
 ]
 
@@ -76,6 +79,7 @@ export const DEFAULT_STATUSLINE_CONFIG: StatusLineConfig = {
     workflow: '{label}',
     branch: '{name}',
     wakeups: '{count} wake-up{plural}',
+    loops: '{count} loop{plural} · iter {iter}',
     snip: 'snip: {saved} saved',
     tokens: '{kilo}k tokens',
     rag: '{count} corpus'

@@ -78,12 +78,15 @@ Set in `settings.json`: `"loopMaxIterations": 3`, restart, start any loop.
 
 ---
 
-## Gaps (honest, as of phase wrap)
-- **No Settings UI tab** for the loop keys yet — edit `settings.json` directly. (`toolSurface` /
-  `proofGate` are in the same boat per SP honest gaps.)
-- **No status-line slot** for running loop entities (the panel is the surface; the wake-up
-  count slot is unrelated).
-- **Token budget is approximate** — estimated from prompt+reply text length, not provider usage
-  numbers. Iteration + wall-clock are the hard caps.
-- **DB-backed unit tests skip** under the native-binding mismatch — this playbook is the
-  integration coverage by design.
+## Gaps — CLOSED in the v0.15.1 gap-closure pass
+- ~~No Settings UI tab~~ → **Settings → Loops** tab ships the toggle + all five ceilings
+  (`LoopSettings.tsx`). No more `settings.json` editing.
+- ~~No status-line slot~~ → a `loops` slot shows "N loop · iter X" for running loop entities
+  (hidden at count 0).
+- ~~Token budget approximate (prompt-only)~~ → now a **context-aware** estimate counting the full
+  sent message stack (system prompt + history + prompt) + reply. Iteration + wall-clock remain the
+  hard caps; multi-round tool turns still slightly undercount the re-sent context (documented).
+- ~~DB-backed unit tests skip~~ → `loop-db-integration.test.ts` runs the **exact** v17 DDL +
+  loop query shapes against Node's built-in `node:sqlite` (no native addon) — **9 tests, zero
+  skips**. This playbook remains the end-to-end live check (real provider turns, headless
+  execution), but the schema + query correctness now has an automated gate.

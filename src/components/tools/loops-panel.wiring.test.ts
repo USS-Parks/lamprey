@@ -32,4 +32,19 @@ describe('LP-9 loops UI wiring', () => {
     expect(src).toMatch(/onLoopEvent/)
     expect(src).toMatch(/listBacklog/)
   })
+
+  it('SettingsDialog registers the Loops tab + panel (gap-1)', () => {
+    const src = read('src/components/settings/SettingsDialog.tsx')
+    expect(src).toMatch(/import \{ LoopSettings \}/)
+    expect(src).toMatch(/id: 'loops', label: 'Loops'/)
+    expect(src).toMatch(/activeTab === 'loops' && <LoopSettings \/>/)
+  })
+
+  it('LoopSettings binds the loop settings keys (gap-1)', () => {
+    const src = read('src/components/settings/LoopSettings.tsx')
+    expect(src).toMatch(/loopsEnabled/)
+    expect(src).toMatch(/loopMaxIterations/)
+    expect(src).toMatch(/loopMaxWallclockMs/)
+    expect(src).toMatch(/loopMinIntervalSeconds/)
+  })
 })

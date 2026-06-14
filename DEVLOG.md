@@ -1,3 +1,65 @@
+## 2026-06-14 — Loop Phase gap-closure (v0.15.1)
+
+Closes the four honest gaps documented at the Loop Phase wrap.
+
+### Gap 4 — real DB integration coverage that does not skip
+- `electron/services/loop-schema.ts` (new) — the v17 `loops`/`loop_backlog`/`loop_runs` DDL as a
+  standalone, import-free `LOOP_SCHEMA_SQL` constant. Migration v17 (`db-migrations.ts`) now
+  `db.exec(LOOP_SCHEMA_SQL)` instead of an inline copy, so production + test share one source.
+- `electron/services/loop-db-integration.test.ts` (new, 9 cases, **all run**) — uses Node's
+  built-in `node:sqlite` (`DatabaseSync`, no native addon → loads under vitest's ABI where the
+  Electron-built better-sqlite3 cannot) to run the EXACT production DDL + the loop-store query
+  shapes: table creation, mode/status CHECK constraints, `nextBacklogItem` ordering, `countBacklog`,
+  `listRecentDone` (finished_at DESC), `listDueLoops`, cascade delete. The "node:sqlite available"
+  assertion is a hard `expect` (not skipIf) so a future runtime without it FAILS loudly instead of
+  silently losing coverage. This is the automated integration gate the LP-10 playbook stood in for.
+- Verify: tsc node exit 0; `vitest loop-db-integration` — 9 passed / 0 skipped.
+
+### Gap 3 — context-aware token-budget estimate
+- `electron/ipc/chat.ts` — `runHeadlessTurn` now returns `HeadlessTurnResult` (`{ message,
+  tokensEstimate }`): the estimate counts the chars of the FULL assembled `apiMessages` (system
+  prompt + history + iteration prompt) plus the reply, over ~4 chars/token. The prior estimate
+  used only `promptBody`, ignoring the system prompt + history that dominate a turn's real cost.
+- `electron/services/loop-controller.ts` — `productionDeps.runTurn` prefers the runner's
+  `tokensEstimate` (the context-aware figure) and only falls back to the prompt-only estimate when
+  a runner doesn't provide one. The token budget is the soft guard; iteration + wall-clock stay the
+  hard caps (multi-round tool turns still undercount the re-sent context — documented).
+- Verify: tsc node exit 0; `vitest loop-controller` — 23 passed; `verify:proof --no-tests` exit 0
+  (chat.ts touched).
+
+### Gap 1 — Settings → Loops tab
+- `src/components/settings/LoopSettings.tsx` (new) — a master enable toggle (writes `loopsEnabled`)
+  + the five ceilings (max iterations, max wall-clock in minutes, token budget with `0 = off`,
+  max concurrent, runaway floor). Wired to `useSettingsStore` (same fresh-read pattern as the
+  Timeouts panel — no IPC patch). Includes the "extension past the era target, off by default"
+  framing + the `/loop` usage. The ceiling section dims when loops are disabled.
+- `src/components/settings/SettingsDialog.tsx` — registered the `loops` tab (after Automations).
+- `src/components/tools/loops-panel.wiring.test.ts` — +2 source-lock cases for the tab + key
+  binding. No `settings.json` editing required anymore.
+- Verify: tsc web exit 0; `vitest loops-panel.wiring` — 6 passed; `verify:proof --no-tests` exit 0.
+
+### Gap 2 — status-line slot for running loop entities
+- `electron/services/statusline-config.ts` — new `loops` slot: added to `StatusLineSlot`,
+  `ALL_SLOTS`, `DEFAULT_VISIBLE_SLOTS` (after `wakeups`), and the default format
+  `'{count} loop{plural} · iter {iter}'`.
+- `src/components/layout/StatusLine.tsx` — `SlotId` + default config gain `loops`; a 10s poll of
+  `loops:listLoops {status:'running'}` (+ `onLoopEvent` refresh) tracks the running-loop count +
+  lead iteration; the `loops` render case hides at count 0 (so default installs with loops off see
+  nothing) and otherwise shows e.g. "1 loop · iter 4" in the amber wake-ups tone. Distinct from the
+  pre-existing `wakeups` count (those are one-shot `schedule_wakeup` rows, not loop entities).
+- Verify: tsc node + web exit 0; `vitest statusline-config` — 6 passed; `verify:proof --no-tests`
+  exit 0.
+
+### Gap-closure wrap (v0.15.1)
+- `package.json` 0.15.0 → **0.15.1**; README "New in v0.15.1" paragraph (Loop Phase demoted to
+  "Previously"); `PLANNING/LP_SMOKE_PLAYBOOK.md` Gaps section + CLAUDE.md Loop Phase entry updated
+  to mark all four gaps CLOSED.
+- **Per-gap commit SHAs:** `9b0c851` gap-4 (node:sqlite DB test) · `d358d09` gap-3 (context-aware
+  token estimate) · `bb62dfc` gap-1 (Settings → Loops tab) · `babb935` gap-2 (status-line slot) ·
+  (this commit) wrap.
+- **Final gate:** lint OK, tsc node + web OK, full vitest <see commit>, build OK, `verify:proof`
+  exit 0.
+
 ## 2026-06-14 — Loop Phase
 
 Deliberate, user-authorized extension PAST the Opus 4.5 era-lock: a first-class Loop primitive

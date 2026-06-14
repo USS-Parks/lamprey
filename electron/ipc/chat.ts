@@ -484,6 +484,17 @@ export function registerChatHandlers(): void {
 export type RunChatRoundResult = { message: unknown } | null
 
 /**
+ * runHeadlessTurn's result widens RunChatRoundResult with a context-aware token
+ * estimate (Loop Phase gap-closure): the chars of the FULL message stack sent
+ * to the model (system prompt + history + the iteration prompt) plus the reply,
+ * over ~4 chars/token. This replaces the prior promptBody-only estimate, which
+ * ignored the system prompt + history that dominate a turn's real token cost.
+ * Multi-round tool turns still undercount the re-sent context, so iteration +
+ * wall-clock remain the hard caps; the token budget is the soft guard.
+ */
+export type HeadlessTurnResult = { message: unknown; tokensEstimate: number } | null
+
+/**
  * LP-1 (Loop Phase) — the headless turn runner. Factored out of `chat:send`
  * so a loop iteration or a fired `schedule_wakeup` wake-up can run a real chat
  * turn in the main process, with the window closed or another conversation
@@ -503,7 +514,7 @@ export async function runHeadlessTurn(input: {
   /** External cancel signal (e.g. a loop's controller) — aborts the turn. */
   signal?: AbortSignal
   suppressDoneEvent?: boolean
-}): Promise<RunChatRoundResult> {
+}): Promise<HeadlessTurnResult> {
   const { conversationId, model } = input
   const correlationId = input.correlationId ?? randomUUID()
   const activeSkillIds = input.activeSkillIds ?? []
@@ -607,6 +618,14 @@ export async function runHeadlessTurn(input: {
 
   const apiMessages = buildApiMessagesFromStoredMessages(systemPrompt, promptHistory)
 
+  // Context-aware token estimate (gap-closure): the full message stack sent to
+  // the model, not just the iteration prompt. Computed here because this is the
+  // only place that holds the assembled apiMessages.
+  const promptChars = apiMessages.reduce((n, m) => {
+    const c = (m as { content?: unknown }).content
+    return n + (typeof c === 'string' ? c.length : c == null ? 0 : JSON.stringify(c).length)
+  }, 0)
+
   const abortController = new AbortController()
   // Bridge an external cancel signal (a loop's controller) into the turn's
   // own controller so chat:cancel + loop-cancel both interrupt this run.
@@ -622,7 +641,7 @@ export async function runHeadlessTurn(input: {
 
   const workspacePath = activeWorkspace
   try {
-    return await runChatRound(
+    const result = await runChatRound(
       conversationId,
       model,
       apiMessages,
@@ -634,6 +653,10 @@ export async function runHeadlessTurn(input: {
       input.suppressDoneEvent ?? false,
       correlationId
     )
+    if (!result) return null
+    const replyContent = (result as { message?: { content?: unknown } }).message?.content
+    const replyChars = typeof replyContent === 'string' ? replyContent.length : 0
+    return { message: (result as { message: unknown }).message, tokensEstimate: Math.ceil((promptChars + replyChars) / 4) }
   } finally {
     activeAbortControllers.delete(conversationId)
     drainPendingDocuments(correlationId)
