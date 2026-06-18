@@ -61,7 +61,8 @@ mac:
   icon: resources/icon.png
   target:
     - dmg
-  hardenedRuntime: true
+  artifactName: ${productName}-${arch}.${ext}
+  hardenedRuntime: false
 
 win:
   icon: resources/icon.ico
