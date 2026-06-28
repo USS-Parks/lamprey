@@ -79,8 +79,6 @@ Conventional commits. Format:
 <type>(<scope>): <imperative summary under 72 chars>
 
 <optional body explaining why, wrapped at 72 chars>
-
-Co-Authored-By: ...
 ```
 
 Allowed types: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`, `perf`, `style`, `ci`.
@@ -102,6 +100,18 @@ The body should explain **why**, not what — the diff already shows what.
 **One feature per PR.** Don't fold an unrelated refactor into a feature commit. Don't include tooling changes in a UI PR. If you have two things to do, open two PRs.
 
 If a PR touches more than ~600 lines, break it up. Reviewers can't hold more than that in their head, and big PRs land slower.
+
+---
+
+## Review and sign-off
+
+Every change — including the maintainer's own — lands through a pull request. Nothing is pushed straight to `main`. A PR does not merge until all three hold:
+
+1. **CI is green** — the gates listed under [Required before every PR](#required-before-every-pr).
+2. **A human has read the diff** — the maintainer (Basho Parks) reviews the change and leaves an explicit approval, not a rubber stamp.
+3. **It carries a sign-off** — the merge includes `Reviewed-by: Basho Parks <basho.parks@gmail.com>`.
+
+AI assistants are welcome to draft code and open PRs — much of this project was built that way, and the README says so plainly. The rule is simply that a person reviews and signs off before anything merges. The sign-off means a human read the change and stands behind it.
 
 ---
 

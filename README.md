@@ -110,8 +110,14 @@ Renderer is sandboxed (`contextIsolation`, no `nodeIntegration`). Keys and OAuth
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). Issues and PRs welcome at [github.com/USS-Parks/lamprey/issues](https://github.com/USS-Parks/lamprey/issues).
+See [CONTRIBUTING.md](CONTRIBUTING.md). Issues and PRs welcome at [github.com/USS-Parks/lamprey/issues](https://github.com/USS-Parks/lamprey/issues). Every change lands through a pull request with a human review and sign-off before merge &mdash; see the [Review and sign-off](CONTRIBUTING.md#review-and-sign-off) policy.
+
+## Author
+
+Authored and maintained by Basho Parks.
 
 ## License
 
 MIT &mdash; see [LICENSE](LICENSE).
+
+© 2026 Basho Parks
